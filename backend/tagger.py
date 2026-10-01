@@ -213,7 +213,7 @@ _MB_TRACK_ARTISTS_CACHE: Dict[Tuple[str, str], Optional[Dict[str, str]]] = {}
 _MB_TRACKS_CACHE: Dict[Tuple[str, str], Optional[Dict[int, Dict[str, str]]]] = {}
 
 # MusicBrainz exige ce format : AppName/version (email) — sans email, les requêtes sont rejetées
-_MB_HEADERS = {"User-Agent": "SoundStash/3.0.2 (soundstash@helmicretro.local)"}
+_MB_HEADERS = {"User-Agent": "SoundStash/3.1.0 (soundstash@helmicretro.local)"}
 
 _LAST_MB_REQUEST_TIME = 0
 
@@ -2373,4 +2373,53 @@ def open_in_explorer(path: str) -> bool:
     except Exception as e:
         logger.error(f"Ouverture explorateur: {e}")
         return False
+
+def apply_genre_to_album(album_dir: Path | str, genre: str) -> dict:
+    """
+    Applique le tag de genre à tous les fichiers audio d'un album ou d'une playlist via kid3-cli
+    sans toucher aux titres, artistes ou noms de fichiers.
+    """
+    if not album_dir or not str(album_dir).strip():
+        return {"success": False, "message": "Chemin d'album invalide."}
+    p = Path(album_dir)
+    if not p.exists() or not p.is_dir():
+        return {"success": False, "message": "Dossier d'album introuvable."}
+
+    clean_g = str(genre).strip()
+
+    audio_files = []
+    for root, _, files in os.walk(p):
+        for f in files:
+            if Path(f).suffix.lower() in AUDIO_EXTENSIONS:
+                audio_files.append(Path(root) / f)
+
+    if not audio_files:
+        return {"success": False, "message": "Aucun fichier audio trouvé dans cet album."}
+
+    try:
+        cmd = [KID3_CLI_PATH]
+        escaped_g = _kid3_escape(clean_g)
+        cmd.extend(["-c", f"set genre \"{escaped_g}\""])
+        for af in audio_files:
+            cmd.append(str(af.resolve()))
+        cmd.extend(["-c", "save"])
+
+        proc = subprocess.run(cmd, cwd=str(p), capture_output=True, text=True, timeout=30)
+        if proc.returncode != 0:
+            logger.warning(f"kid3-cli set genre warning on {p.name}: {proc.stderr}")
+    except Exception as e:
+        logger.error(f"Erreur kid3-cli lors de l'application du genre sur {p.name} : {e}")
+        return {"success": False, "message": str(e)}
+
+    invalidate_album_cache(p)
+    if hasattr(library_indexer, "update_album_genre"):
+        library_indexer.update_album_genre(p, clean_g)
+
+    return {
+        "success": True,
+        "album_dir": str(p),
+        "genre": clean_g,
+        "tracks_updated": len(audio_files)
+    }
+
 

@@ -40,13 +40,30 @@ def clean_genre_str(g: Optional[str]) -> Optional[str]:
             return ID3_GENRES[idx]
     return g if g else None
 
+def parse_duration_to_seconds(dur_val: Any) -> Optional[int]:
+    """Convertit une durée (int, float, 'M:SS', 'H:MM:SS') en secondes entières."""
+    if dur_val is None:
+        return None
+    if isinstance(dur_val, (int, float)):
+        return int(round(dur_val))
+    if isinstance(dur_val, str):
+        parts = dur_val.strip().split(":")
+        try:
+            if len(parts) == 2:
+                return int(parts[0]) * 60 + int(parts[1])
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        except (ValueError, TypeError):
+            pass
+    return None
+
 def extract_audio_tags_fast(filepath: Path) -> dict:
     """
     Extrait ultra-rapidement (< 2ms) l'ensemble des tags audio réels directement
     depuis un fichier audio (MP4/M4A, MP3 ID3v2, FLAC, OGG/OPUS) sans sous-processus.
-    Retourne : {'artist': str, 'album': str, 'year': str, 'genre': str, 'title': str}
+    Retourne : {'artist': str, 'album': str, 'year': str, 'genre': str, 'title': str, 'duration': str, 'duration_sec': Optional[int]}
     """
-    meta = {'artist': '', 'album': '', 'year': '', 'genre': '', 'title': ''}
+    meta = {'artist': '', 'album': '', 'year': '', 'genre': '', 'title': '', 'duration': '', 'duration_sec': None}
     try:
         p = Path(filepath)
         if not p.is_file():
@@ -106,6 +123,26 @@ def extract_audio_tags_fast(filepath: Path) -> dict:
                             if code > 0:
                                 meta['genre'] = clean_genre_str(str(code - 1)) or ""
 
+                # Extraction ultra-rapide de la durée MP4/M4A via l'atome mvhd
+                idx_m = data.find(b'mvhd')
+                if idx_m != -1:
+                    v = data[idx_m + 4]
+                    if v == 0 and len(data) >= idx_m + 24:
+                        ts, dur = struct.unpack('>II', data[idx_m + 16 : idx_m + 24])
+                        if ts > 0:
+                            sec = int(round(dur / ts))
+                            meta['duration_sec'] = sec
+                            m, s = divmod(sec, 60)
+                            meta['duration'] = f"{m}:{s:02d}"
+                    elif v == 1 and len(data) >= idx_m + 36:
+                        ts = struct.unpack('>I', data[idx_m + 24 : idx_m + 28])[0]
+                        dur = struct.unpack('>Q', data[idx_m + 28 : idx_m + 36])[0]
+                        if ts > 0:
+                            sec = int(round(dur / ts))
+                            meta['duration_sec'] = sec
+                            m, s = divmod(sec, 60)
+                            meta['duration'] = f"{m}:{s:02d}"
+
             # MP3 (ID3v2)
             elif hdr[:3] == b'ID3':
                 f.seek(0)
@@ -144,8 +181,31 @@ def extract_audio_tags_fast(filepath: Path) -> dict:
                     meta['year'] = m.group(1) if m else y_raw[:4]
                 meta['genre'] = clean_genre_str(_read_frame(b'TCON')) or ""
 
+                tlen_str = _read_frame(b'TLEN')
+                if tlen_str and tlen_str.isdigit():
+                    sec = int(round(int(tlen_str) / 1000))
+                    meta['duration_sec'] = sec
+                    m, s = divmod(sec, 60)
+                    meta['duration'] = f"{m}:{s:02d}"
+
             # FLAC
             elif hdr[:4] == b'fLaC':
+                try:
+                    f.seek(4)
+                    blk_hdr = f.read(4)
+                    if blk_hdr and (blk_hdr[0] & 0x7F) == 0:
+                        streaminfo = f.read(34)
+                        if len(streaminfo) >= 18:
+                            b = streaminfo[10:18]
+                            sr = (b[0] << 12) | (b[1] << 4) | (b[2] >> 4)
+                            total_samples = ((b[3] & 0x0F) << 32) | (b[4] << 24) | (b[5] << 16) | (b[6] << 8) | b[7]
+                            if sr > 0 and total_samples > 0:
+                                sec = int(round(total_samples / sr))
+                                meta['duration_sec'] = sec
+                                m, s = divmod(sec, 60)
+                                meta['duration'] = f"{m}:{s:02d}"
+                except Exception:
+                    pass
                 f.seek(0)
                 data = f.read(128 * 1024)
                 for line in data.split(b'\n'):
@@ -186,6 +246,15 @@ def extract_audio_tags_fast(filepath: Path) -> dict:
                         elif k_s == 'title' and not meta['title']:
                             meta['title'] = v_s
 
+        if meta['duration_sec'] is None:
+            try:
+                from backend.tagger import get_audio_duration_fast
+                dur_fast = get_audio_duration_fast(p)
+                if dur_fast:
+                    meta['duration'] = dur_fast
+                    meta['duration_sec'] = parse_duration_to_seconds(dur_fast)
+            except Exception:
+                pass
     except Exception:
         pass
     return meta
@@ -336,6 +405,48 @@ def calculate_token_similarity(s1: str, s2: str) -> float:
 # Alias pour compatibilité
 token_similarity = calculate_token_similarity
 
+TRACK_VERSION_NOISE_PATTERNS = [
+    r"\s*[\(\[][^\)\]]*(?:remix|mix|edit|version|extended|radio|club|instrumental|acoustic|live|vip|rework|dub|feat|ft\.|featuring|clean|explicit|bonus|remaster|deluxe|intro|outro|orchestral|slowed|speed|sped)[^\)\]]*[\)\]]",
+    r"\s*-\s*(?:extended|radio|club|original|vip|dub|acoustic|instrumental|album|single)?\s*(?:mix|edit|remix|version|live|rework|instrumental|dub|vip).*$",
+    r"\s*[\(\[][^\)\]]*[\)\]]$"
+]
+
+def extract_base_title(title: str) -> str:
+    """
+    Extrait la base brute d'un titre en retirant les numéros de piste et
+    les mentions de version/éditions/remix pour la détection 'Autre version'.
+    """
+    if not title:
+        return ""
+    s = re.sub(r'^\d+\s*[-.]*\s*', '', str(title)).strip()
+    orig = s
+    for pat in TRACK_VERSION_NOISE_PATTERNS:
+        s_sub = re.sub(pat, '', s, flags=re.IGNORECASE).strip()
+        if len(s_sub) >= 2:
+            s = s_sub
+    norm = normalize_text(s)
+    return norm if norm else normalize_text(orig)
+
+LIVE_REGEX = re.compile(r'\b(?:live(?:\s+(?:at|in|from|version|session|acoustic|tour|20\d\d|19\d\d))?|concert|en\s+public|unplugged)\b', re.IGNORECASE)
+INST_REGEX = re.compile(r'\b(?:instrumental|inst\b|karaoke|a\s*cappella|acapella)\b', re.IGNORECASE)
+EXPLICIT_REGEX = re.compile(r'\b(?:explicit|dirty)\b', re.IGNORECASE)
+CLEAN_REGEX = re.compile(r'\b(?:clean|radio\s*edit|censored)\b', re.IGNORECASE)
+
+ALBUM_EDITION_WORDS = {
+    "edition", "deluxe", "anniversary", "remaster", "remastered", "expanded",
+    "special", "collector", "collectors", "version", "reissue", "bonus", "complete",
+    "super", "box", "set", "vol", "volume", "lp", "cd", "explicit", "clean", "tour", "original"
+}
+
+
+class IndexedTrack(BaseModel):
+    title: str = ""
+    norm_title: str = ""
+    base_title: str = ""
+    duration_sec: Optional[int] = None
+    duration_str: str = ""
+    bitrate_kbps: Optional[int] = None
+    filename: str = ""
 
 class IndexedAlbum(BaseModel):
     path: str
@@ -350,6 +461,81 @@ class IndexedAlbum(BaseModel):
     norm_artist: str = ""
     norm_album: str = ""
     source: str = "library"  # "library", "export", "temp"
+    tracks: List[IndexedTrack] = []
+
+def extract_album_tracks_fast(folder: Path | str) -> List[IndexedTrack]:
+    """
+    Extrait ultra-rapidement les pistes d'un album avec titre, titre normalisé,
+    durée en secondes et formatée (< 5ms par album) pour le croisement intelligent.
+    """
+    folder_p = Path(folder)
+    if not folder_p.is_dir():
+        return []
+
+    audio_files: List[Path] = []
+    try:
+        disc_subnames = []
+        for it in folder_p.iterdir():
+            if it.is_file() and it.suffix.lower() in AUDIO_EXTENSIONS:
+                audio_files.append(it)
+            elif it.is_dir() and DISC_SUBFOLDER_RE.match(it.name):
+                disc_subnames.append(it)
+
+        disc_subnames.sort(key=lambda x: x.name.lower())
+        for d in disc_subnames:
+            for it in d.iterdir():
+                if it.is_file() and it.suffix.lower() in AUDIO_EXTENSIONS:
+                    audio_files.append(it)
+    except Exception:
+        return []
+
+    if not audio_files:
+        return []
+
+    tracks: List[IndexedTrack] = []
+    for f in audio_files:
+        try:
+            tags = extract_audio_tags_fast(f)
+            tit = (tags.get("title") or "").strip()
+            if not tit:
+                from backend.tagger import parse_track_filename
+                _, tit = parse_track_filename(f.name)
+            if not tit:
+                tit = f.stem
+
+            dur_sec = tags.get("duration_sec")
+            dur_str = tags.get("duration") or ""
+            if dur_sec is None and dur_str:
+                dur_sec = parse_duration_to_seconds(dur_str)
+            elif dur_sec is not None and not dur_str:
+                m, s = divmod(dur_sec, 60)
+                dur_str = f"{m}:{s:02d}"
+
+            clean_tit = re.sub(r'^\d+\s*[-.]*\s*', '', tit).strip()
+            norm_tit = normalize_text(clean_tit)
+            base_tit = extract_base_title(clean_tit) or norm_tit
+
+            bitrate_kbps = None
+            try:
+                if dur_sec and dur_sec > 0:
+                    sz = f.stat().st_size
+                    bitrate_kbps = int((sz * 8) / (dur_sec * 1000))
+            except Exception:
+                pass
+
+            tracks.append(IndexedTrack(
+                title=tit,
+                norm_title=norm_tit,
+                base_title=base_tit,
+                duration_sec=dur_sec,
+                duration_str=dur_str,
+                bitrate_kbps=bitrate_kbps,
+                filename=f.name
+            ))
+        except Exception:
+            pass
+
+    return tracks
 
 
 class LibraryIndexer:
@@ -361,6 +547,8 @@ class LibraryIndexer:
         self.cache_file = CONFIG_DIR / ".library_cache.json"
         self.albums: List[IndexedAlbum] = []
         self.artists_map: Dict[str, List[IndexedAlbum]] = {}
+        self._tracks_by_title: Dict[str, List[Tuple[IndexedAlbum, IndexedTrack]]] = {}
+        self._tracks_by_base: Dict[str, List[Tuple[IndexedAlbum, IndexedTrack]]] = {}
         self.is_scanning = False
         self.last_scanned_at: Optional[float] = None
         self._load_from_cache()
@@ -527,13 +715,87 @@ class LibraryIndexer:
         }
 
     def _rebuild_index(self):
-        """Reconstruit la table de hachage par artiste."""
+        """Reconstruit la table de hachage par artiste et par titre de morceau (exact et base)."""
         self.artists_map.clear()
+        self._tracks_by_title.clear()
+        self._tracks_by_base.clear()
         for alb in self.albums:
             key = alb.norm_artist or "inconnu"
             if key not in self.artists_map:
                 self.artists_map[key] = []
             self.artists_map[key].append(alb)
+
+            for tr in getattr(alb, "tracks", []):
+                if tr.norm_title:
+                    if tr.norm_title not in self._tracks_by_title:
+                        self._tracks_by_title[tr.norm_title] = []
+                    self._tracks_by_title[tr.norm_title].append((alb, tr))
+
+                base_t = getattr(tr, "base_title", None) or extract_base_title(tr.title or tr.norm_title)
+                if base_t:
+                    if base_t not in self._tracks_by_base:
+                        self._tracks_by_base[base_t] = []
+                    self._tracks_by_base[base_t].append((alb, tr))
+
+    def ensure_tracks_indexed(self, force: bool = False):
+        """S'assure que les morceaux de tous les albums sont extraits et indexés."""
+        needs_save = False
+        for alb in self.albums:
+            if force or not getattr(alb, "tracks", None):
+                p = Path(alb.path)
+                if p.is_dir():
+                    extracted = extract_album_tracks_fast(p)
+                    if extracted:
+                        alb.tracks = extracted
+                        needs_save = True
+
+        if needs_save:
+            self._rebuild_index()
+            self._save_to_cache()
+
+    def get_track_candidates(self, norm_title: str, base_title: str = "") -> List[Tuple[IndexedAlbum, IndexedTrack]]:
+        """
+        Retourne tous les candidats de pistes correspondant au titre normalisé ou à la base de titre.
+        Conserve l'ordre de priorité (titre exact d'abord, puis variantes de base).
+        """
+        if not norm_title and not base_title:
+            return []
+
+        seen = set()
+        candidates: List[Tuple[IndexedAlbum, IndexedTrack]] = []
+
+        def add_cands(cand_list):
+            for alb, tr in cand_list:
+                key = (alb.path, tr.filename or tr.title)
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append((alb, tr))
+
+        # 1. Correspondance exacte sur titre normalisé
+        if norm_title and norm_title in self._tracks_by_title:
+            add_cands(self._tracks_by_title[norm_title])
+
+        # 2. Correspondance sur base de titre (éditions / versions / variantes)
+        if base_title and base_title in self._tracks_by_base:
+            add_cands(self._tracks_by_base[base_title])
+
+        # 3. Nettoyage de bruits d'éditions/versions ou de numéros de pistes en début de titre
+        clean_t = re.sub(r'^\d+\s*[-.]*\s*', '', norm_title).strip()
+        for pat in EDITION_NOISE_PATTERNS:
+            clean_t = re.sub(pat, '', clean_t, flags=re.IGNORECASE).strip()
+
+        if clean_t and clean_t in self._tracks_by_title:
+            add_cands(self._tracks_by_title[clean_t])
+
+        # 4. Tolérance sur sous-chaîne proche
+        if len(norm_title) >= 4 and len(candidates) < 10:
+            for k, tr_list in self._tracks_by_title.items():
+                if len(k) >= 4 and (norm_title in k or k in norm_title):
+                    ratio = min(len(norm_title), len(k)) / max(len(norm_title), len(k))
+                    if ratio >= 0.70:
+                        add_cands(tr_list)
+
+        return candidates
 
     def scan(self, force: bool = False, custom_dir: Optional[str] = None, save_cache: bool = True) -> dict:
         """
@@ -702,6 +964,7 @@ class LibraryIndexer:
 
                 inferred_genre = tags_meta.get("genre")
 
+                item_tracks = extract_album_tracks_fast(folder_p)
                 item = IndexedAlbum(
                     path=p_str,
                     folder_name=folder_p.name,
@@ -714,7 +977,8 @@ class LibraryIndexer:
                     mtime=mtime,
                     norm_artist=normalize_text(artist),
                     norm_album=normalize_text(album),
-                    source=source
+                    source=source,
+                    tracks=item_tracks
                 )
                 out_list.append(item)
         except Exception as e:
@@ -950,6 +1214,7 @@ class LibraryIndexer:
         norm_art = normalize_text(artist_name)
         norm_alb = normalize_text(album_name)
 
+        indexed_tracks = extract_album_tracks_fast(p)
         indexed = IndexedAlbum(
             path=str(p.resolve()),
             folder_name=p.name,
@@ -962,7 +1227,8 @@ class LibraryIndexer:
             mtime=p.stat().st_mtime,
             norm_artist=norm_art,
             norm_album=norm_alb,
-            source="library"
+            source="library",
+            tracks=indexed_tracks
         )
 
         resolved_str = str(p.resolve())
@@ -983,6 +1249,26 @@ class LibraryIndexer:
             logger.info(f"Indexothèque : Ancien chemin d'album retiré du cache -> {album_path}")
         except Exception as e:
             logger.warning(f"Erreur suppression album du cache {album_path}: {e}")
+
+    def update_album_genre(self, album_path: Path | str, new_genre: str):
+        """Met à jour le genre d'un album en mémoire et dans le cache sans réindexation lourde."""
+        try:
+            norm_p = str(Path(album_path).resolve()).lower()
+            updated = False
+            for alb in self.albums:
+                if str(Path(alb.path).resolve()).lower() == norm_p:
+                    alb.genre = new_genre
+                    try:
+                        alb.mtime = Path(alb.path).stat().st_mtime
+                    except Exception:
+                        pass
+                    updated = True
+                    break
+            if updated:
+                self._save_to_cache()
+                logger.info(f"Indexothèque : Genre mis à jour pour '{album_path}' -> {new_genre}")
+        except Exception as e:
+            logger.warning(f"Erreur mise à jour genre album {album_path}: {e}")
 
     def invalidate_cache(self):
         """Invalide le cache de la bibliothèque et force un re-scan."""
@@ -1036,7 +1322,44 @@ class SmartMatcher:
                 if norm_title and (norm_title == q_title or norm_title in q_title or q_title in norm_title):
                     return {"status": "queued", "label": "⏳ En file", "badge_class": "badge-status-queued"}
 
-        # 3. Vérification dans la bibliothèque indexée (Collection, Export)
+        # 3. Traitement spécialisé selon le type d'élément (Artiste / Piste / Vidéo)
+        if item_type == "artist":
+            art_name = title or artist
+            n_art = normalize_text(art_name)
+            if n_art:
+                matched_albs = []
+                if n_art in self.indexer.artists_map:
+                    matched_albs = self.indexer.artists_map[n_art]
+                else:
+                    for k, albs in self.indexer.artists_map.items():
+                        if k == n_art or (len(n_art) >= 4 and (k in n_art or n_art in k)) or calculate_token_similarity(n_art, k) >= 0.80:
+                            matched_albs = albs
+                            break
+                if matched_albs:
+                    count = len(matched_albs)
+                    lbl = f"💿 {count} album{'s' if count > 1 else ''} dans votre collection"
+                    return {
+                        "status": "owned_library",
+                        "label": lbl,
+                        "badge_class": "badge-status-owned",
+                        "local_path": matched_albs[0].path if matched_albs else None,
+                        "matched_album": matched_albs[0].album if matched_albs else None
+                    }
+            return {"status": None, "label": None, "badge_class": None}
+
+        if item_type in ("track", "video"):
+            trk_match = self.match_track(title=title, duration_sec=None, artist=artist)
+            if trk_match and trk_match.get("is_owned") and trk_match.get("match_status") in ("owned", "different_duration"):
+                st = "temp" if trk_match.get("source") == "temp" else ("exported" if trk_match.get("source") == "export" else "owned_library")
+                return {
+                    "status": st,
+                    "label": trk_match.get("badge_label") or "✓ Piste possédée",
+                    "badge_class": trk_match.get("badge_class") or "badge-status-owned",
+                    "local_path": trk_match.get("owned_path"),
+                    "matched_album": trk_match.get("owned_album")
+                }
+
+        # 4. Vérification dans la bibliothèque indexée (Collection, Export) pour albums/playlists/fallback
         best_match = self._find_best_album_match(norm_art, norm_title)
         if best_match:
             source = best_match.source
@@ -1057,7 +1380,7 @@ class SmartMatcher:
                     "matched_album": best_match.album
                 }
 
-        # 4. Vérification dans temp_downloads/
+        # 5. Vérification dans temp_downloads/
         temp_match = self._find_temp_match(norm_title, norm_art)
         if temp_match:
             return {
@@ -1150,6 +1473,27 @@ class SmartMatcher:
             art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
             return max(0.85, 0.7 + (art_sim * 0.3))
 
+        # Similarité avec nettoyage des mots d'éditions/rééditions non parenthésés
+        tokens1 = set(norm_title.split())
+        tokens2 = set(alb.norm_album.split())
+        clean_t1 = tokens1 - ALBUM_EDITION_WORDS
+        clean_t2 = tokens2 - ALBUM_EDITION_WORDS
+        if clean_t1 and clean_t2:
+            clean_sim = len(clean_t1 & clean_t2) / len(clean_t1 | clean_t2)
+            if clean_sim >= 0.80 or (clean_t1 == clean_t2 and len(clean_t1) >= 1):
+                if is_art_match:
+                    return max(0.88, 0.75 + (clean_sim * 0.20))
+                art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
+                if art_sim >= 0.70:
+                    return (clean_sim * 0.7) + (art_sim * 0.3)
+
+        # Inclusion préfixe ou sous-ensemble complet de mots quand l'artiste concorde
+        if is_art_match and min(len(norm_title), len(alb.norm_album)) >= 4:
+            if norm_title.startswith(alb.norm_album) or alb.norm_album.startswith(norm_title):
+                diff_tokens = (tokens1 ^ tokens2) - ALBUM_EDITION_WORDS
+                if len(diff_tokens) <= 1:
+                    return 0.88
+
         # Inclusion avec ratio de longueur significatif (ex: titre contenant une édition élaguée)
         if (norm_title in alb.norm_album or alb.norm_album in norm_title) and min(len(norm_title), len(alb.norm_album)) >= 4:
             ratio = min(len(norm_title), len(alb.norm_album)) / max(len(norm_title), len(alb.norm_album))
@@ -1159,7 +1503,7 @@ class SmartMatcher:
                 art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
                 return (0.90 * ratio * 0.7) + (art_sim * 0.3)
 
-        # Indice de similarité de tokens
+        # Indice de similarité de tokens standard
         title_sim = calculate_token_similarity(norm_title, alb.norm_album)
         if title_sim >= 0.80:
             if norm_art and alb.norm_artist:
@@ -1210,6 +1554,261 @@ class SmartMatcher:
             except Exception:
                 pass
         return None
+
+    def match_track(
+        self,
+        title: str,
+        duration_sec: Optional[int] = None,
+        artist: str = "",
+        album_title: str = ""
+    ) -> Optional[dict]:
+        """
+        Vérifie si une piste est déjà possédée dans la collection et qualifie son statut :
+        1. 'owned' : Titre identique ET durée identique à 1 ou 2 secondes près (|dur1 - dur2| <= 2)
+        2. 'different_duration' : Titre identique MAIS durée différente (|dur1 - dur2| > 2)
+        3. 'different_version' : Titre plus long ou court avec la même base (ou variantes remix/edit)
+        """
+        if not title:
+            return None
+
+        clean_tit = re.sub(r'^\d+\s*[-.]*\s*', '', title).strip()
+        norm_title = normalize_text(clean_tit)
+        if not norm_title:
+            return None
+
+        base_title = extract_base_title(clean_tit) or norm_title
+
+        # S'assurer que les pistes de la collection sont indexées
+        self.indexer.ensure_tracks_indexed()
+
+        candidates = self.indexer.get_track_candidates(norm_title, base_title)
+        if not candidates:
+            return None
+
+        norm_art = normalize_text(artist)
+
+        exact_match = None
+        diff_duration_match = None
+        diff_version_match = None
+        suspicious_artist_match = None
+
+        for alb, tr in candidates:
+            # Compatibilité d'artiste (évite les collisions sur titres homonymes d'artistes différents)
+            is_compat = True
+            if norm_art and alb.norm_artist:
+                is_compat = (
+                    norm_art == alb.norm_artist
+                    or norm_art in alb.norm_artist
+                    or alb.norm_artist in norm_art
+                    or "various" in norm_art
+                    or "various" in alb.norm_artist
+                    or calculate_token_similarity(norm_art, alb.norm_artist) >= 0.40
+                )
+
+            cand_clean = re.sub(r'^\d+\s*[-.]*\s*', '', tr.title or "").strip()
+            cand_norm = tr.norm_title or normalize_text(cand_clean)
+            cand_base = getattr(tr, "base_title", None) or extract_base_title(cand_clean) or cand_norm
+
+            is_exact_title = (norm_title == cand_norm)
+            is_base_equal = bool(base_title and cand_base and base_title == cand_base)
+
+            # Vérification de durée
+            dur_diff = None
+            if duration_sec is not None and tr.duration_sec is not None:
+                dur_diff = abs(duration_sec - tr.duration_sec)
+
+            track_info = {
+                "is_owned": True,
+                "owned_album": alb.album,
+                "owned_artist": alb.artist,
+                "owned_title": tr.title,
+                "owned_duration": tr.duration_str,
+                "owned_path": str(Path(alb.path) / tr.filename),
+                "bitrate_kbps": getattr(tr, "bitrate_kbps", None),
+                "source": alb.source
+            }
+
+            # Si l'artiste n'est pas compatible : vérifier si c'est un doublon potentiel / autre artiste
+            if not is_compat:
+                if (is_exact_title or is_base_equal) and dur_diff is not None and dur_diff <= 2:
+                    if not suspicious_artist_match:
+                        info_susp = dict(track_info)
+                        info_susp["is_owned"] = False
+                        info_susp["match_status"] = "suspicious_artist"
+                        info_susp["badge_label"] = "🔍 Autre artiste ?"
+                        info_susp["badge_class"] = "badge-track-suspicious-artist"
+                        suspicious_artist_match = info_susp
+                continue
+
+            # 1. Titre identique
+            if is_exact_title:
+                if dur_diff is not None:
+                    if dur_diff <= 2:
+                        track_info["match_status"] = "owned"
+                        track_info["badge_label"] = "✓ Piste possédée"
+                        track_info["badge_class"] = "badge-track-owned"
+                        return track_info
+                    else:
+                        if not diff_duration_match:
+                            track_info["match_status"] = "different_duration"
+                            track_info["badge_label"] = "⏱️ Autre durée"
+                            track_info["badge_class"] = "badge-track-different-duration"
+                            diff_duration_match = track_info
+                else:
+                    track_info["match_status"] = "owned"
+                    track_info["badge_label"] = "✓ Piste possédée"
+                    track_info["badge_class"] = "badge-track-owned"
+                    if not exact_match:
+                        exact_match = track_info
+                continue
+
+            # 2. Base de titre identique ou variante (titre plus long/court avec même base)
+            is_variant = False
+            if is_base_equal:
+                is_variant = True
+            elif base_title and cand_base and min(len(base_title), len(cand_base)) >= 4:
+                if base_title in cand_base or cand_base in base_title:
+                    ratio = min(len(base_title), len(cand_base)) / max(len(base_title), len(cand_base))
+                    if ratio >= 0.40:
+                        is_variant = True
+                elif calculate_token_similarity(base_title, cand_base) >= 0.70:
+                    is_variant = True
+
+            if is_variant and not diff_version_match:
+                track_info["match_status"] = "different_version"
+                track_info["badge_label"] = "🔀 Autre version"
+                track_info["badge_class"] = "badge-track-different-version"
+                diff_version_match = track_info
+
+        if exact_match:
+            return exact_match
+        if diff_duration_match:
+            return diff_duration_match
+        if diff_version_match:
+            return diff_version_match
+        if suspicious_artist_match:
+            return suspicious_artist_match
+
+        return None
+
+    def enrich_preview_tracks(
+        self,
+        tracks: List[dict],
+        album_artist: str = "",
+        album_title: str = ""
+    ) -> dict:
+        """
+        Enrichit la liste des pistes d'un album / playlist prévisualisé
+        avec le statut principal et les badges sémantiques (Live, Instrumentale, Upgrade, Explicit, Complète album).
+        """
+        counts = {
+            "owned_count": 0,
+            "different_duration_count": 0,
+            "different_version_count": 0,
+            "suspicious_artist_count": 0,
+            "missing_for_album_count": 0,
+            "total_matched": 0,
+            "matched_album_name": None
+        }
+        if not tracks:
+            return counts
+
+        self.indexer.ensure_tracks_indexed()
+
+        # Vérification si l'album existe déjà partiellement dans la bibliothèque
+        matched_album = self._find_best_album_match(normalize_text(album_artist), normalize_text(album_title))
+        if matched_album:
+            counts["matched_album_name"] = matched_album.album
+
+        for t in tracks:
+            t_title = t.get("title") or ""
+            t_dur_str = t.get("duration")
+            t_dur_sec = parse_duration_to_seconds(t_dur_str)
+            t_artist = t.get("artist") or album_artist
+
+            # Détection sémantique sur le titre en ligne (Explicit / Clean / Live / Instrumental)
+            is_explicit = bool(EXPLICIT_REGEX.search(t_title))
+            is_clean = bool(CLEAN_REGEX.search(t_title))
+            is_online_live = bool(LIVE_REGEX.search(t_title))
+            is_online_inst = bool(INST_REGEX.search(t_title))
+
+            if is_explicit:
+                t["tag_content"] = "🔞 Explicit"
+                t["tag_content_tooltip"] = "Version explicite non-censurée"
+            elif is_clean:
+                t["tag_content"] = "🛡️ Clean Edit"
+                t["tag_content_tooltip"] = "Version radio edit / propre"
+
+            if is_online_inst:
+                inst_m = INST_REGEX.search(t_title).group(0).lower()
+                lbl = "🎤 A cappella" if ("cappella" in inst_m or "acapella" in inst_m) else ("🎹 Karaoké" if "karaoke" in inst_m else "🎹 Instrumentale")
+                t["tag_inst"] = lbl
+                t["tag_inst_tooltip"] = f"Déclinaison {lbl}"
+
+            match = self.match_track(
+                title=t_title,
+                duration_sec=t_dur_sec,
+                artist=t_artist,
+                album_title=album_title
+            )
+            if match:
+                st = match["match_status"]
+                t["is_owned"] = match.get("is_owned", True)
+                t["match_status"] = st
+                t["badge_label"] = match["badge_label"]
+                t["badge_class"] = match["badge_class"]
+                t["owned_album"] = match["owned_album"]
+                t["owned_artist"] = match["owned_artist"]
+                t["owned_title"] = match["owned_title"]
+                t["owned_duration"] = match["owned_duration"]
+                counts["total_matched"] += 1
+                if st == "owned":
+                    counts["owned_count"] += 1
+                elif st == "different_duration":
+                    counts["different_duration_count"] += 1
+                elif st == "different_version":
+                    counts["different_version_count"] += 1
+                elif st == "suspicious_artist":
+                    counts["suspicious_artist_count"] += 1
+
+                # Nuance Live vs Studio
+                is_local_live = bool(LIVE_REGEX.search(match.get("owned_title") or ""))
+                if is_online_live and not is_local_live:
+                    t["tag_live"] = "🎙️ Live / Concert"
+                    t["tag_live_tooltip"] = f"Version live/concert en ligne (votre version dans '{match['owned_album']}' est studio)"
+                elif not is_online_live and is_local_live:
+                    t["tag_live"] = "💿 Studio"
+                    t["tag_live_tooltip"] = f"Version studio en ligne (votre version dans '{match['owned_album']}' est un live)"
+                elif is_online_live and is_local_live:
+                    t["tag_live"] = "🎙️ Live"
+                    t["tag_live_tooltip"] = "Version live/concert"
+
+                # Nuance Qualité supérieure / Upgrade
+                local_br = match.get("bitrate_kbps")
+                if local_br and local_br < 150:
+                    t["tag_upgrade"] = "💎 Qualité sup."
+                    t["tag_upgrade_tooltip"] = f"Qualité supérieure en ligne disponible (votre version locale est en ~{local_br} kbps)"
+            else:
+                t["is_owned"] = False
+                t["match_status"] = None
+                if is_online_live:
+                    t["tag_live"] = "🎙️ Live"
+                    t["tag_live_tooltip"] = "Enregistrement en concert / public"
+
+                # Détection morceau manquant pour compléter un album possédé
+                if matched_album:
+                    t["is_missing_track"] = True
+                    t["missing_album_name"] = matched_album.album
+                    t["missing_album_path"] = matched_album.path
+                    counts["missing_for_album_count"] += 1
+
+        # Si aucune piste n'était possédée du tout, ce n'est pas un album incomplet
+        if counts["owned_count"] == 0 and counts["different_duration_count"] == 0:
+            counts["missing_for_album_count"] = 0
+            for t in tracks:
+                t["is_missing_track"] = False
+
+        return counts
 
 
 # Instance singleton globale

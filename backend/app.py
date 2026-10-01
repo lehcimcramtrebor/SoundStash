@@ -61,7 +61,7 @@ from backend.playback_stats import playback_stats
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.0.2")
+app = FastAPI(title="SoundStash API", version="3.1.0")
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -195,6 +195,7 @@ async def app_startup_sync_watcher():
         library_watcher.start()
     if getattr(config, "auto_update_yt_dlp", True):
         asyncio.create_task(background_startup_check())
+    asyncio.create_task(asyncio.to_thread(library_indexer.ensure_tracks_indexed))
 
 @app.on_event("shutdown")
 async def app_shutdown_sync_watcher():
@@ -381,6 +382,10 @@ class ReorderPlaylistRequest(BaseModel):
 class TrashItemRequest(BaseModel):
     path: str
     type: Optional[str] = "auto"
+
+class BatchGenreRequest(BaseModel):
+    albums: List[str]
+    genre: str
 
 # Routes
 
@@ -743,6 +748,18 @@ async def preview_album_endpoint(url: str = Query(..., min_length=1)):
         try:
             ytm_data = await browse_ytm_innertube(browse_id)
             if ytm_data and ytm_data.get("tracks"):
+                match_counts = smart_matcher.enrich_preview_tracks(
+                    ytm_data["tracks"],
+                    album_artist=ytm_data.get("artist") or "",
+                    album_title=ytm_data.get("title") or ""
+                )
+                ytm_data["owned_tracks_count"] = match_counts["owned_count"]
+                ytm_data["diff_duration_tracks_count"] = match_counts["different_duration_count"]
+                ytm_data["diff_version_tracks_count"] = match_counts["different_version_count"]
+                ytm_data["suspicious_artist_tracks_count"] = match_counts["suspicious_artist_count"]
+                ytm_data["missing_for_album_count"] = match_counts.get("missing_for_album_count", 0)
+                ytm_data["matched_album_name"] = match_counts.get("matched_album_name")
+                ytm_data["total_matched_tracks_count"] = match_counts["total_matched"]
                 return ytm_data
         except Exception as e:
             print(f"Erreur InnerTube browse preview ({browse_id}): {e}")
@@ -828,6 +845,12 @@ async def preview_album_endpoint(url: str = Query(..., min_length=1)):
         total_tracks = len(tracks)
         missing_count = total_tracks - available_count
 
+        match_counts = smart_matcher.enrich_preview_tracks(
+            tracks,
+            album_artist=album_artist,
+            album_title=album_title
+        )
+
         return {
             "success": True,
             "title": album_title,
@@ -835,6 +858,13 @@ async def preview_album_endpoint(url: str = Query(..., min_length=1)):
             "total_tracks": total_tracks,
             "available_tracks": available_count,
             "missing_count": missing_count,
+            "owned_tracks_count": match_counts["owned_count"],
+            "diff_duration_tracks_count": match_counts["different_duration_count"],
+            "diff_version_tracks_count": match_counts["different_version_count"],
+            "suspicious_artist_tracks_count": match_counts["suspicious_artist_count"],
+            "missing_for_album_count": match_counts.get("missing_for_album_count", 0),
+            "matched_album_name": match_counts.get("matched_album_name"),
+            "total_matched_tracks_count": match_counts["total_matched"],
             "is_complete": missing_count == 0,
             "tracks": tracks
         }
@@ -2518,19 +2548,22 @@ async def get_library_albums(source: str = Query("library")):
     Retourne la liste complète des albums avec métadonnées unifiées.
     source='library' : collection musicale principale
     source='temp' : dossier temporaire de téléchargement
+    source='all' : collection + temporaire combinés
     """
     albums_data = []
     is_lib_configured = bool(config.library_dir and os.path.isdir(config.library_dir))
+    seen_paths = set()
 
-    if source == "temp":
+    if source in ("temp", "all"):
         temp_dirs = []
         if config.temp_download_dir and os.path.isdir(config.temp_download_dir):
             temp_dirs.append(Path(config.temp_download_dir))
         if Path(TEMP_DOWNLOAD_DIR).exists() and Path(TEMP_DOWNLOAD_DIR).resolve() not in [d.resolve() for d in temp_dirs]:
             temp_dirs.append(Path(TEMP_DOWNLOAD_DIR))
 
-        seen_paths = set()
         for t_dir in temp_dirs:
+            if not t_dir.exists():
+                continue
             for item in t_dir.iterdir():
                 if item.is_dir() and not item.name.startswith(".") and item.name.lower() not in {"previews", ".cache", "cache"}:
                     p_str = str(item.resolve())
@@ -2586,6 +2619,7 @@ async def get_library_albums(source: str = Query("library")):
                             "genre": inf_genre,
                             "source": "temp"
                         })
+
     def _classify_type(title: str, path: str, track_count: int) -> str:
         t = (title or "").lower()
         p = (path or "").lower()
@@ -2604,10 +2638,12 @@ async def get_library_albums(source: str = Query("library")):
             return "single"
         return "album"
 
-    if source == "temp":
-        pass  # already populated
-    else:
+    if source in ("library", "all"):
         for alb in library_indexer.albums:
+            alb_p_str = str(Path(alb.path).resolve())
+            if alb_p_str in seen_paths:
+                continue
+            seen_paths.add(alb_p_str)
             alb_title = getattr(alb, "album", "") or getattr(alb, "title", "")
             alb_tracks = getattr(alb, "track_count", 0)
             albums_data.append({
@@ -2634,6 +2670,40 @@ async def get_library_albums(source: str = Query("library")):
         "total": len(albums_data),
         "library_albums_count": len(library_indexer.albums)
     }
+
+@app.post("/api/albums/batch-genre")
+async def batch_genre_endpoint(req: BatchGenreRequest):
+    """
+    Applique un tag de genre à une liste d'albums (ou playlists) par lot ou à l'unité.
+    """
+    clean_genre = (req.genre or "").strip()
+    if not clean_genre:
+        raise HTTPException(status_code=400, detail="Le genre ne peut pas être vide.")
+    if not req.albums:
+        raise HTTPException(status_code=400, detail="Aucun album fourni.")
+
+    from backend.tagger import apply_genre_to_album
+
+    updated_count = 0
+    total_tracks_updated = 0
+    errors = []
+
+    for alb_path in req.albums:
+        res = apply_genre_to_album(alb_path, clean_genre)
+        if res.get("success"):
+            updated_count += 1
+            total_tracks_updated += res.get("tracks_updated", 0)
+        else:
+            errors.append({"album": alb_path, "error": res.get("message", "Erreur inconnue")})
+
+    return {
+        "success": True,
+        "genre": clean_genre,
+        "updated_albums_count": updated_count,
+        "total_tracks_updated": total_tracks_updated,
+        "errors": errors
+    }
+
 
 @app.get("/api/library/catalog")
 async def get_library_catalog(source: str = Query("library")):
@@ -2674,6 +2744,8 @@ async def get_library_catalog(source: str = Query("library")):
                     alb_title = tags_meta.get("album") or folder_alb
                     inf_year = tags_meta.get("year")
                     inf_genre = tags_meta.get("genre")
+                    from backend.library_indexer import extract_album_tracks_fast
+                    track_dur_map = {tr.filename: tr.duration_str for tr in extract_album_tracks_fast(item)}
 
                     alb_tracks = []
                     for f in audio_files:
@@ -2687,6 +2759,7 @@ async def get_library_catalog(source: str = Query("library")):
                             "album_path": p_str,
                             "year": str(inf_year) if inf_year else "",
                             "genre": inf_genre or "",
+                            "duration": track_dur_map.get(f.name, ""),
                             "filepath": str(f.resolve()),
                             "format": ext,
                             "stream_url": f"/api/audio/stream-local?path={urllib.parse.quote(str(f.resolve()))}",
@@ -2713,6 +2786,7 @@ async def get_library_catalog(source: str = Query("library")):
             if not os.path.isdir(p):
                 continue
             alb_tracks = []
+            dur_map = {tr.filename: tr.duration_str for tr in getattr(alb, "tracks", [])}
 
             def scan_dir(dir_path):
                 try:
@@ -2728,6 +2802,7 @@ async def get_library_catalog(source: str = Query("library")):
                                 "album_path": p,
                                 "year": str(alb.year) if alb.year else "",
                                 "genre": alb.genre or "",
+                                "duration": dur_map.get(entry.name, ""),
                                 "filepath": entry.path,
                                 "format": ext,
                                 "stream_url": f"/api/audio/stream-local?path={urllib.parse.quote(entry.path)}",

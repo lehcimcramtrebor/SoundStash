@@ -135,7 +135,15 @@ function switchWorkflowTab(tabId) {
             loadCollectionAlbumsForEditor();
         }
         ensureLibraryTagSuggestions();
-        verifyAndValidateEditorActiveAlbum();
+        if (window.editorSubMode === "genres") {
+            if (typeof loadGenreBatchAlbums === "function") {
+                loadGenreBatchAlbums();
+            }
+        } else if (!isCollectionEditorMode && (!tempAlbumsList || tempAlbumsList.length === 0)) {
+            resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
+        } else {
+            verifyAndValidateEditorActiveAlbum();
+        }
     }
     if (typeof AudioPlayer !== "undefined" && AudioPlayer.updateFloatingBarVisibility) {
         AudioPlayer.updateFloatingBarVisibility();

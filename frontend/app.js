@@ -202,6 +202,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (tempAlbumsList.length > 0) {
             currentAlbumIndex = 0;
             await loadAlbumInEditor(tempAlbumsList[0].path);
+        } else {
+            resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
         }
     })();
 });

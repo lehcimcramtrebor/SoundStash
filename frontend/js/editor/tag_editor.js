@@ -11,6 +11,11 @@ window.currentAlbumIndex = window.currentAlbumIndex !== undefined ? window.curre
 window.editorDirtyState = window.editorDirtyState || {};
 window.editorDraftsByAlbum = window.editorDraftsByAlbum || {};
 window.isCollectionEditorMode = window.isCollectionEditorMode || false;
+window.editorSubMode = window.editorSubMode || "temp"; // "temp" | "collection" | "genres"
+window.genreBatchAlbums = window.genreBatchAlbums || [];
+window.genreBatchSelectedPaths = window.genreBatchSelectedPaths || new Set();
+window.genreBatchCurrentScope = window.genreBatchCurrentScope || "all";
+window.genreBatchSearchQuery = window.genreBatchSearchQuery || "";
 window.collectionAlbumsList = window.collectionAlbumsList || [];
 window.cachedTagSuggestions = window.cachedTagSuggestions || null;
 
@@ -49,7 +54,10 @@ async function loadCollectionAlbumsForEditor() {
 function updateEditorSourceModeUI() {
     const tempBtn = document.getElementById("editor-source-temp-btn");
     const colBtn = document.getElementById("editor-source-collection-btn");
+    const genresBtn = document.getElementById("editor-source-genres-btn");
     const pickerWrap = document.getElementById("editor-collection-picker-wrapper");
+    const singleView = document.getElementById("editor-single-view");
+    const genreBatchView = document.getElementById("editor-genre-batch-view");
     const deleteBtn = document.getElementById("delete-current-album-btn");
     const deleteLabel = document.getElementById("delete-current-album-label");
     const openExportBtn = document.getElementById("open-export-modal-btn");
@@ -59,9 +67,30 @@ function updateEditorSourceModeUI() {
     const statusBadge = document.getElementById("editor-album-tag-status");
     const applyBtn = document.getElementById("apply-uniform-btn");
 
-    if (tempBtn) tempBtn.classList.toggle("active", !isCollectionEditorMode);
-    if (colBtn) colBtn.classList.toggle("active", isCollectionEditorMode);
-    if (pickerWrap) pickerWrap.style.display = isCollectionEditorMode ? "flex" : "none";
+    const isGenresMode = (window.editorSubMode === "genres");
+    const isColMode = (!isGenresMode && isCollectionEditorMode);
+    const isTempMode = (!isGenresMode && !isCollectionEditorMode);
+
+    if (tempBtn) tempBtn.classList.toggle("active", isTempMode);
+    if (colBtn) colBtn.classList.toggle("active", isColMode);
+    if (genresBtn) genresBtn.classList.toggle("active", isGenresMode);
+
+    if (singleView) singleView.style.display = isGenresMode ? "none" : "block";
+    if (genreBatchView) genreBatchView.style.display = isGenresMode ? "block" : "none";
+    if (pickerWrap) pickerWrap.style.display = isColMode ? "flex" : "none";
+
+    if (isGenresMode) {
+        if (deleteBtn) deleteBtn.style.display = "none";
+        if (openExportBtn) openExportBtn.style.display = "none";
+        if (exportAllBtn) exportAllBtn.style.display = "none";
+        if (exportPanel) exportPanel.style.display = "none";
+        if (navBar) navBar.style.display = "none";
+        if (statusBadge) {
+            statusBadge.className = "badge badge-primary";
+            statusBadge.textContent = "🏷️ Genres par lot";
+        }
+        return;
+    }
 
     if (isCollectionEditorMode) {
         if (deleteBtn) {
@@ -137,6 +166,7 @@ function setupEditorActions() {
     const playAlbumBtn = document.getElementById("editor-play-album-btn");
     const sourceTempBtn = document.getElementById("editor-source-temp-btn");
     const sourceColBtn = document.getElementById("editor-source-collection-btn");
+    const sourceGenresBtn = document.getElementById("editor-source-genres-btn");
     const colSelect = document.getElementById("editor-collection-select");
 
     if (playAlbumBtn) {
@@ -152,6 +182,7 @@ function setupEditorActions() {
 
     if (sourceTempBtn) {
         sourceTempBtn.addEventListener("click", async () => {
+            window.editorSubMode = "temp";
             isCollectionEditorMode = false;
             updateEditorSourceModeUI();
             await refreshAlbumNavList();
@@ -159,16 +190,14 @@ function setupEditorActions() {
                 currentAlbumIndex = Math.max(0, Math.min(currentAlbumIndex, tempAlbumsList.length - 1));
                 await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path, false);
             } else {
-                currentAlbumPath = null;
-                document.getElementById("editor-album-title").textContent = "Sélectionnez un album";
-                document.getElementById("editor-album-path").textContent = "Dossier temporaire vide";
-                document.getElementById("tracks-table-body").innerHTML = "";
+                resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
             }
         });
     }
 
     if (sourceColBtn) {
         sourceColBtn.addEventListener("click", async () => {
+            window.editorSubMode = "collection";
             isCollectionEditorMode = true;
             updateEditorSourceModeUI();
             await loadCollectionAlbumsForEditor();
@@ -178,6 +207,16 @@ function setupEditorActions() {
                 colSelect.value = collectionAlbumsList[0].path;
                 await loadAlbumInEditor(collectionAlbumsList[0].path, true);
             }
+        });
+    }
+
+    if (sourceGenresBtn) {
+        sourceGenresBtn.addEventListener("click", async () => {
+            window.editorSubMode = "genres";
+            isCollectionEditorMode = false;
+            updateEditorSourceModeUI();
+            initGenreBatchUI();
+            await loadGenreBatchAlbums();
         });
     }
 
@@ -691,14 +730,11 @@ function setupEditorActions() {
                         currentAlbumIndex = Math.min(currentAlbumIndex, tempAlbumsList.length - 1);
                         await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path);
                     } else {
-                        currentAlbumPath = null;
+                        resetEditorState("Dossier temporaire vide", "Tous les albums temporaires ont été exportés.");
                     }
                     if (!currentAlbumPath) {
                         const wb = document.getElementById("editor-warning-banner");
                         if (wb) wb.style.display = "none";
-                        document.getElementById("editor-album-title").textContent = "Album exporté et temporaire vidé";
-                        document.getElementById("editor-album-path").textContent = result.export_dir;
-                        document.getElementById("tracks-table-body").innerHTML = `<tr><td colspan="5" class="text-center text-muted">L'album a été exporté vers : ${escapeHtml(result.export_dir)}</td></tr>`;
                         
                         // Réinitialiser le formulaire de téléchargement
                         document.getElementById("url-input").value = "";
@@ -852,7 +888,7 @@ function setupEditorActions() {
                         currentAlbumIndex = Math.min(currentAlbumIndex, tempAlbumsList.length - 1);
                         await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path);
                     } else {
-                        resetEditorState();
+                        resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
                     }
                     loadLibrary();
                     await showModalAlert("Album supprimé", "L'album a été retiré du dossier temporaire.", "info");
@@ -1589,6 +1625,7 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
     if (isCollection !== undefined) {
         isCollectionEditorMode = !!isCollection;
     }
+    window.editorSubMode = isCollectionEditorMode ? "collection" : "temp";
     updateEditorSourceModeUI();
 
     if (!isCollectionEditorMode) {
@@ -1851,6 +1888,471 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
 
 // Bibliothèque
 
+// ==========================================================================
+// MODULE 3.1.0 : ÉDITEUR DE GENRES PAR LOT & ACTIONS RAPIDES
+// ==========================================================================
+
+const UNIVERSAL_GENRE_PRESETS = [
+    "Rock", "Pop", "Synthwave", "Électro", "Metal", 
+    "Hip-Hop", "Jazz", "Classique", "Variété française", 
+    "Soundtrack", "Ambient", "R&B / Soul", "Punk", "Disco"
+];
+
+function initGenreBatchUI() {
+    if (window._genreBatchUIInitialized) return;
+    window._genreBatchUIInitialized = true;
+
+    // Boutons de Portée (Scope)
+    const scopeContainer = document.getElementById("genre-batch-scope-group");
+    if (scopeContainer) {
+        scopeContainer.addEventListener("click", (e) => {
+            const btn = e.target.closest(".genre-scope-btn");
+            if (!btn) return;
+            const scope = btn.dataset.scope || "all";
+            window.genreBatchCurrentScope = scope;
+            scopeContainer.querySelectorAll(".genre-scope-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            renderGenreBatchTable();
+        });
+    }
+
+    // Champ de Recherche
+    const searchInput = document.getElementById("genre-batch-search-input");
+    const searchClearBtn = document.getElementById("genre-batch-search-clear");
+    if (searchInput) {
+        let debounceTimer = null;
+        searchInput.addEventListener("input", () => {
+            const val = searchInput.value;
+            window.genreBatchSearchQuery = val;
+            if (searchClearBtn) searchClearBtn.style.display = val ? "inline-flex" : "none";
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                renderGenreBatchTable();
+            }, 120);
+        });
+    }
+
+    if (searchClearBtn && searchInput) {
+        searchClearBtn.addEventListener("click", () => {
+            searchInput.value = "";
+            window.genreBatchSearchQuery = "";
+            searchClearBtn.style.display = "none";
+            renderGenreBatchTable();
+            searchInput.focus();
+        });
+    }
+
+    // Champ Genre Cible
+    const targetInput = document.getElementById("genre-batch-target-input");
+    if (targetInput) {
+        targetInput.addEventListener("input", () => {
+            updateGenreBatchSelectionUI();
+        });
+        targetInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                applyGenreBatch();
+            }
+        });
+    }
+
+    // Bouton Appliquer le Genre
+    const applyBtn = document.getElementById("genre-batch-apply-btn");
+    if (applyBtn) {
+        applyBtn.addEventListener("click", () => {
+            applyGenreBatch();
+        });
+    }
+
+    // Tout sélectionner / Tout désélectionner
+    const selectAllBtn = document.getElementById("genre-batch-select-all-btn");
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener("click", () => {
+            const visible = getFilteredGenreBatchAlbums();
+            visible.forEach(a => window.genreBatchSelectedPaths.add(a.path));
+            updateGenreBatchSelectionUI();
+            renderGenreBatchTable();
+        });
+    }
+
+    const deselectAllBtn = document.getElementById("genre-batch-deselect-all-btn");
+    if (deselectAllBtn) {
+        deselectAllBtn.addEventListener("click", () => {
+            window.genreBatchSelectedPaths.clear();
+            updateGenreBatchSelectionUI();
+            renderGenreBatchTable();
+        });
+    }
+
+    // Rafraîchir
+    const refreshBtn = document.getElementById("genre-batch-refresh-btn");
+    if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => {
+            loadGenreBatchAlbums(true);
+        });
+    }
+
+    // Master Checkbox
+    const masterChk = document.getElementById("genre-batch-master-checkbox");
+    if (masterChk) {
+        masterChk.addEventListener("change", () => {
+            const visible = getFilteredGenreBatchAlbums();
+            if (masterChk.checked) {
+                visible.forEach(a => window.genreBatchSelectedPaths.add(a.path));
+            } else {
+                visible.forEach(a => window.genreBatchSelectedPaths.delete(a.path));
+            }
+            updateGenreBatchSelectionUI();
+            renderGenreBatchTable();
+        });
+    }
+}
+
+async function loadGenreBatchAlbums(forceRefresh = false) {
+    const tbody = document.getElementById("genre-batch-table-body");
+    if (!tbody) return;
+
+    if (forceRefresh || !window.genreBatchAlbums || window.genreBatchAlbums.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="table-empty-cell"><div class="table-empty-state"><span>Chargement des albums et playlists...</span></div></td></tr>`;
+        try {
+            const res = await fetch("/api/library/albums?source=all");
+            if (!res.ok) throw new Error("Erreur de communication avec le serveur");
+            const data = await res.json();
+            window.genreBatchAlbums = data.albums || [];
+
+            const genresBadge = document.getElementById("editor-genres-count-badge");
+            if (genresBadge) genresBadge.textContent = window.genreBatchAlbums.length;
+
+            updateGenreScopeBadges();
+            populateGenreBatchDatalistAndChips();
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="7" class="table-empty-cell"><div class="table-empty-state"><span style="color: var(--color-danger);">Erreur lors de la récupération des albums : ${err.message}</span></div></td></tr>`;
+            return;
+        }
+    }
+    renderGenreBatchTable();
+}
+
+function updateGenreScopeBadges() {
+    const allCount = (window.genreBatchAlbums || []).length;
+    let libCount = 0;
+    let tempCount = 0;
+    let missingCount = 0;
+
+    (window.genreBatchAlbums || []).forEach(alb => {
+        if (alb.source === "library" || !alb.source) libCount++;
+        else if (alb.source === "temp") tempCount++;
+        if (!alb.genre || !String(alb.genre).trim()) missingCount++;
+    });
+
+    const bAll = document.getElementById("genre-scope-count-all");
+    const bLib = document.getElementById("genre-scope-count-lib");
+    const bTemp = document.getElementById("genre-scope-count-temp");
+    const bMissing = document.getElementById("genre-scope-count-missing");
+
+    if (bAll) bAll.textContent = allCount;
+    if (bLib) bLib.textContent = libCount;
+    if (bTemp) bTemp.textContent = tempCount;
+    if (bMissing) bMissing.textContent = missingCount;
+}
+
+function populateGenreBatchDatalistAndChips() {
+    const datalist = document.getElementById("genre-batch-datalist");
+    const chipsContainer = document.getElementById("genre-batch-preset-chips");
+
+    const genreFreq = new Map();
+    (window.genreBatchAlbums || []).forEach(alb => {
+        const g = (alb.genre || "").trim();
+        if (g) {
+            genreFreq.set(g, (genreFreq.get(g) || 0) + 1);
+        }
+    });
+
+    if (window.cachedTagSuggestions && Array.isArray(window.cachedTagSuggestions.genres)) {
+        window.cachedTagSuggestions.genres.forEach(g => {
+            const cleanG = (g || "").trim();
+            if (cleanG && !genreFreq.has(cleanG)) genreFreq.set(cleanG, 0);
+        });
+    }
+
+    if (datalist) {
+        datalist.innerHTML = "";
+        const sortedGenres = Array.from(genreFreq.keys()).sort((a, b) => a.localeCompare(b));
+        sortedGenres.forEach(g => {
+            const opt = document.createElement("option");
+            opt.value = g;
+            datalist.appendChild(opt);
+        });
+    }
+
+    if (chipsContainer) {
+        chipsContainer.innerHTML = "";
+        const topGenres = Array.from(genreFreq.entries())
+            .filter(([_, count]) => count > 0)
+            .sort((a, b) => b[1] - a[1])
+            .map(([g]) => g)
+            .slice(0, 8);
+
+        const displayedPresets = Array.from(new Set([...topGenres, ...UNIVERSAL_GENRE_PRESETS])).slice(0, 14);
+
+        displayedPresets.forEach(preset => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "genre-preset-chip";
+            chip.textContent = preset;
+            chip.title = `Définir le genre "${preset}"`;
+            chip.addEventListener("click", () => {
+                const targetInput = document.getElementById("genre-batch-target-input");
+                if (targetInput) {
+                    targetInput.value = preset;
+                    targetInput.dispatchEvent(new Event("input"));
+                }
+                chipsContainer.querySelectorAll(".genre-preset-chip").forEach(c => c.classList.remove("active"));
+                chip.classList.add("active");
+            });
+            chipsContainer.appendChild(chip);
+        });
+    }
+}
+
+function getFilteredGenreBatchAlbums() {
+    const scope = window.genreBatchCurrentScope || "all";
+    const query = (window.genreBatchSearchQuery || "").toLowerCase().trim();
+
+    return (window.genreBatchAlbums || []).filter(alb => {
+        if (scope === "library" && alb.source === "temp") return false;
+        if (scope === "temp" && alb.source !== "temp") return false;
+        if (scope === "missing" && (alb.genre && String(alb.genre).trim())) return false;
+
+        if (query) {
+            const t = (alb.title || "").toLowerCase();
+            const a = (alb.artist || "").toLowerCase();
+            const g = (alb.genre || "").toLowerCase();
+            const y = (alb.year ? String(alb.year) : "");
+            if (!t.includes(query) && !a.includes(query) && !g.includes(query) && !y.includes(query)) {
+                return false;
+            }
+        }
+        return true;
+    });
+}
+
+function renderGenreBatchTable() {
+    const tbody = document.getElementById("genre-batch-table-body");
+    if (!tbody) return;
+
+    const filtered = getFilteredGenreBatchAlbums();
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="table-empty-cell"><div class="table-empty-state"><span>Aucun album ne correspond aux critères de recherche.</span></div></td></tr>`;
+        updateGenreBatchSelectionUI();
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    filtered.forEach(alb => {
+        const tr = document.createElement("tr");
+        const isSelected = window.genreBatchSelectedPaths.has(alb.path);
+        if (isSelected) tr.classList.add("selected");
+
+        let locBadge = `<span class="badge badge-success" style="font-size: 0.72rem; padding: 2px 6px;">💿 Collection</span>`;
+        if (alb.source === "temp") {
+            locBadge = `<span class="badge badge-idle" style="font-size: 0.72rem; padding: 2px 6px;">📁 Temp</span>`;
+        }
+        if (alb.album_type === "playlist") {
+            locBadge += ` <span class="badge badge-secondary" style="font-size: 0.70rem; padding: 1px 5px; margin-left: 4px;">📋 Playlist</span>`;
+        }
+
+        const coverSrc = alb.has_cover ? `/api/cover?path=${encodeURIComponent(alb.path)}` : '/static/placeholder-cover.svg';
+        const curGenre = (alb.genre || "").trim();
+        const genreBadgeHtml = curGenre
+            ? `<span class="genre-badge-cell" title="${escapeHtml(curGenre)}">${escapeHtml(curGenre)}</span>`
+            : `<span class="genre-badge-cell genre-badge-empty">— Aucun —</span>`;
+
+        tr.innerHTML = `
+            <td style="text-align: center;">
+                <input type="checkbox" class="genre-batch-row-checkbox" data-path="${escapeHtml(alb.path)}" ${isSelected ? "checked" : ""}>
+            </td>
+            <td style="text-align: center;">
+                <img src="${coverSrc}" class="genre-row-cover" loading="lazy" alt="Cover" onerror="this.src='/static/placeholder-cover.svg';">
+            </td>
+            <td>
+                <div style="font-weight: 600; color: var(--text-main);">${escapeHtml(alb.title || "Sans titre")}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${alb.year ? `Année : ${alb.year}` : ""}${alb.tracks_count ? ` • ${alb.tracks_count} pistes` : ""}</div>
+            </td>
+            <td>
+                <div style="color: var(--text-secondary); font-weight: 500;">${escapeHtml(alb.artist || "Artiste inconnu")}</div>
+            </td>
+            <td style="text-align: center;">
+                ${locBadge}
+            </td>
+            <td>
+                ${genreBadgeHtml}
+            </td>
+            <td>
+                <div class="genre-quick-unit-wrap">
+                    <input type="text" class="genre-quick-input" placeholder="Nouveau genre..." list="genre-batch-datalist" value="${escapeHtml(curGenre)}" data-album-path="${escapeHtml(alb.path)}">
+                    <button type="button" class="btn-genre-quick-save" title="Enregistrer le genre pour cet album en 1 clic">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+                        <span>OK</span>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        const chk = tr.querySelector(".genre-batch-row-checkbox");
+        if (chk) {
+            chk.addEventListener("change", () => {
+                if (chk.checked) {
+                    window.genreBatchSelectedPaths.add(alb.path);
+                    tr.classList.add("selected");
+                } else {
+                    window.genreBatchSelectedPaths.delete(alb.path);
+                    tr.classList.remove("selected");
+                }
+                updateGenreBatchSelectionUI();
+            });
+        }
+
+        const quickInput = tr.querySelector(".genre-quick-input");
+        const quickSaveBtn = tr.querySelector(".btn-genre-quick-save");
+        if (quickSaveBtn && quickInput) {
+            const doQuickSave = async () => {
+                const newG = quickInput.value.trim();
+                if (!newG) {
+                    showToast("Veuillez saisir un genre.", "warning");
+                    return;
+                }
+                quickSaveBtn.disabled = true;
+                quickSaveBtn.innerHTML = `...`;
+                try {
+                    const res = await fetch("/api/albums/batch-genre", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ albums: [alb.path], genre: newG })
+                    });
+                    const d = await res.json();
+                    if (!res.ok || !d.success) throw new Error(d.detail || "Erreur de mise à jour");
+
+                    alb.genre = newG;
+                    showToast(`Genre "${newG}" appliqué à "${alb.title || 'album'}"`, "success");
+                    updateGenreScopeBadges();
+                    populateGenreBatchDatalistAndChips();
+                    renderGenreBatchTable();
+                } catch (err) {
+                    showToast(`Erreur : ${err.message}`, "error");
+                    quickSaveBtn.disabled = false;
+                    quickSaveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg> <span>OK</span>`;
+                }
+            };
+
+            quickSaveBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                doQuickSave();
+            });
+
+            quickInput.addEventListener("click", (e) => {
+                e.stopPropagation();
+            });
+
+            quickInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    doQuickSave();
+                }
+            });
+        }
+
+        fragment.appendChild(tr);
+    });
+
+    tbody.innerHTML = "";
+    tbody.appendChild(fragment);
+    updateGenreBatchSelectionUI();
+}
+
+function updateGenreBatchSelectionUI() {
+    const selCount = window.genreBatchSelectedPaths.size;
+    const countSpan = document.getElementById("genre-batch-selected-count");
+    if (countSpan) countSpan.textContent = selCount;
+
+    const targetInput = document.getElementById("genre-batch-target-input");
+    const targetGenre = (targetInput ? targetInput.value : "").trim();
+    const applyBtn = document.getElementById("genre-batch-apply-btn");
+    if (applyBtn) {
+        applyBtn.disabled = (selCount === 0 || !targetGenre);
+        applyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg> <span>Appliquer aux albums sélectionnés (${selCount})</span>`;
+    }
+
+    const masterChk = document.getElementById("genre-batch-master-checkbox");
+    if (masterChk) {
+        const visibleAlbums = getFilteredGenreBatchAlbums();
+        if (visibleAlbums.length === 0) {
+            masterChk.checked = false;
+            masterChk.indeterminate = false;
+        } else {
+            const visibleSelectedCount = visibleAlbums.filter(a => window.genreBatchSelectedPaths.has(a.path)).length;
+            masterChk.checked = (visibleSelectedCount > 0 && visibleSelectedCount === visibleAlbums.length);
+            masterChk.indeterminate = (visibleSelectedCount > 0 && visibleSelectedCount < visibleAlbums.length);
+        }
+    }
+}
+
+async function applyGenreBatch() {
+    const targetInput = document.getElementById("genre-batch-target-input");
+    const targetGenre = (targetInput ? targetInput.value : "").trim();
+    if (!targetGenre) {
+        showToast("Veuillez saisir ou choisir un genre à appliquer.", "warning");
+        if (targetInput) targetInput.focus();
+        return;
+    }
+    const paths = Array.from(window.genreBatchSelectedPaths);
+    if (paths.length === 0) {
+        showToast("Veuillez cocher au moins un album.", "warning");
+        return;
+    }
+
+    const applyBtn = document.getElementById("genre-batch-apply-btn");
+    if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = `<span>Application en cours (${paths.length} albums)...</span>`;
+    }
+
+    try {
+        const res = await fetch("/api/albums/batch-genre", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ albums: paths, genre: targetGenre })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.detail || "Erreur lors de l'application du genre");
+        }
+
+        const pathSet = new Set(paths);
+        (window.genreBatchAlbums || []).forEach(alb => {
+            if (pathSet.has(alb.path)) {
+                alb.genre = targetGenre;
+            }
+        });
+
+        showToast(`Genre "${targetGenre}" appliqué avec succès à ${data.updated_albums_count} album(s) (${data.total_tracks_updated} pistes) !`, "success");
+
+        window.genreBatchSelectedPaths.clear();
+        updateGenreScopeBadges();
+        populateGenreBatchDatalistAndChips();
+        renderGenreBatchTable();
+    } catch (err) {
+        showToast(`Erreur : ${err.message}`, "error");
+    } finally {
+        if (applyBtn) {
+            applyBtn.disabled = false;
+        }
+        updateGenreBatchSelectionUI();
+    }
+}
+
 // Exports globaux
 window.loadCollectionAlbumsForEditor = loadCollectionAlbumsForEditor;
 window.updateEditorSourceModeUI = updateEditorSourceModeUI;
@@ -1876,4 +2378,8 @@ window.updateEditorAlbumsDatalist = updateEditorAlbumsDatalist;
 window.updateCollectionMatchBadges = updateCollectionMatchBadges;
 window.setupEditorDirtyTracking = setupEditorDirtyTracking;
 window.loadAlbumInEditor = loadAlbumInEditor;
+window.initGenreBatchUI = initGenreBatchUI;
+window.loadGenreBatchAlbums = loadGenreBatchAlbums;
+window.applyGenreBatch = applyGenreBatch;
+
 

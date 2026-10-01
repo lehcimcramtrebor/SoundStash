@@ -1358,6 +1358,13 @@ async function openAlbumPreview(album) {
     const tracksList = document.getElementById("preview-tracks-list");
     const downloadAllBtn = document.getElementById("preview-download-all-btn");
     const downloadAllText = document.getElementById("preview-download-all-text");
+    const downloadMissingBtn = document.getElementById("preview-download-missing-btn");
+    const downloadMissingText = document.getElementById("preview-download-missing-text");
+
+    if (downloadMissingBtn) {
+        downloadMissingBtn.style.display = "none";
+        downloadMissingBtn.onclick = null;
+    }
 
     currentPreviewAlbum = album;
 
@@ -1470,24 +1477,184 @@ async function openAlbumPreview(album) {
             }
         }
 
-        // Statut de disponibilité global
+        // Statut de disponibilité global et pistes déjà possédées
+        const matchBadges = [];
+        if (data.owned_tracks_count && data.owned_tracks_count > 0) {
+            matchBadges.push(`<span style="color: #10b981; font-weight: 600;">✓ ${data.owned_tracks_count} possédée${data.owned_tracks_count > 1 ? 's' : ''}</span>`);
+        }
+        if (data.diff_duration_tracks_count && data.diff_duration_tracks_count > 0) {
+            matchBadges.push(`<span style="color: #f59e0b; font-weight: 600;">⏱️ ${data.diff_duration_tracks_count} autre${data.diff_duration_tracks_count > 1 ? 's' : ''} durée${data.diff_duration_tracks_count > 1 ? 's' : ''}</span>`);
+        }
+        if (data.diff_version_tracks_count && data.diff_version_tracks_count > 0) {
+            matchBadges.push(`<span style="color: #a855f7; font-weight: 600;">🔀 ${data.diff_version_tracks_count} autre${data.diff_version_tracks_count > 1 ? 's' : ''} version${data.diff_version_tracks_count > 1 ? 's' : ''}</span>`);
+        }
+        if (data.suspicious_artist_tracks_count && data.suspicious_artist_tracks_count > 0) {
+            matchBadges.push(`<span style="color: #06b6d4; font-weight: 600;">🔍 ${data.suspicious_artist_tracks_count} autre${data.suspicious_artist_tracks_count > 1 ? 's' : ''} artiste${data.suspicious_artist_tracks_count > 1 ? 's' : ''} ?</span>`);
+        }
+        if (data.missing_for_album_count && data.missing_for_album_count > 0 && data.matched_album_name) {
+            matchBadges.push(`<span style="color: #fbbf24; font-weight: 600;">⭐ Complète "${escapeHtml(data.matched_album_name)}" (${data.missing_for_album_count} manquante${data.missing_for_album_count > 1 ? 's' : ''})</span>`);
+        }
+        const ownedBadgeStr = matchBadges.length > 0 ? ` • ${matchBadges.join(" • ")}` : "";
+
         if (data.is_complete) {
             availBadge.className = "availability-badge badge-all-ok";
-            availBadge.innerHTML = `✓ ${data.available_tracks} / ${data.total_tracks} pistes disponibles (Complet)`;
+            availBadge.innerHTML = `✓ ${data.available_tracks} / ${data.total_tracks} pistes disponibles (Complet)${ownedBadgeStr}`;
         } else {
             availBadge.className = "availability-badge badge-has-missing";
-            availBadge.innerHTML = `⚠️ ${data.available_tracks} / ${data.total_tracks} disponibles (${data.missing_count} grisée/retirée)`;
+            availBadge.innerHTML = `⚠️ ${data.available_tracks} / ${data.total_tracks} disponibles (${data.missing_count} grisée/retirée)${ownedBadgeStr}`;
+        }
+
+        // Bouton 'Télécharger les pistes manquantes' si album partiellement possédé
+        if (downloadMissingBtn && data.missing_for_album_count && data.missing_for_album_count > 0 && data.matched_album_name) {
+            const missingCount = data.missing_for_album_count;
+            if (downloadMissingText) {
+                downloadMissingText.textContent = `Télécharger les ${missingCount} manquante${missingCount > 1 ? 's' : ''} (${data.matched_album_name})`;
+            }
+            downloadMissingBtn.style.display = "inline-flex";
+            downloadMissingBtn.onclick = async () => {
+                const missingTracks = data.tracks.filter(tr => tr.is_missing_track && tr.is_available && tr.video_id);
+                if (missingTracks.length === 0) {
+                    showToast("Toutes les pistes disponibles sont déjà en votre possession !", "info");
+                    return;
+                }
+
+                const confirmed = await showModalConfirm(
+                    "Compléter l'album ?",
+                    `Voulez-vous ajouter les ${missingTracks.length} pistes manquantes à la file d'attente pour compléter "${data.matched_album_name}" ?\n\nElles seront directement intégrées dans le dossier de cet album.`,
+                    "Télécharger les pistes manquantes"
+                );
+                if (!confirmed) return;
+
+                downloadMissingBtn.disabled = true;
+                const prevMissingText = downloadMissingText ? downloadMissingText.textContent : "";
+                if (downloadMissingText) downloadMissingText.textContent = "Ajout à la file...";
+
+                let addedCount = 0;
+                const defaultFormat = currentConfig.default_format || "m4a";
+                const defaultQuality = currentConfig.default_quality || "128K";
+
+                for (const mt of missingTracks) {
+                    try {
+                        const trackUrl = `https://www.youtube.com/watch?v=${mt.video_id}`;
+                        const res = await fetch("/api/download", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                url: trackUrl,
+                                format: defaultFormat,
+                                quality: defaultQuality,
+                                auto_retag: true,
+                                naming_pattern: currentConfig.naming_pattern || "{track:02d} {title}",
+                                clean_titles: true,
+                                is_playlist: false,
+                                custom_album: data.matched_album_name,
+                                origin_album: data.matched_album_name
+                            })
+                        });
+                        const resData = await res.json();
+                        if (resData.success) addedCount++;
+                    } catch (err) {
+                        console.error("Erreur lors de l'ajout d'une piste manquante:", err);
+                    }
+                }
+
+                downloadMissingBtn.disabled = false;
+                if (downloadMissingText) downloadMissingText.textContent = prevMissingText;
+
+                if (addedCount > 0) {
+                    showToast(`${addedCount} piste${addedCount > 1 ? 's' : ''} manquante${addedCount > 1 ? 's' : ''} ajoutée${addedCount > 1 ? 's' : ''} pour "${data.matched_album_name}" !`, "Voir la file", () => {
+                        switchTab("tab-download");
+                    });
+                }
+            };
+        } else if (downloadMissingBtn) {
+            downloadMissingBtn.style.display = "none";
         }
 
         // Rendu de chaque piste
         data.tracks.forEach(t => {
+            const isOwned = Boolean(t.is_owned);
+            const matchStatus = t.match_status || (isOwned ? "owned" : null);
+
+            let rowItemClass = "";
+            let badgeHtml = "";
+            let dlTooltip = "Télécharger ce morceau seul";
+
+            if (matchStatus === "owned") {
+                rowItemClass = "track-owned";
+                const ownedTooltip = `Piste déjà possédée dans votre collection (${escapeHtml(t.owned_album || 'Collection')}${t.owned_duration ? ' • ' + escapeHtml(t.owned_duration) : ''})`;
+                badgeHtml = `
+                    <span class="badge-track-owned" title="${ownedTooltip}">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" style="display:inline-block; vertical-align: -1px; margin-right: 3px;"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+                        Piste possédée
+                    </span>
+                `;
+                dlTooltip = `Piste déjà possédée (${escapeHtml(t.owned_album || 'Collection')}) - Cliquer pour retélécharger`;
+            } else if (matchStatus === "different_duration") {
+                rowItemClass = "track-different-duration";
+                const durTooltip = `Titre identique possédé mais durée différente (${escapeHtml(t.owned_album || 'Collection')} • ${escapeHtml(t.owned_duration || '')})`;
+                badgeHtml = `
+                    <span class="badge-track-different-duration" title="${durTooltip}">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" style="display:inline-block; vertical-align: -1px; margin-right: 3px;"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg>
+                        Autre durée
+                    </span>
+                `;
+                dlTooltip = `Autre durée possédée (${escapeHtml(t.owned_duration || '')} dans ${escapeHtml(t.owned_album || 'Collection')}) - Cliquer pour télécharger cette version (${escapeHtml(t.duration || '')})`;
+            } else if (matchStatus === "different_version") {
+                rowItemClass = "track-different-version";
+                const verTooltip = `Autre version possédée : "${escapeHtml(t.owned_title || '')}" (${escapeHtml(t.owned_album || 'Collection')}${t.owned_duration ? ' • ' + escapeHtml(t.owned_duration) : ''})`;
+                badgeHtml = `
+                    <span class="badge-track-different-version" title="${verTooltip}">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" style="display:inline-block; vertical-align: -1px; margin-right: 3px;"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                        Autre version
+                    </span>
+                `;
+                dlTooltip = `Autre version possédée : "${escapeHtml(t.owned_title || '')}" (${escapeHtml(t.owned_album || 'Collection')}) - Cliquer pour télécharger`;
+            } else if (matchStatus === "suspicious_artist") {
+                rowItemClass = "track-suspicious-artist";
+                const suspTooltip = `Titre et durée identiques possédés mais chez un autre artiste : "${escapeHtml(t.owned_artist || 'Autre artiste')}" (${escapeHtml(t.owned_album || 'Collection')}${t.owned_duration ? ' • ' + escapeHtml(t.owned_duration) : ''})`;
+                badgeHtml = `
+                    <span class="badge-track-suspicious-artist" title="${suspTooltip}">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align: -1px; margin-right: 3px;"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        Autre artiste ?
+                    </span>
+                `;
+                dlTooltip = `Morceau identique possédé chez ${escapeHtml(t.owned_artist || 'autre artiste')} (${escapeHtml(t.owned_album || '')}) - Cliquer pour télécharger cette version`;
+            } else if (t.is_missing_track) {
+                rowItemClass = "track-completes-album";
+                const missTooltip = `Cette piste manque à votre album "${escapeHtml(t.missing_album_name || '')}" dans votre collection. Cliquer pour compléter l'album.`;
+                badgeHtml = `
+                    <span class="badge-track-completes-album" title="${missTooltip}">
+                        ⭐ Complète votre album
+                    </span>
+                `;
+                dlTooltip = `Compléter l'album "${escapeHtml(t.missing_album_name || '')}" avec cette piste manquante`;
+            }
+
+            // Chips secondaires : Live, Instrumentale, Upgrade qualité, Explicit/Clean
+            let chipsHtml = "";
+            if (t.tag_live) {
+                chipsHtml += `<span class="badge-track-chip chip-live" title="${escapeHtml(t.tag_live_tooltip || t.tag_live)}">${escapeHtml(t.tag_live)}</span>`;
+            }
+            if (t.tag_inst) {
+                chipsHtml += `<span class="badge-track-chip chip-inst" title="${escapeHtml(t.tag_inst_tooltip || t.tag_inst)}">${escapeHtml(t.tag_inst)}</span>`;
+            }
+            if (t.tag_upgrade) {
+                chipsHtml += `<span class="badge-track-chip chip-upgrade" title="${escapeHtml(t.tag_upgrade_tooltip || t.tag_upgrade)}">${escapeHtml(t.tag_upgrade)}</span>`;
+            }
+            if (t.tag_content) {
+                chipsHtml += `<span class="badge-track-chip chip-content" title="${escapeHtml(t.tag_content_tooltip || t.tag_content)}">${escapeHtml(t.tag_content)}</span>`;
+            }
+
             const row = document.createElement("div");
-            row.className = `preview-track-item ${t.is_available ? "" : "track-unavailable"}`;
+            row.className = `preview-track-item ${t.is_available ? "" : "track-unavailable"} ${rowItemClass}`;
 
             row.innerHTML = `
                 <div class="track-item-left">
                     <span class="track-item-num">${String(t.track_number).padStart(2, '0')}</span>
                     <span class="track-item-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</span>
+                    ${badgeHtml}
+                    ${chipsHtml}
                 </div>
                 <div class="track-item-right">
                     ${t.duration ? `<span class="track-item-dur">${escapeHtml(t.duration)}</span>` : ""}
@@ -1495,7 +1662,7 @@ async function openAlbumPreview(album) {
                         <button type="button" class="btn-track-play" title="Écouter un extrait">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                         </button>
-                        <button type="button" class="btn-track-dl" title="Télécharger ce morceau seul">
+                        <button type="button" class="btn-track-dl" title="${dlTooltip}">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
                         </button>
                     ` : `
@@ -1530,19 +1697,26 @@ async function openAlbumPreview(album) {
                 if (dlTrackBtn) {
                     dlTrackBtn.addEventListener("click", async () => {
                         const isPl = isPlaylistUrlOrItem(album, album.url);
-                        const albumName = (!isPl && album.title) ? album.title : (t.album || null);
+                        const isMissing = Boolean(t.is_missing_track && t.missing_album_name);
+                        const targetAlbum = isMissing ? t.missing_album_name : ((!isPl && album.title) ? album.title : (t.album || null));
+                        const customAlbumParam = isMissing ? t.missing_album_name : "Singles & Rips";
 
-                        let confirmMessage = `Ce morceau sera téléchargé individuellement et classé dans votre conteneur "Singles & Rips".`;
-                        if (albumName) {
-                            confirmMessage += `\n\nSon album d'origine (${albumName}) sera automatiquement mentionné dans le titre du morceau :\n"${t.title} (${albumName})".`;
+                        let confirmMessage = "";
+                        if (isMissing) {
+                            confirmMessage = `Cette piste viendra directement compléter votre album existant :\n"${targetAlbum}".\n\nElle sera enregistrée sous le nom :\n"${t.title}".`;
                         } else {
-                            confirmMessage += `\n\nCe titre sera enregistré sous le nom :\n"${t.title}".`;
+                            confirmMessage = `Ce morceau sera téléchargé individuellement et classé dans votre conteneur "Singles & Rips".`;
+                            if (targetAlbum) {
+                                confirmMessage += `\n\nSon album d'origine (${targetAlbum}) sera automatiquement mentionné dans le titre du morceau :\n"${t.title} (${targetAlbum})".`;
+                            } else {
+                                confirmMessage += `\n\nCe titre sera enregistré sous le nom :\n"${t.title}".`;
+                            }
                         }
 
                         const confirmed = await showModalConfirm(
-                            "Télécharger ce titre seul ?",
+                            isMissing ? "Compléter votre album avec ce titre ?" : "Télécharger ce titre seul ?",
                             confirmMessage,
-                            "Télécharger le titre seul"
+                            isMissing ? "Compléter l'album" : "Télécharger le titre seul"
                         );
 
                         if (!confirmed) return;
@@ -1566,8 +1740,8 @@ async function openAlbumPreview(album) {
                                     naming_pattern: currentConfig.naming_pattern || "{track:02d} {title}",
                                     clean_titles: true,
                                     is_playlist: false,
-                                    custom_album: "Singles & Rips",
-                                    origin_album: albumName
+                                    custom_album: customAlbumParam,
+                                    origin_album: targetAlbum
                                 })
                             });
 
