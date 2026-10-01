@@ -61,7 +61,7 @@ from backend.playback_stats import playback_stats
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.0.1")
+app = FastAPI(title="SoundStash API", version="3.0.2")
 
 # WebSocket Connection Manager
 class ConnectionManager:

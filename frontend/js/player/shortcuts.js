@@ -135,6 +135,9 @@ function setupPlayerShortcutsAndWheel() {
         // Touche T (seule) : Activer / Quitter le Mode Ambiance
         if (!e.shiftKey && (e.key === "t" || e.key === "T")) {
             e.preventDefault();
+            if (typeof closeWorkshopDrawer === "function") {
+                closeWorkshopDrawer();
+            }
             if (window.AmbientVisualizer) {
                 if (window.AmbientVisualizer.isActive) {
                     window.AmbientVisualizer.exit();
@@ -190,6 +193,9 @@ function setupPlayerShortcutsAndWheel() {
         // Touche L : Ouvrir / Fermer le tiroir de la File d'attente (Queue Drawer)
         if (!e.shiftKey && (e.key === "l" || e.key === "L")) {
             e.preventDefault();
+            if (typeof closeWorkshopDrawer === "function") {
+                closeWorkshopDrawer();
+            }
             if (window.AudioPlayer && typeof window.AudioPlayer.toggleQueueDrawer === "function") {
                 window.AudioPlayer.toggleQueueDrawer();
             }

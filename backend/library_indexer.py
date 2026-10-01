@@ -1074,15 +1074,33 @@ class SmartMatcher:
         if not norm_title:
             return None
 
-        # Stratégie 1 : Artiste connu dans la table de hachage
         candidates = []
-        if norm_art and norm_art in self.indexer.artists_map:
-            candidates = self.indexer.artists_map[norm_art]
-        else:
-            # Chercher si un artiste connu a une similarité forte
+        seen_paths = set()
+
+        # Stratégie 1 : Recherche de candidats par artiste (exact et variantes/collaborations)
+        if norm_art:
+            # Correspondance directe
+            if norm_art in self.indexer.artists_map:
+                for a in self.indexer.artists_map[norm_art]:
+                    if a.path not in seen_paths:
+                        seen_paths.add(a.path)
+                        candidates.append(a)
+
+            # Chercher si un artiste connu a une similarité forte ou contient l'artiste (ex: feat, multi-artistes)
             for k, albs in self.indexer.artists_map.items():
-                if norm_art and (norm_art in k or k in norm_art or calculate_token_similarity(norm_art, k) >= 0.85):
-                    candidates.extend(albs)
+                if k == norm_art:
+                    continue
+                match_artist = False
+                if (norm_art in k) or (len(k) >= 4 and k in norm_art):
+                    match_artist = True
+                elif calculate_token_similarity(norm_art, k) >= 0.70:
+                    match_artist = True
+
+                if match_artist:
+                    for a in albs:
+                        if a.path not in seen_paths:
+                            seen_paths.add(a.path)
+                            candidates.append(a)
 
         # Si pas de candidat par artiste, tester tous les albums
         if not candidates:
@@ -1097,32 +1115,55 @@ class SmartMatcher:
                 best_score = score
                 best_album = alb
 
-        # Seuil de tolérance élevé pour éviter tout faux positif
-        if best_score >= 0.82:
+        # Filet de sécurité : si aucun match probant (>= 0.80) n'a été trouvé parmi les candidats restreints,
+        # tester l'ensemble de la bibliothèque (au cas où l'artiste en ligne diffère du tag local,
+        # ex: Various Artists, multi-artistes ou nom de chaîne/groupe)
+        if best_score < 0.80 and candidates is not self.indexer.albums:
+            for alb in self.indexer.albums:
+                if alb.path in seen_paths:
+                    continue
+                score = self._compute_similarity(norm_art, norm_title, alb)
+                if score > best_score:
+                    best_score = score
+                    best_album = alb
+
+        # Seuil de tolérance pour valider l'association
+        if best_score >= 0.80:
             return best_album
 
         return None
 
     def _compute_similarity(self, norm_art: str, norm_title: str, alb: IndexedAlbum) -> float:
         """Calcule un score de similarité entre la requête et un album indexé."""
-        # Égalité exacte
+        is_art_match = (
+            not norm_art
+            or not alb.norm_artist
+            or norm_art == alb.norm_artist
+            or norm_art in alb.norm_artist
+            or alb.norm_artist in norm_art
+        )
+
+        # Égalité exacte du titre
         if norm_title == alb.norm_album:
-            if not norm_art or not alb.norm_artist or norm_art == alb.norm_artist or norm_art in alb.norm_artist or alb.norm_artist in norm_art:
+            if is_art_match:
                 return 1.0
-            return 0.85
+            art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
+            return max(0.85, 0.7 + (art_sim * 0.3))
 
         # Inclusion avec ratio de longueur significatif (ex: titre contenant une édition élaguée)
         if (norm_title in alb.norm_album or alb.norm_album in norm_title) and min(len(norm_title), len(alb.norm_album)) >= 4:
             ratio = min(len(norm_title), len(alb.norm_album)) / max(len(norm_title), len(alb.norm_album))
             if ratio >= 0.70:
-                if not norm_art or not alb.norm_artist or norm_art == alb.norm_artist or norm_art in alb.norm_artist:
+                if is_art_match:
                     return 0.90 * ratio
+                art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
+                return (0.90 * ratio * 0.7) + (art_sim * 0.3)
 
         # Indice de similarité de tokens
         title_sim = calculate_token_similarity(norm_title, alb.norm_album)
         if title_sim >= 0.80:
             if norm_art and alb.norm_artist:
-                art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
+                art_sim = 0.95 if is_art_match else calculate_token_similarity(norm_art, alb.norm_artist)
                 return (title_sim * 0.7) + (art_sim * 0.3)
             return title_sim * 0.85
 
