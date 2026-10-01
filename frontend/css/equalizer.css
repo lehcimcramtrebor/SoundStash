@@ -1,0 +1,407 @@
+/* ==========================================================================
+   SOUNDSTASH v3.0.0 — MODULE CSS : EQUALIZER.CSS
+   ========================================================================== */
+
+/* --- Section : Égaliseur 10 bandes, presets & Loudness progressif (lignes 8419 à 8816) --- */
+/* =========================================================
+   24. ÉGALISEUR AUDIO HAUTE FIDÉLITÉ (10 BANDES & PRESETS)
+   ========================================================= */
+
+.eq-active-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--success, #10b981);
+    box-shadow: 0 0 8px var(--success, #10b981);
+    pointer-events: none;
+}
+
+#player-now-playing-eq-btn .eq-active-dot {
+    position: static;
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-left: 4px;
+}
+
+#mini-player-eq-btn.eq-is-enabled {
+    color: var(--accent);
+}
+
+.eq-modal-dialog {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius, 14px);
+    box-shadow: var(--modal-shadow);
+    overflow: hidden;
+    animation: modalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: min(880px, 95vw);
+    width: 95%;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.eq-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-surface-sticky);
+}
+
+.eq-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.eq-header-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #ff5e79);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    box-shadow: 0 4px 14px var(--accent-glow);
+}
+
+.eq-header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.eq-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-surface-elevated);
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border-card);
+}
+
+.eq-toggle-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-main);
+    min-width: 48px;
+}
+
+.eq-presets-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: var(--bg-surface-elevated);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+}
+
+.eq-presets-bar::-webkit-scrollbar {
+    display: none;
+}
+
+.eq-presets-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.eq-presets-list {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.eq-preset-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition);
+}
+
+.eq-preset-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-main);
+    transform: translateY(-1px);
+}
+
+.eq-preset-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 4px 12px var(--accent-glow);
+    font-weight: 600;
+}
+
+.eq-curve-container {
+    padding: 14px 20px 6px 20px;
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.eq-curve-svg {
+    width: 100%;
+    height: 70px;
+    display: block;
+}
+
+.eq-faders-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 8px;
+    padding: 18px 18px 10px 18px;
+    background: var(--bg-surface);
+    align-items: center;
+    justify-items: center;
+}
+
+.eq-fader-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.eq-fader-val {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    min-height: 18px;
+    text-align: center;
+    transition: color 0.15s;
+}
+
+.eq-fader-val.positive {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.eq-fader-val.negative {
+    color: #38bdf8;
+}
+
+.eq-slider-track-wrap {
+    position: relative;
+    height: 130px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+input[type="range"].eq-fader-slider {
+    -webkit-appearance: slider-vertical;
+    writing-mode: bt-lr;
+    height: 124px;
+    width: 22px;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--accent, #ff2a4b);
+    background: transparent;
+    border-radius: 4px;
+}
+
+.eq-fader-freq {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.eq-fader-freq small {
+    font-size: 0.65rem;
+    opacity: 0.7;
+    margin-left: 1px;
+}
+
+/* ===================================================
+   Correction Physiologique (Loudness Progressif)
+   =================================================== */
+.eq-loudness-card {
+    margin: 12px 20px 16px 20px;
+    padding: 13px 18px;
+    background: var(--bg-surface-elevated, #161622);
+    border: 1px solid var(--border-color, #2a2a3c);
+    border-radius: var(--radius, 10px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.eq-loudness-card.is-active {
+    border-color: rgba(255, 42, 75, 0.45);
+    box-shadow: 0 4px 20px rgba(255, 42, 75, 0.15);
+}
+
+.eq-loudness-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.eq-loudness-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.eq-loudness-badge-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.92rem;
+    color: var(--text-main);
+}
+
+.eq-loudness-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.eq-loudness-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.eq-loudness-val-display {
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    color: var(--text-muted);
+    min-width: 60px;
+    text-align: right;
+    transition: color 0.2s, text-shadow 0.2s;
+}
+
+.eq-loudness-card.is-active .eq-loudness-val-display {
+    color: var(--accent, #ff2a4b);
+    text-shadow: 0 0 10px var(--accent-glow, rgba(255, 42, 75, 0.5));
+}
+
+.eq-loudness-controls {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.eq-loudness-scale-lbl {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+    padding-top: 1px;
+}
+
+.eq-loudness-slider-track {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding-top: 3px;
+    padding-bottom: 16px;
+}
+
+.eq-loudness-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border-color, #2b2b3d);
+    outline: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.eq-loudness-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 8px var(--accent, #ff2a4b);
+    border: 2px solid var(--accent, #ff2a4b);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.eq-loudness-range::-webkit-slider-thumb:hover {
+    transform: scale(1.18);
+    box-shadow: 0 3px 12px var(--accent-glow, rgba(255, 42, 75, 0.7));
+}
+
+.eq-loudness-ticks {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 12px;
+}
+
+.eq-loudness-ticks span {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+    pointer-events: none;
+    opacity: 0.75;
+}
+
+.eq-loudness-btn-reset {
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: -1px;
+}
+
+.eq-modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: var(--bg-surface-elevated);
+    border-top: 1px solid var(--border-color);
+}
+
+.eq-modal-dialog.eq-disabled .eq-faders-grid,
+.eq-modal-dialog.eq-disabled .eq-curve-container,
+.eq-modal-dialog.eq-disabled .eq-presets-bar {
+    opacity: 0.42;
+    pointer-events: none;
+    filter: grayscale(0.6);
+    transition: opacity 0.2s, filter 0.2s;
+}
+
+
+

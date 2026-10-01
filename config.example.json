@@ -1,0 +1,19 @@
+{
+  "temp_download_dir": "temp_downloads",
+  "export_dir": "Musique YTM",
+  "video_export_dir": "Vidéos YTM",
+  "library_dir": null,
+  "default_format": "m4a",
+  "default_quality": "128K",
+  "auto_retag": true,
+  "clean_titles": true,
+  "naming_pattern": "{track:02d} {title}",
+  "delete_temp_after_export": true,
+  "smart_export": false,
+  "smart_export_conflict_policy": "merge",
+  "cooldown_album": 30,
+  "cooldown_single": 10,
+  "start_in_fullscreen": true,
+  "audio_fader_enabled": true,
+  "audio_fader_duration": 0.5
+}

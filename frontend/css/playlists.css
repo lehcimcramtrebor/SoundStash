@@ -1,0 +1,907 @@
+/* ==========================================================================
+   SOUNDSTASH v3.0.0 — MODULE CSS : PLAYLISTS.CSS
+   ========================================================================== */
+
+/* --- Section : Playlists utilisateur mixtes, bannières, miniatures & sélecteur de pochettes (lignes 10443 à 11255) --- */
+/* ========================================================
+   PHASE 49 : PLAYLISTS UTILISATEUR MIXTES (AUDIO + VIDÉO)
+   ======================================================== */
+.playlists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+}
+
+.playlist-card {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+}
+
+.playlist-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+}
+
+.playlist-card-cover-box,
+.playlist-card-cover-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #0f1322;
+    overflow: hidden;
+    border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.playlist-card-cover-img,
+.playlist-card-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.playlist-card:hover .playlist-card-cover-img,
+.playlist-card:hover .playlist-card-cover {
+    transform: scale(1.05);
+}
+
+.playlist-card-play-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--accent, #ff2a4b);
+    border: none;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 16px rgba(255, 42, 75, 0.5);
+    z-index: 4;
+}
+
+.playlist-card:hover .playlist-card-play-btn {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.playlist-card-play-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(255, 42, 75, 0.8);
+}
+
+.playlist-card-mixed-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(15, 15, 25, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 42, 75, 0.4);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.playlist-card-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.playlist-card-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+}
+
+.playlist-card-meta {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+/* =========================================================
+   VUE DÉTAIL PLAYLIST (HARMONISÉE 2 COLONNES AVEC ALBUMS)
+   ========================================================= */
+.playlist-detail-block {
+    display: flex;
+    gap: 24px;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--item-shadow);
+    align-items: flex-start;
+    min-width: 0;
+    margin-top: 10px;
+}
+
+.playlist-sidebar {
+    width: 210px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-self: flex-start;
+    position: sticky;
+    top: calc(var(--player-controls-height, 136px) + var(--album-sidebar-sticky-margin, 30px));
+}
+
+.playlist-cover-box {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg-input);
+    border: 1px solid var(--border-card);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+}
+
+.playlist-cover-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease, opacity 0.25s ease;
+}
+
+.playlist-cover-box:hover img {
+    transform: scale(1.02);
+}
+
+.playlist-mixed-badge {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--accent);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    z-index: 2;
+}
+
+.playlist-sidebar-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.playlist-hero-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--text-main);
+    margin: 0;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.playlist-hero-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+    margin: 0;
+}
+
+.playlist-hero-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.playlist-sidebar-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+    width: 100%;
+}
+
+.playlist-sidebar-actions .btn-all-action {
+    width: 100%;
+    justify-content: center;
+}
+
+.playlist-tracks-col {
+    flex: 1;
+    min-width: 0;
+}
+
+@media (max-width: 860px) {
+    .playlist-detail-block {
+        flex-direction: column;
+    }
+    .playlist-sidebar {
+        width: 100%;
+        flex-direction: row;
+        align-items: center;
+        position: static;
+    }
+    .playlist-cover-box {
+        width: 110px;
+    }
+}
+
+/* Rétro-compatibilité */
+.playlist-hero-card {
+    display: flex;
+    gap: 24px;
+    padding: 22px;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.playlist-hero-info {
+    flex: 1;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.playlist-tracks-table {
+    border-collapse: separate;
+    border-spacing: 0 4px;
+    width: 100%;
+}
+
+.playlist-tracks-table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.12s ease, box-shadow 0.12s ease;
+    user-select: none;
+}
+
+.playlist-tracks-table tbody tr td {
+    padding: 8px 12px;
+    background-color: transparent;
+    transition: background-color 0.12s ease;
+    border-top: 1px solid transparent;
+    border-bottom: 1px solid transparent;
+}
+
+.playlist-tracks-table tbody tr td:first-child {
+    border-top-left-radius: var(--radius-sm, 8px);
+    border-bottom-left-radius: var(--radius-sm, 8px);
+    border-left: 1px solid transparent;
+}
+
+.playlist-tracks-table tbody tr td:last-child {
+    border-top-right-radius: var(--radius-sm, 8px);
+    border-bottom-right-radius: var(--radius-sm, 8px);
+    border-right: 1px solid transparent;
+}
+
+/* Rectangle de sélection au survol (harmonisé avec .player-track-item:hover) */
+.playlist-tracks-table tbody tr:hover td {
+    background-color: var(--hover-overlay, rgba(255, 255, 255, 0.06));
+    border-color: var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+/* Ligne active en cours de lecture */
+.playlist-tracks-table tbody tr.active-track-row td {
+    background-color: rgba(255, 42, 75, 0.12) !important;
+    border-color: rgba(255, 42, 75, 0.35) !important;
+}
+
+.playlist-tracks-table tbody tr.active-track-row td:first-child {
+    border-left: 3px solid var(--accent, #ff2a4b) !important;
+}
+
+.playlist-tracks-table tbody tr.active-track-row {
+    scroll-margin-top: calc(var(--player-controls-height, 136px) + 24px);
+    scroll-margin-bottom: 125px;
+}
+
+.playlist-tracks-table tbody tr.active-track-row td:first-child {
+    color: var(--accent, #ff2a4b) !important;
+    font-weight: 700;
+}
+
+.playlist-tracks-table tbody tr.active-track-row td:nth-child(3) span {
+    color: var(--accent, #ff2a4b) !important;
+    font-weight: 600;
+}
+
+/* =========================================================
+   MINIATURES & JAQUETTES DES PISTES DE PLAYLIST
+   ========================================================= */
+.pl-track-thumb-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-surface-elevated, #1a1e29);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    vertical-align: middle;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.pl-track-thumb-wrap:hover {
+    transform: scale(1.08);
+    border-color: var(--primary, #00f0ff);
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.35), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.pl-track-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.pl-track-thumb-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+
+.pl-track-thumb-wrap:hover .pl-track-thumb-overlay {
+    opacity: 1;
+}
+
+.pl-track-type-tag {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 0.65rem;
+    line-height: 1;
+    padding: 1.5px 3px;
+    border-radius: 4px;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+    transition: opacity 0.15s ease;
+}
+
+.pl-track-thumb-wrap:hover .pl-track-type-tag {
+    opacity: 0;
+}
+
+.pl-track-type-tag.audio {
+    background: rgba(15, 23, 42, 0.85);
+    color: var(--accent, #89b4fa);
+    border: 1px solid rgba(137, 180, 250, 0.3);
+}
+
+.pl-track-type-tag.video {
+    background: rgba(220, 38, 38, 0.85);
+    color: #ffffff;
+    border: 1px solid rgba(255, 42, 75, 0.4);
+}
+
+[data-theme="light"] .pl-track-thumb-wrap {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .pl-track-thumb-wrap:hover {
+    border-color: var(--primary, #0284c7);
+    box-shadow: 0 0 10px rgba(2, 132, 199, 0.3), 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .pl-track-type-tag.audio {
+    background: rgba(240, 246, 255, 0.9);
+    color: #0284c7;
+    border-color: rgba(2, 132, 199, 0.3);
+}
+
+.badge-item-audio {
+    background: rgba(137, 180, 250, 0.12);
+    border: 1px solid rgba(137, 180, 250, 0.4);
+    color: var(--accent, #89b4fa);
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.badge-item-video {
+    background: rgba(255, 42, 75, 0.12);
+    border: 1px solid rgba(255, 42, 75, 0.4);
+    color: #ff2a4b;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+/* Boutons d'action des pistes de playlist (Mode Sombre et Clair équilibrés) */
+.btn-pl-item-play,
+.btn-pl-item-delete {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.btn-pl-item-play:hover {
+    background: rgba(0, 240, 255, 0.15);
+    border-color: rgba(0, 240, 255, 0.4);
+    color: var(--primary, #00f0ff);
+}
+
+.btn-pl-item-delete {
+    color: rgba(239, 68, 68, 0.85);
+}
+
+.btn-pl-item-delete:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
+
+.btn-pl-item-delete.confirming {
+    background: #ef4444 !important;
+    border-color: #dc2626 !important;
+    color: #ffffff !important;
+    font-weight: 700;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+    animation: pulse-danger-delete 0.8s infinite alternate;
+}
+
+@keyframes pulse-danger-delete {
+    from { opacity: 0.85; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1.04); }
+}
+
+[data-theme="light"] .btn-pl-item-play,
+[data-theme="light"] .btn-pl-item-delete {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .btn-pl-item-play:hover {
+    background: rgba(0, 114, 255, 0.12);
+    border-color: rgba(0, 114, 255, 0.3);
+    color: #0072ff;
+}
+
+[data-theme="light"] .btn-pl-item-delete:hover {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #dc2626;
+}
+
+/* Modale d'ajout à une playlist */
+.add-to-playlist-summary {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+}
+
+.add-to-playlist-picker-list {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+}
+
+.add-to-playlist-row,
+.add-to-playlist-choice-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.add-to-playlist-row:hover,
+.add-to-playlist-choice-item:hover {
+    background: var(--bg-surface-hover);
+    border-color: var(--accent);
+}
+
+.add-to-playlist-thumb {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    max-width: 40px !important;
+    max-height: 40px !important;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #111;
+}
+
+.add-to-playlist-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.add-to-playlist-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.add-to-playlist-sub {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+
+.btn-confirm-add-to-pl {
+    flex-shrink: 0;
+}
+
+.add-to-playlist-create-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: 14px;
+    margin-top: 14px;
+}
+
+#add-to-playlist-modal-backdrop .modal-dialog {
+    max-width: 460px;
+    width: 92%;
+    max-height: min(560px, 85vh);
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+    overflow: hidden;
+    border-radius: 12px;
+}
+
+#add-to-playlist-modal-backdrop .modal-header {
+    padding: 14px 18px;
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--border-card);
+}
+
+#add-to-playlist-modal-backdrop .modal-body {
+    padding: 16px 18px !important;
+    margin-bottom: 0 !important;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+}
+
+#add-to-playlist-modal-backdrop .modal-footer {
+    padding: 12px 18px !important;
+    border-top: 1px solid var(--border-card);
+}
+
+/* Bouton de suppression directe 1-clic sur les tuiles de playlist */
+.playlist-card-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(15, 20, 32, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #f87171;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transform: scale(0.85);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 5;
+    outline: none;
+}
+
+.playlist-card:hover .playlist-card-delete-btn {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.playlist-card-delete-btn:hover {
+    background: #ef4444;
+    border-color: #ef4444;
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.6);
+    transform: scale(1.1);
+}
+
+/* ========================================================
+   MODALES DE CRÉATION & PERSONNALISATION DE PLAYLIST (PHASE 62)
+   ======================================================== */
+.playlist-mode-segmented {
+    display: flex;
+    background: var(--bg-surface, #0f1322);
+    padding: 4px;
+    border-radius: 8px;
+    gap: 4px;
+    border: 1px solid var(--border-card);
+}
+
+.btn-pl-mode {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-pl-mode:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-pl-mode.active {
+    background: var(--primary, #00f0ff);
+    color: #000;
+    box-shadow: 0 2px 8px rgba(0, 240, 255, 0.3);
+}
+
+[data-theme="light"] .btn-pl-mode.active {
+    background: #0072ff;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 114, 255, 0.3);
+}
+
+/* Barre de filtres de thèmes */
+.preset-covers-category-bar {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    scrollbar-width: thin;
+}
+
+.btn-cover-cat {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 20px;
+    border: 1px solid var(--border-card);
+    background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+    color: var(--text-muted);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.btn-cover-cat:hover {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.btn-cover-cat.active {
+    background: var(--accent, #ff2a4b);
+    border-color: var(--accent, #ff2a4b);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(255, 42, 75, 0.3);
+}
+
+/* Grille des pochettes thématiques vectorielles */
+.preset-covers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 10px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px 2px;
+}
+
+.preset-cover-card {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--bg-surface, #111424);
+    border: 2px solid var(--border-card);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.preset-cover-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary, #00f0ff);
+    box-shadow: 0 4px 12px rgba(0, 240, 255, 0.2);
+}
+
+.preset-cover-card.is-selected {
+    border-color: var(--primary, #00f0ff) !important;
+    box-shadow: 0 0 14px rgba(0, 240, 255, 0.5) !important;
+    transform: scale(1.03);
+}
+
+.preset-cover-card img,
+.preset-cover-card .preset-mosaic-preview {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    display: block;
+}
+
+.preset-cover-card .preset-cover-label {
+    width: 100%;
+    padding: 4px 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-main);
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.preset-cover-card .preset-check-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary, #00f0ff);
+    color: #000;
+    font-size: 0.7rem;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.preset-cover-card.is-selected .preset-check-badge {
+    display: flex;
+}
+
+.preset-mosaic-preview {
+    background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+}
+
+/* Tags de genres pour smart playlists */
+.smart-genres-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 110px;
+    overflow-y: auto;
+    padding: 2px;
+}
+
+.smart-genre-tag {
+    padding: 3px 9px;
+    border-radius: 14px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    background: var(--bg-surface, #1e2436);
+    border: 1px solid var(--border-card);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.smart-genre-tag:hover {
+    border-color: var(--primary, #00f0ff);
+    color: var(--text-main);
+}
+
+.smart-genre-tag.active {
+    background: rgba(0, 240, 255, 0.18);
+    border-color: var(--primary, #00f0ff);
+    color: var(--primary, #00f0ff);
+    box-shadow: 0 2px 6px rgba(0, 240, 255, 0.2);
+}
+
+/* Bouton de retrait de piste de playlist en 2 temps (sécurité anti-clic accidentel) */
+.btn-pl-item-delete.confirming {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+    border: 1px solid #ef4444 !important;
+    border-radius: 4px;
+    padding: 3px 8px !important;
+    font-size: 0.75rem !important;
+    font-weight: 600;
+    line-height: 1;
+    animation: pl-delete-pulse 0.9s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+}
+
+@keyframes pl-delete-pulse {
+    0% { transform: scale(0.97); opacity: 0.88; }
+    100% { transform: scale(1.04); opacity: 1; box-shadow: 0 0 14px rgba(239, 68, 68, 0.85); }
+}
+
+
+

@@ -1,0 +1,37 @@
+/* ==========================================================================
+   SOUNDSTASH v3.0.0 — FEUILLE DE STYLE PRINCIPALE MODULAIRE
+   Architecture modulaire découplée pour haute maintenabilité & compatibilité IA locale.
+   ========================================================================== */
+
+/* 1. Design Tokens, Variables & Thèmes */
+@import url("css/variables.css");
+
+/* 2. Reset, Typographie, Scrollbars & Utilitaires de base */
+@import url("css/base.css");
+
+/* 3. Structure globale, Languette, En-tête & Responsive */
+@import url("css/layout.css");
+
+/* 4. Atelier de Téléchargement, Recherche & Logs */
+@import url("css/workshop.css");
+
+/* 5. Sanctuaire Lecteur Audio, Grilles, Vues & Mini-Bar */
+@import url("css/player.css");
+
+/* 6. Égaliseur Audio 10 Bandes & Loudness */
+@import url("css/equalizer.css");
+
+/* 7. Hub Vidéo, Mode Théâtre & Projection DLNA */
+@import url("css/video.css");
+
+/* 8. Éditeur de Tags Kid3, Reconstitution & Arborescence */
+@import url("css/editor.css");
+
+/* 9. Mode Ambiance Synthwave & Optimisation GPU */
+@import url("css/ambient.css");
+
+/* 10. Playlists Utilisateur Mixtes & Sélecteur de Pochettes */
+@import url("css/playlists.css");
+
+/* 11. Modales Système, Paramètres, Guide & Sécurité (Party Lock) */
+@import url("css/modals.css");

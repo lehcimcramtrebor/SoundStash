@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1a0808" />
+            <stop offset="100%" stop-color="#361010" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f59e0b" />
+            <stop offset="100%" stop-color="#ef4444" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Violon / Violoncelle stylisé avec portée musicale dorée -->
+            <path d="M200 70 L200 330" stroke="#f59e0b" stroke-width="3"/>
+            <!-- Silhouette violon -->
+            <path d="M170 120 C150 140 150 170 170 190 C140 210 140 260 170 290 C200 305 200 305 230 290 C260 260 260 210 230 190 C250 170 250 140 230 120 Z" fill="#2d1313" stroke="#f59e0b" stroke-width="3" filter="url(#glow)"/>
+            <!-- Ouïes en f -->
+            <path d="M175 220 C180 230 180 240 175 250" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/>
+            <path d="M225 220 C220 230 220 240 225 250" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/>
+            <!-- Baguette de chef d'orchestre en diagonale -->
+            <line x1="90" y1="310" x2="310" y2="90" stroke="#ffffff" stroke-width="3" filter="url(#glow)"/>
+            <circle cx="95" cy="305" r="7" fill="#f59e0b"/>
+            <!-- Notes musicales flottantes -->
+            <text x="120" y="110" font-size="28" fill="#f59e0b">♩</text>
+            <text x="280" y="130" font-size="34" fill="#fde047">♫</text>
+            <text x="100" y="220" font-size="24" fill="#f59e0b">♬</text>
+            <text x="200" y="350" font-family="'Outfit', sans-serif" font-weight="800" font-size="14" fill="#fde047" text-anchor="middle" letter-spacing="3">ORIGINAL SCORE</text>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#f59e0b" stroke-width="1.5" opacity="0.35" />
+</svg>

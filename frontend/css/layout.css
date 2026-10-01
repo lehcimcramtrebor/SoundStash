@@ -1,0 +1,397 @@
+/* ==========================================================================
+   SOUNDSTASH v3.0.0 — MODULE CSS : LAYOUT.CSS
+   ========================================================================== */
+
+/* --- Section : Languette & Pull-Tab Skeumorphique (lignes 406 à 698) --- */
+/* =========================================================
+   LANGUETTE SKEUMORPHIQUE SUPÉRIEURE (PULL TAB AU BORD DE L'ÉCRAN)
+   ========================================================= */
+
+.workshop-pull-tab {
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 0;
+    z-index: 200200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0;
+    margin-left: 0;
+    margin-right: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+    pointer-events: auto;
+    transition: filter 0.25s ease;
+}
+
+/* Pas de décalage vertical pour préserver la fusion structurelle avec le cadre */
+.workshop-pull-tab:hover,
+body.workshop-drawer-open .workshop-pull-tab:hover {
+    transform: translateX(-50%);
+}
+
+.workshop-pull-tab:active,
+body.workshop-drawer-open .workshop-pull-tab:active {
+    transform: translateX(-50%);
+}
+
+.pull-tab-chassis {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 14px 4px 14px;
+    background: linear-gradient(180deg, #121522 0%, #0d0f17 100%);
+    border: 2px solid rgba(0, 240, 255, 0.7);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 
+        0 4px 14px rgba(0, 0, 0, 0.75),
+        0 1px 3px rgba(0, 0, 0, 0.9),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.7),
+        0 0 10px rgba(0, 240, 255, 0.2);
+    transition: all 0.25s ease;
+}
+
+/* Pont de soudure : masque la bordure inférieure du tiroir au-dessus de la languette */
+.pull-tab-chassis::before {
+    content: "";
+    position: absolute;
+    top: -2px;
+    left: -1px;
+    right: -1px;
+    height: 4px;
+    background: #121522;
+    z-index: 1;
+}
+
+/* Ailettes de transition concave (fillets fluides entre le tiroir et la languette) */
+.pull-tab-wing {
+    position: absolute;
+    top: 0;
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
+    z-index: 3;
+    overflow: visible;
+}
+
+.pull-tab-wing-left {
+    left: -12px;
+}
+
+.pull-tab-wing-right {
+    right: -12px;
+}
+
+.pull-tab-wing .wing-fill {
+    fill: #121522;
+}
+
+.pull-tab-wing .wing-stroke {
+    fill: none;
+    stroke: rgba(0, 240, 255, 0.7);
+    stroke-width: 2;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 3px rgba(0, 240, 255, 0.4));
+    transition: stroke 0.25s ease, filter 0.25s ease;
+}
+
+.workshop-pull-tab:hover .pull-tab-wing .wing-stroke {
+    stroke: #00f0ff;
+    filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.8));
+}
+
+[data-theme="light"] .pull-tab-wing .wing-fill {
+    fill: #f1f5f9;
+}
+
+[data-theme="light"] .pull-tab-wing .wing-stroke {
+    stroke: rgba(0, 168, 204, 0.8);
+    filter: none;
+}
+
+.pull-tab-chassis > * {
+    position: relative;
+    z-index: 2;
+}
+
+.workshop-pull-tab:hover .pull-tab-chassis {
+    border-color: #00f0ff;
+    box-shadow: 
+        0 8px 22px rgba(0, 0, 0, 0.85),
+        0 2px 6px rgba(0, 0, 0, 0.95),
+        0 0 20px rgba(0, 240, 255, 0.4);
+}
+
+/* Vis/Rivets métalliques skeumorphiques */
+.pull-tab-screw {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #a2b2cc 15%, #46516b 65%, #181c28 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.85);
+    position: relative;
+    flex-shrink: 0;
+}
+
+.pull-tab-screw::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3px;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.7);
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* Rainures de préhension tactile (Grip) */
+.pull-tab-grip-grooves,
+.pull-tab-grip-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5px;
+    padding: 0 2px;
+}
+
+.grip-groove,
+.grip-line {
+    width: 14px;
+    height: 1.5px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 1px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* Insigne / Label Atelier */
+.pull-tab-badge,
+.pull-tab-label-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pull-tab-icon {
+    font-size: 0.8rem;
+    color: #00f0ff;
+    filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.8));
+    transition: transform 0.25s ease;
+}
+
+.pull-tab-text {
+    font-family: var(--font-display, inherit);
+    font-size: 0.67rem;
+    font-weight: 800;
+    letter-spacing: 1.1px;
+    color: #e6edfa;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+    text-transform: uppercase;
+}
+
+.pull-tab-caret {
+    font-size: 0.55rem;
+    color: #00f0ff;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Filet néon inférieur */
+.pull-tab-neon-glow {
+    width: 50%;
+    height: 1.5px;
+    background: linear-gradient(90deg, transparent, #00f0ff, transparent);
+    filter: drop-shadow(0 0 5px #00f0ff);
+    margin-top: 0;
+    opacity: 0.85;
+    transition: opacity 0.25s ease, width 0.25s ease;
+}
+
+.workshop-pull-tab:hover .pull-tab-neon-glow {
+    width: 70%;
+    opacity: 1;
+}
+
+/* État tiroir ouvert : Reste en bleu cyan d'origine et fusionné au cadre */
+body.workshop-drawer-open .pull-tab-chassis {
+    background: linear-gradient(180deg, #121522 0%, #0d0f17 100%);
+    border-color: rgba(0, 240, 255, 0.7);
+    box-shadow: 
+        0 6px 18px rgba(0, 0, 0, 0.85),
+        inset 0 -1px 3px rgba(0, 0, 0, 0.7),
+        0 0 14px rgba(0, 240, 255, 0.3);
+}
+
+body.workshop-drawer-open .pull-tab-chassis::before {
+    background: #121522;
+}
+
+body.workshop-drawer-open .pull-tab-icon {
+    color: #00f0ff;
+    filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.8));
+}
+
+body.workshop-drawer-open .pull-tab-caret {
+    color: #00f0ff;
+    transform: none;
+}
+
+body.workshop-drawer-open .pull-tab-neon-glow {
+    background: linear-gradient(90deg, transparent, #00f0ff, transparent);
+    filter: drop-shadow(0 0 6px #00f0ff);
+}
+
+body.workshop-drawer-open .workshop-pull-tab:hover .pull-tab-chassis {
+    border-color: #00f0ff;
+    box-shadow: 
+        0 12px 30px rgba(0, 0, 0, 0.9),
+        0 4px 8px rgba(0, 0, 0, 0.95),
+        0 0 25px rgba(0, 240, 255, 0.45);
+}
+
+/* Mode Soirée (Party Lock) : disparition totale et inaccessibilité de la languette */
+body.party-lock-active .workshop-pull-tab,
+body.party-lock-active #workshop-drawer {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* Adaptations thème clair */
+[data-theme="light"] .pull-tab-chassis,
+[data-theme="light"] body.workshop-drawer-open .pull-tab-chassis {
+    background: linear-gradient(180deg, #f1f5f9 0%, #dde4ee 100%);
+    border-color: rgba(0, 168, 204, 0.8);
+    box-shadow: 
+        0 6px 18px rgba(0, 0, 0, 0.15),
+        0 0 12px rgba(0, 168, 204, 0.2);
+}
+
+[data-theme="light"] .pull-tab-chassis::before,
+[data-theme="light"] body.workshop-drawer-open .pull-tab-chassis::before {
+    background: #f1f5f9;
+}
+
+[data-theme="light"] .pull-tab-text {
+    color: #1e293b;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="light"] .pull-tab-icon,
+[data-theme="light"] .pull-tab-caret,
+[data-theme="light"] body.workshop-drawer-open .pull-tab-icon,
+[data-theme="light"] body.workshop-drawer-open .pull-tab-caret {
+    color: #007799;
+}
+
+[data-theme="light"] .pull-tab-neon-glow,
+[data-theme="light"] body.workshop-drawer-open .pull-tab-neon-glow {
+    background: linear-gradient(90deg, transparent, #007799, transparent);
+    filter: drop-shadow(0 0 4px #007799);
+}
+
+
+
+/* --- Section : Boutons Plein Écran & Fermeture de l'En-tête (lignes 8817 à 8910) --- */
+/* ===================================================
+   Bouton Plein Écran Universel dans l'En-tête (F11)
+=================================================== */
+.btn-header-fullscreen,
+.header-actions .floating-fullscreen-btn {
+    position: static !important;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background-color: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: none;
+    z-index: 10;
+    transition: var(--transition);
+    outline: none;
+    flex-shrink: 0;
+}
+
+.btn-header-fullscreen:hover,
+.header-actions .floating-fullscreen-btn:hover {
+    background-color: var(--hover-overlay);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: var(--text-main);
+}
+
+.btn-header-fullscreen:active,
+.header-actions .floating-fullscreen-btn:active {
+    transform: scale(0.96);
+}
+
+.floating-fullscreen-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background-color: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    outline: none;
+    flex-shrink: 0;
+}
+
+/* ===================================================
+   Bouton Quitter Permanent dans l'En-tête (✕)
+=================================================== */
+.btn-header-quit {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background-color: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: none;
+    transition: var(--transition);
+    outline: none;
+    flex-shrink: 0;
+}
+
+.btn-header-quit:hover {
+    background-color: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+}
+
+.btn-header-quit:active {
+    transform: scale(0.96);
+}
+
+[data-theme="light"] .btn-header-quit {
+    background-color: var(--bg-surface-elevated);
+    border-color: var(--border-color);
+    color: var(--text-muted);
+}
+
+[data-theme="light"] .btn-header-quit:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: #dc2626;
+    color: #dc2626;
+    box-shadow: 0 0 12px rgba(220, 38, 38, 0.25);
+}
+
+
+

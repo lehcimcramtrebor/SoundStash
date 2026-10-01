@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0a0a0a" />
+            <stop offset="100%" stop-color="#171717" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff2a4b" />
+            <stop offset="100%" stop-color="#a1a1aa" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Disque vinyle avec sillons brillants et macaron central -->
+            <circle cx="200" cy="200" r="130" fill="#121212" stroke="#262626" stroke-width="4"/>
+            <!-- Sillons concentriques -->
+            <circle cx="200" cy="200" r="115" fill="none" stroke="#222222" stroke-width="1.5"/>
+            <circle cx="200" cy="200" r="100" fill="none" stroke="#2a2a2a" stroke-width="1.5"/>
+            <circle cx="200" cy="200" r="85" fill="none" stroke="#222222" stroke-width="1.5"/>
+            <circle cx="200" cy="200" r="70" fill="none" stroke="#2a2a2a" stroke-width="1.5"/>
+            <!-- Reflet brillant vinyle en cône -->
+            <path d="M200 200 L110 90 A130 130 0 0 1 200 70 Z" fill="rgba(255,255,255,0.06)"/>
+            <path d="M200 200 L290 310 A130 130 0 0 1 200 330 Z" fill="rgba(255,255,255,0.06)"/>
+            <!-- Macaron rouge central -->
+            <circle cx="200" cy="200" r="45" fill="#dc2626" stroke="#f87171" stroke-width="3" filter="url(#glow)"/>
+            <text x="200" y="195" font-family="'Outfit', sans-serif" font-weight="900" font-size="12" fill="#fff" text-anchor="middle" letter-spacing="1">33 RPM</text>
+            <text x="200" y="212" font-family="'Outfit', sans-serif" font-weight="600" font-size="8" fill="#fecaca" text-anchor="middle">STEREO</text>
+            <!-- Trou de broche centrale -->
+            <circle cx="200" cy="200" r="7" fill="#000000"/>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#ff2a4b" stroke-width="1.5" opacity="0.35" />
+</svg>

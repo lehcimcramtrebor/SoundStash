@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0a1910" />
+            <stop offset="100%" stop-color="#163322" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#84cc16" />
+            <stop offset="100%" stop-color="#22c55e" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Console portable type Game Boy -->
+            <rect x="115" y="70" width="170" height="265" rx="16" fill="#c4cad0" stroke="#8a949e" stroke-width="4"/>
+            <path d="M260 335 L285 310" stroke="#8a949e" stroke-width="3"/>
+            <!-- Écran vert matrix rétro -->
+            <rect x="135" y="95" width="130" height="105" rx="10" fill="#6f7972"/>
+            <rect x="155" y="110" width="90" height="75" rx="4" fill="#8bac0f" stroke="#306230" stroke-width="3"/>
+            <!-- Sprite pixel art sur écran -->
+            <rect x="185" y="130" width="10" height="10" fill="#0f380f"/>
+            <rect x="195" y="130" width="10" height="10" fill="#0f380f"/>
+            <rect x="205" y="130" width="10" height="10" fill="#0f380f"/>
+            <rect x="175" y="140" width="50" height="10" fill="#0f380f"/>
+            <rect x="185" y="150" width="30" height="10" fill="#0f380f"/>
+            <!-- D-pad noir -->
+            <rect x="145" y="235" width="40" height="14" fill="#1f2937"/>
+            <rect x="158" y="222" width="14" height="40" fill="#1f2937"/>
+            <!-- Boutons violets B / A inclinés -->
+            <circle cx="230" cy="245" r="11" fill="#9333ea"/>
+            <circle cx="260" cy="235" r="11" fill="#9333ea"/>
+            <text x="230" y="270" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#475569">B</text>
+            <text x="260" y="260" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#475569">A</text>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#84cc16" stroke-width="1.5" opacity="0.35" />
+</svg>

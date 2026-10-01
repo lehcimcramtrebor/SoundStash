@@ -1,0 +1,78 @@
+{
+  "appId": "com.soundstash.app",
+  "productName": "SoundStash",
+  "copyright": "Copyright © 2026 Helmicretro",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "electronDist": "node_modules/electron/dist",
+  "files": [
+    "main.js",
+    "preload.js",
+    "package.json",
+    "build/icon.ico",
+    "build/icon.png"
+  ],
+  "extraResources": [
+    {
+      "from": "python_runtime",
+      "to": "python_runtime",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "backend",
+      "to": "backend",
+      "filter": ["**/*", "!**/__pycache__/**"]
+    },
+    {
+      "from": "frontend",
+      "to": "frontend",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "bin",
+      "to": "bin",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "scripts",
+      "to": "scripts",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "build",
+      "to": "build",
+      "filter": ["icon.ico", "icon.png"]
+    }
+  ],
+  "afterPack": "scripts/afterPack.js",
+  "win": {
+    "signAndEditExecutable": false,
+    "forceCodeSigning": false,
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      },
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "SoundStash",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico"
+  },
+  "portable": {
+    "artifactName": "${productName}-Portable-${version}.${ext}"
+  }
+}

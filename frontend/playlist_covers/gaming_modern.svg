@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#070814" />
+            <stop offset="100%" stop-color="#13162f" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Manette moderne ergonomique avec lueur cyber -->
+            <path d="M120 130 C90 130 65 170 75 250 C80 280 110 290 130 260 L155 220 L245 220 L270 260 C290 290 320 280 325 250 C335 170 310 130 280 130 Z" fill="#121526" stroke="#00f0ff" stroke-width="3" filter="url(#glow)"/>
+            <!-- Mini-stick gauche -->
+            <circle cx="135" cy="180" r="18" fill="#1e223d" stroke="#00f0ff" stroke-width="2"/>
+            <circle cx="135" cy="180" r="8" fill="#00f0ff"/>
+            <!-- D-pad moderne -->
+            <path d="M150 205 h8 v-8 h8 v8 h8 v8 h-8 v8 h-8 v-8 h-8 z" fill="#2d3356"/>
+            <!-- Mini-stick droit -->
+            <circle cx="225" cy="205" r="18" fill="#1e223d" stroke="#ff007f" stroke-width="2"/>
+            <circle cx="225" cy="205" r="8" fill="#ff007f"/>
+            <!-- Boutons d'action X Y A B -->
+            <circle cx="265" cy="165" r="7" fill="#3b82f6"/>
+            <circle cx="280" cy="180" r="7" fill="#ef4444"/>
+            <circle cx="250" cy="180" r="7" fill="#eab308"/>
+            <circle cx="265" cy="195" r="7" fill="#10b981"/>
+            <!-- Pavé tactile central avec néon -->
+            <rect x="175" y="145" width="50" height="30" rx="6" fill="#1a1e36" stroke="#7928ca" stroke-width="2"/>
+            <line x1="185" y1="145" x2="215" y2="145" stroke="#00f0ff" stroke-width="3" filter="url(#glow)"/>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#00f0ff" stroke-width="1.5" opacity="0.35" />
+</svg>

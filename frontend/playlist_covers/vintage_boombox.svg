@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0f172a" />
+            <stop offset="100%" stop-color="#1e293b" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#06b6d4" />
+            <stop offset="100%" stop-color="#f43f5e" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Boombox stéréo avec deux gros haut-parleurs -->
+            <!-- Poignée supérieure -->
+            <path d="M130 120 L130 85 L270 85 L270 120" fill="none" stroke="#64748b" stroke-width="10" stroke-linecap="round"/>
+            <!-- Corps du poste -->
+            <rect x="60" y="120" width="280" height="170" rx="14" fill="#0f172a" stroke="#06b6d4" stroke-width="4" filter="url(#glow)"/>
+            <!-- Haut-parleur gauche -->
+            <circle cx="125" cy="210" r="42" fill="#020617" stroke="#f43f5e" stroke-width="3" filter="url(#glow)"/>
+            <circle cx="125" cy="210" r="22" fill="#1e293b" stroke="#f43f5e" stroke-width="2"/>
+            <circle cx="125" cy="210" r="8" fill="#f43f5e"/>
+            <!-- Haut-parleur droit -->
+            <circle cx="275" cy="210" r="42" fill="#020617" stroke="#f43f5e" stroke-width="3" filter="url(#glow)"/>
+            <circle cx="275" cy="210" r="22" fill="#1e293b" stroke="#f43f5e" stroke-width="2"/>
+            <circle cx="275" cy="210" r="8" fill="#f43f5e"/>
+            <!-- Compartiment cassette central -->
+            <rect x="175" y="180" width="50" height="60" rx="4" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+            <!-- VU-mètre / diodes LED -->
+            <rect x="175" y="145" width="8" height="15" fill="#10b981"/>
+            <rect x="187" y="145" width="8" height="15" fill="#10b981"/>
+            <rect x="199" y="145" width="8" height="15" fill="#eab308"/>
+            <rect x="211" y="145" width="8" height="15" fill="#ef4444"/>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#06b6d4" stroke-width="1.5" opacity="0.35" />
+</svg>

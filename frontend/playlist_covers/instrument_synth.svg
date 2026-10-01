@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#070b1a" />
+            <stop offset="100%" stop-color="#111f3d" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="100%" stop-color="#f43f5e" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Synthétiseur analogique avec clavier et potentiomètres -->
+            <polygon points="70,180 330,180 350,290 50,290" fill="#161e36" stroke="#00f0ff" stroke-width="3" filter="url(#glow)"/>
+            <!-- Panneau commandes supérieur -->
+            <polygon points="75,185 325,185 320,225 80,225" fill="#0b1021"/>
+            <!-- Boutons / Potards colorés -->
+            <circle cx="110" cy="205" r="7" fill="#f43f5e" filter="url(#glow)"/>
+            <circle cx="135" cy="205" r="7" fill="#f43f5e"/>
+            <circle cx="170" cy="205" r="6" fill="#00f0ff"/>
+            <circle cx="195" cy="205" r="6" fill="#00f0ff"/>
+            <circle cx="220" cy="205" r="6" fill="#00f0ff"/>
+            <circle cx="260" cy="205" r="8" fill="#eab308"/>
+            <circle cx="290" cy="205" r="8" fill="#10b981"/>
+            <!-- Clavier touches blanches -->
+            <g fill="#f8fafc" stroke="#334155" stroke-width="1.5">
+                <rect x="75" y="230" width="16" height="55" rx="2"/>
+                <rect x="91" y="230" width="16" height="55" rx="2"/>
+                <rect x="107" y="230" width="16" height="55" rx="2"/>
+                <rect x="123" y="230" width="16" height="55" rx="2"/>
+                <rect x="139" y="230" width="16" height="55" rx="2"/>
+                <rect x="155" y="230" width="16" height="55" rx="2"/>
+                <rect x="171" y="230" width="16" height="55" rx="2"/>
+                <rect x="187" y="230" width="16" height="55" rx="2"/>
+                <rect x="203" y="230" width="16" height="55" rx="2"/>
+                <rect x="219" y="230" width="16" height="55" rx="2"/>
+                <rect x="235" y="230" width="16" height="55" rx="2"/>
+                <rect x="251" y="230" width="16" height="55" rx="2"/>
+                <rect x="267" y="230" width="16" height="55" rx="2"/>
+                <rect x="283" y="230" width="16" height="55" rx="2"/>
+                <rect x="299" y="230" width="16" height="55" rx="2"/>
+                <rect x="315" y="230" width="16" height="55" rx="2"/>
+            </g>
+            <!-- Touches noires -->
+            <g fill="#0f172a">
+                <rect x="86" y="230" width="10" height="34" rx="1"/>
+                <rect x="102" y="230" width="10" height="34" rx="1"/>
+                <rect x="134" y="230" width="10" height="34" rx="1"/>
+                <rect x="150" y="230" width="10" height="34" rx="1"/>
+                <rect x="166" y="230" width="10" height="34" rx="1"/>
+                <rect x="198" y="230" width="10" height="34" rx="1"/>
+                <rect x="214" y="230" width="10" height="34" rx="1"/>
+                <rect x="246" y="230" width="10" height="34" rx="1"/>
+                <rect x="262" y="230" width="10" height="34" rx="1"/>
+                <rect x="278" y="230" width="10" height="34" rx="1"/>
+                <rect x="310" y="230" width="10" height="34" rx="1"/>
+            </g>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#00f0ff" stroke-width="1.5" opacity="0.35" />
+</svg>

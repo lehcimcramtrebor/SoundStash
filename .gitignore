@@ -1,0 +1,61 @@
+# Dépendances Node
+node_modules/
+
+# Sortie de build & installateurs finaux
+dist/
+
+# Outils externes autonomes et runtime Python lourd
+# (Téléchargés via scripts/bootstrap_dependencies.py et requirements.txt)
+bin/*
+!bin/.gitkeep
+python_runtime/
+
+# Logs et rapports d'exécution
+logs/
+*.log
+
+# Sauvegardes et fichiers temporaires
+*.old
+*.bak
+*.tmp
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Téléchargements temporaires et médias volatils
+temp_downloads/
+cover.jpg
+t.jpg
+
+# Fichiers de cache et brouillons locaux
+.library_cache.json
+.sync_fingerprint.json
+yt_dlp_update_state.json
+.editor_draft.json
+.reconstitute_pending.json
+.migration_complete.json
+
+# Configuration locale personnelle (chemins absolus)
+config.json
+playback_stats.json
+/playlists/
+.cache/
+
+# Scripts de test, captures d'audit et scratch
+scratch/
+audit_screenshots/
+
+# Fichiers système
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+
+# Fichiers IDE
+.vscode/
+.idea/
+*.swp
+*.swo

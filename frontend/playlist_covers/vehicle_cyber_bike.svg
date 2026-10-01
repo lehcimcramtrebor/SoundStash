@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#060b17" />
+            <stop offset="100%" stop-color="#0f203d" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="100%" stop-color="#3b82f6" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Moto futuriste néon de profil -->
+            <!-- Roue arrière lumineuse -->
+            <circle cx="120" cy="250" r="45" fill="none" stroke="#00f0ff" stroke-width="8" filter="url(#glow)"/>
+            <circle cx="120" cy="250" r="25" fill="#0a1224"/>
+            <!-- Roue avant lumineuse -->
+            <circle cx="280" cy="250" r="45" fill="none" stroke="#00f0ff" stroke-width="8" filter="url(#glow)"/>
+            <circle cx="280" cy="250" r="25" fill="#0a1224"/>
+            <!-- Cadre caréné profilé néon -->
+            <path d="M120 250 L180 200 L240 185 L280 250 L230 250 L190 230 L150 250 Z" fill="#0f1933" stroke="#3b82f6" stroke-width="4"/>
+            <path d="M170 195 L250 185" stroke="#ff0055" stroke-width="4" filter="url(#glow)"/>
+            <!-- Phare avant laser -->
+            <polygon points="280,195 360,180 360,240 280,210" fill="url(#beam_cyan)" opacity="0.4"/>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#00f0ff" stroke-width="1.5" opacity="0.35" />
+</svg>

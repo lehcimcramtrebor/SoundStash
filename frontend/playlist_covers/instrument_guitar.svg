@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#13051e" />
+            <stop offset="100%" stop-color="#2d0b45" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#00f0ff" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Guitare électrique de profil diagonal -->
+            <g transform="rotate(-32 200 200)">
+                <!-- Corps de guitare type Strat / Superstrat -->
+                <path d="M150 160 C120 190 120 260 170 290 C220 310 260 270 250 220 C240 180 200 170 180 180 C170 170 170 140 150 160 Z" fill="#200b38" stroke="#ff2a5f" stroke-width="4" filter="url(#glow)"/>
+                <!-- Pickguard blanc translucide -->
+                <path d="M165 195 C145 220 155 260 185 270 C210 275 230 250 225 220 Z" fill="rgba(255,255,255,0.12)" stroke="#00f0ff" stroke-width="1.5"/>
+                <!-- Micros double bobinage -->
+                <rect x="180" y="210" width="30" height="10" rx="3" fill="#0b0416" stroke="#ff2a5f" stroke-width="1.5"/>
+                <rect x="185" y="230" width="30" height="10" rx="3" fill="#0b0416" stroke="#ff2a5f" stroke-width="1.5"/>
+                <!-- Manche et frettes -->
+                <rect x="162" y="30" width="14" height="140" fill="#3b1d5a" stroke="#00f0ff" stroke-width="2"/>
+                <line x1="162" y1="50" x2="176" y2="50" stroke="#ff2a5f" stroke-width="1"/>
+                <line x1="162" y1="80" x2="176" y2="80" stroke="#ff2a5f" stroke-width="1"/>
+                <line x1="162" y1="110" x2="176" y2="110" stroke="#ff2a5f" stroke-width="1"/>
+                <line x1="162" y1="140" x2="176" y2="140" stroke="#ff2a5f" stroke-width="1"/>
+                <!-- Tête inversée avec mécaniques -->
+                <polygon points="160,30 176,30 182,5 155,10" fill="#200b38" stroke="#ff2a5f" stroke-width="2"/>
+            </g>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#ff2a5f" stroke-width="1.5" opacity="0.35" />
+</svg>

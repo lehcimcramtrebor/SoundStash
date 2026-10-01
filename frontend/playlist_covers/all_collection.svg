@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <!-- Gradients de fond cosmique sombre -->
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#060610" />
+            <stop offset="50%" stop-color="#120a26" />
+            <stop offset="100%" stop-color="#1f0d3d" />
+        </linearGradient>
+
+        <!-- Gradient Doré / Ambre pour le Master Record -->
+        <linearGradient id="gold_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fde047" />
+            <stop offset="45%" stop-color="#eab308" />
+            <stop offset="80%" stop-color="#ca8a04" />
+            <stop offset="100%" stop-color="#854d0e" />
+        </linearGradient>
+
+        <!-- Gradient Néon Synthwave (Cyan vers Magenta) -->
+        <linearGradient id="neon_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="50%" stop-color="#8b5cf6" />
+            <stop offset="100%" stop-color="#ec4899" />
+        </linearGradient>
+
+        <linearGradient id="disc_shimmer" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.15" />
+            <stop offset="50%" stop-color="#ffffff" stop-opacity="0.0" />
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0.25" />
+        </linearGradient>
+
+        <!-- Filtres de lueur néon haute intensité -->
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+        <filter id="glow_strong" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="12" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+
+    <!-- Fond d'espace profond -->
+    <rect width="400" height="400" rx="16" fill="url(#bg)" />
+
+    <!-- Lueur ambiante néon en arrière-plan -->
+    <circle cx="200" cy="180" r="140" fill="#7928ca" opacity="0.25" filter="url(#glow_strong)" />
+    <circle cx="200" cy="180" r="90" fill="#00f0ff" opacity="0.18" filter="url(#glow_strong)" />
+
+    <!-- Ondes sonores orbitales concentriques -->
+    <ellipse cx="200" cy="180" rx="165" ry="50" fill="none" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="4 8" opacity="0.4" />
+    <ellipse cx="200" cy="180" rx="180" ry="55" fill="none" stroke="#00f0ff" stroke-width="1" stroke-dasharray="2 6" opacity="0.3" />
+
+    <!-- Disque vinyle secondaire en retrait (effet d'archive / collection empilée) -->
+    <g opacity="0.35" transform="translate(-25, -25)">
+        <circle cx="200" cy="180" r="110" fill="#0d0d18" stroke="#33334d" stroke-width="3" />
+        <circle cx="200" cy="180" r="90" fill="none" stroke="#1f1f33" stroke-width="1.5" />
+        <circle cx="200" cy="180" r="70" fill="none" stroke="#1f1f33" stroke-width="1.5" />
+    </g>
+
+    <!-- Master Golden Disc principal (Le trésor de la collection) -->
+    <g id="master-disc">
+        <!-- Base du disque noir/doré avec bordure rayonnante -->
+        <circle cx="200" cy="180" r="125" fill="#0c0914" stroke="url(#gold_grad)" stroke-width="3.5" filter="url(#glow)" />
+        
+        <!-- Sillons concentriques vinyle haute précision -->
+        <circle cx="200" cy="180" r="115" fill="none" stroke="#251a3a" stroke-width="1.5" opacity="0.8" />
+        <circle cx="200" cy="180" r="105" fill="none" stroke="#1a1228" stroke-width="1.2" opacity="0.7" />
+        <circle cx="200" cy="180" r="95" fill="none" stroke="#251a3a" stroke-width="1.5" opacity="0.8" />
+        <circle cx="200" cy="180" r="85" fill="none" stroke="#1a1228" stroke-width="1.2" opacity="0.7" />
+        <circle cx="200" cy="180" r="75" fill="none" stroke="#251a3a" stroke-width="1.5" opacity="0.8" />
+        <circle cx="200" cy="180" r="65" fill="none" stroke="#1a1228" stroke-width="1.2" opacity="0.7" />
+
+        <!-- Reflets irisés du microsillon en sablier / cône de lumière -->
+        <path d="M200 180 L115 75 A125 125 0 0 1 200 55 Z" fill="url(#disc_shimmer)" />
+        <path d="M200 180 L285 285 A125 125 0 0 1 200 305 Z" fill="url(#disc_shimmer)" />
+        <path d="M200 180 L285 75 A125 125 0 0 0 200 55 Z" fill="rgba(236,72,153,0.12)" />
+        <path d="M200 180 L115 285 A125 125 0 0 0 200 305 Z" fill="rgba(0,240,255,0.12)" />
+
+        <!-- Macaron central en or brossé / holographique -->
+        <circle cx="200" cy="180" r="48" fill="url(#gold_grad)" stroke="#fef08a" stroke-width="2" filter="url(#glow)" />
+        <circle cx="200" cy="180" r="43" fill="#180e2b" stroke="#ca8a04" stroke-width="1.2" />
+
+        <!-- Logo / Emblème du Macaron Central : Icône audio-vault -->
+        <path d="M188 170 C188 165 200 162 200 162 C200 162 212 165 212 170 L212 186 C212 192 200 196 200 196 C200 196 188 192 188 186 Z" fill="none" stroke="#fde047" stroke-width="2" filter="url(#glow)" />
+        <circle cx="200" cy="178" r="5" fill="#fde047" />
+
+        <!-- Trou central de broche -->
+        <circle cx="200" cy="180" r="8" fill="#060610" stroke="#ca8a04" stroke-width="1.5" />
+    </g>
+
+    <!-- Étoiles et scintillements d'archive stellaire -->
+    <circle cx="70" cy="80" r="2.5" fill="#00f0ff" filter="url(#glow)" />
+    <circle cx="330" cy="90" r="3" fill="#fde047" filter="url(#glow)" />
+    <circle cx="60" cy="270" r="2" fill="#ec4899" filter="url(#glow)" />
+    <circle cx="340" cy="260" r="2.5" fill="#00f0ff" filter="url(#glow)" />
+    <polygon points="320,60 323,68 331,71 323,74 320,82 317,74 309,71 317,68" fill="#ffffff" opacity="0.9" filter="url(#glow)" />
+    <polygon points="80,290 82,295 87,297 82,299 80,304 78,299 73,297 78,295" fill="#00f0ff" opacity="0.8" filter="url(#glow)" />
+
+    <!-- Bandeau typographique élégant en bas -->
+    <g transform="translate(0, 310)">
+        <!-- Ligne séparatrice néon -->
+        <line x1="80" y1="12" x2="320" y2="12" stroke="url(#neon_accent)" stroke-width="2" stroke-linecap="round" opacity="0.8" filter="url(#glow)" />
+        
+        <!-- Titre de l'asset -->
+        <text x="200" y="36" font-family="-apple-system, BlinkMacSystemFont, 'Outfit', 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="15" fill="#ffffff" text-anchor="middle" letter-spacing="4">
+            TOUTE LA COLLECTION
+        </text>
+        
+        <!-- Sous-titre hi-fi -->
+        <text x="200" y="54" font-family="-apple-system, BlinkMacSystemFont, 'Outfit', 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="9" fill="#00f0ff" text-anchor="middle" letter-spacing="3" opacity="0.9">
+            ARCHIVE INTEGRALE • MASTER AUDIO
+        </text>
+    </g>
+
+    <!-- Cadre subtil intérieur avec coins arrondis -->
+    <rect x="2" y="2" width="396" height="396" rx="15" fill="none" stroke="url(#neon_accent)" stroke-width="1.5" opacity="0.4" />
+</svg>

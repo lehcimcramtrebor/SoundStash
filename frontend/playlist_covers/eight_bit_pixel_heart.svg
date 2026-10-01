@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0f0514" />
+            <stop offset="100%" stop-color="#260d33" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#fbbf24" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Cœur Pixel Art géant avec reflet -->
+            <g transform="translate(110, 110) scale(1.8)" fill="#ff2a5f" filter="url(#glow)">
+                <rect x="10" y="10" width="10" height="10"/><rect x="20" y="10" width="10" height="10"/>
+                <rect x="50" y="10" width="10" height="10"/><rect x="60" y="10" width="10" height="10"/>
+                <rect x="0" y="20" width="40" height="10"/><rect x="40" y="20" width="40" height="10"/>
+                <rect x="0" y="30" width="80" height="10"/>
+                <rect x="0" y="40" width="80" height="10"/>
+                <rect x="10" y="50" width="60" height="10"/>
+                <rect x="20" y="60" width="40" height="10"/>
+                <rect x="30" y="70" width="20" height="10"/>
+                <!-- Reflet blanc pixel -->
+                <rect x="10" y="20" width="10" height="10" fill="#ffffff"/>
+                <rect x="20" y="20" width="10" height="10" fill="#ffffff"/>
+                <rect x="10" y="30" width="10" height="10" fill="#ffffff"/>
+            </g>
+            <!-- Étoiles pixel art flottantes -->
+            <g fill="#fbbf24">
+                <rect x="80" y="90" width="8" height="8"/><rect x="88" y="82" width="8" height="8"/><rect x="88" y="98" width="8" height="8"/><rect x="96" y="90" width="8" height="8"/>
+                <rect x="300" y="140" width="6" height="6"/><rect x="306" y="134" width="6" height="6"/><rect x="306" y="146" width="6" height="6"/><rect x="312" y="140" width="6" height="6"/>
+                <rect x="100" y="280" width="6" height="6"/><rect x="106" y="274" width="6" height="6"/><rect x="106" y="286" width="6" height="6"/><rect x="112" y="280" width="6" height="6"/>
+            </g>
+            <text x="200" y="330" font-family="'JetBrains Mono', monospace" font-size="16" font-weight="800" fill="#00f0ff" text-anchor="middle" letter-spacing="4">LEVEL UP !</text>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#ff2a5f" stroke-width="1.5" opacity="0.35" />
+</svg>

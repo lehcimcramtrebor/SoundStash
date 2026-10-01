@@ -1,0 +1,753 @@
+/* ==========================================================================
+   SOUNDSTASH v3.0.0 — MODULE CSS : AMBIENT.CSS
+   ========================================================================== */
+
+/* --- Section : Mode Ambiance plein écran, Synthwave & actions (lignes 8984 à 9701) --- */
+/* ========================================================= */
+/* MODE AMBIANCE PLEIN ÉCRAN (SYNTHWAVE PARTY / LOUNGE MODE)  */
+/* ========================================================= */
+
+.btn-ambient-action {
+    background: linear-gradient(135deg, rgba(255, 42, 125, 0.22) 0%, rgba(0, 240, 255, 0.16) 100%);
+    border: 1px solid rgba(255, 110, 199, 0.45);
+    color: #ff6ec7;
+    box-shadow: 0 4px 12px rgba(255, 42, 125, 0.2);
+    transition: all 0.25s ease;
+}
+
+.btn-ambient-action:hover {
+    background: linear-gradient(135deg, rgba(255, 42, 125, 0.35) 0%, rgba(0, 240, 255, 0.28) 100%);
+    border-color: #00f0ff;
+    color: #fff;
+    box-shadow: 0 0 18px rgba(0, 240, 255, 0.45), 0 0 28px rgba(255, 42, 125, 0.35);
+    transform: translateY(-1px);
+}
+
+[data-theme="light"] .btn-ambient-action {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.18) 0%, rgba(14, 165, 233, 0.14) 100%);
+    border: 1px solid rgba(236, 72, 153, 0.45);
+    color: #db2777;
+    box-shadow: 0 2px 10px rgba(236, 72, 153, 0.18);
+}
+
+[data-theme="light"] .btn-ambient-action:hover {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.28) 0%, rgba(14, 165, 233, 0.22) 100%);
+    border-color: #0284c7;
+    color: #9d174d;
+    box-shadow: 0 4px 16px rgba(236, 72, 153, 0.3);
+}
+
+#mini-player-ambient-btn:hover {
+    color: #ff6ec7;
+    border-color: rgba(255, 110, 199, 0.5);
+    box-shadow: 0 0 10px rgba(255, 110, 199, 0.3);
+}
+
+body.ambient-mode-active {
+    overflow: hidden !important;
+}
+
+body.ambient-mode-active .app-container {
+    display: none !important;
+}
+
+body.ambient-mode-active .persistent-player-bar {
+    display: none !important;
+}
+
+body.ambient-mode-active .floating-fullscreen-btn,
+body.video-playback-active .floating-fullscreen-btn,
+.video-dialog.video-inwindow-fullscreen ~ .floating-fullscreen-btn,
+.video-theater-backdrop.active ~ .floating-fullscreen-btn {
+    display: none !important;
+}
+
+/* Overlay plein écran */
+.ambient-mode-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+    padding: 24px 32px 30px 32px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+/* Barre haute discrète */
+.ambient-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: auto;
+    transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Badge & Sélecteur Interactif de Thème */
+.ambient-badge,
+.ambient-theme-pill {
+    background: rgba(15, 12, 28, 0.76);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 110, 199, 0.35);
+    border-radius: 22px;
+    padding: 7px 16px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #ff6ec7;
+    text-shadow: 0 0 10px rgba(255, 110, 199, 0.5);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    user-select: none;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+    font-family: inherit;
+}
+
+.ambient-theme-pill:hover {
+    background: rgba(26, 18, 48, 0.9);
+    border-color: #00f0ff;
+    color: #fff;
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.4), 0 4px 18px rgba(0, 0, 0, 0.5);
+    transform: translateY(-2px);
+}
+
+.ambient-theme-pill:active {
+    transform: translateY(0) scale(0.97);
+}
+
+.ambient-theme-icon {
+    font-size: 1.05rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+}
+
+.ambient-theme-name {
+    letter-spacing: 0.8px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.ambient-theme-switch-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.72rem;
+    font-weight: 500;
+    transition: color 0.2s ease;
+}
+
+.ambient-theme-pill:hover .ambient-theme-switch-hint {
+    color: #00f0ff;
+}
+
+.ambient-theme-switch-hint svg {
+    transition: transform 0.4s ease;
+}
+
+.ambient-theme-pill:hover .ambient-theme-switch-hint svg {
+    transform: rotate(180deg);
+}
+
+[data-theme="light"] .ambient-badge,
+[data-theme="light"] .ambient-theme-pill {
+    background: rgba(255, 255, 255, 0.85);
+    border-color: rgba(236, 72, 153, 0.45);
+    color: #db2777;
+    text-shadow: none;
+    box-shadow: 0 4px 16px rgba(217, 70, 239, 0.18);
+}
+
+[data-theme="light"] .ambient-theme-pill:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: #0284c7;
+    color: #0284c7;
+    box-shadow: 0 0 18px rgba(2, 132, 199, 0.35);
+}
+
+[data-theme="light"] .ambient-theme-pill .ambient-theme-switch-hint {
+    border-left-color: rgba(0, 0, 0, 0.12);
+    color: #64748b;
+}
+
+[data-theme="light"] .ambient-theme-pill:hover .ambient-theme-switch-hint {
+    color: #0284c7;
+}
+
+#ambient-theme-dock-btn,
+#ambient-theme-mode-btn {
+    position: relative;
+    transition: transform var(--transition-fast), color var(--transition-fast), text-shadow var(--transition-fast);
+}
+
+#ambient-theme-dock-btn:hover {
+    color: #00f0ff !important;
+    text-shadow: 0 0 12px #00f0ff;
+    transform: scale(1.15) rotate(15deg);
+}
+
+#ambient-theme-mode-btn:hover {
+    color: #facc15 !important;
+    text-shadow: 0 0 12px rgba(250, 204, 21, 0.6);
+    transform: scale(1.15) rotate(-15deg);
+}
+
+[data-theme="light"] #ambient-theme-mode-btn:hover {
+    color: #0284c7 !important;
+    text-shadow: 0 0 12px rgba(2, 132, 199, 0.6);
+}
+
+.ambient-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #00f0ff;
+    box-shadow: 0 0 10px #00f0ff;
+    animation: ambientDotPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes ambientDotPulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; box-shadow: 0 0 8px #00f0ff; }
+    50% { transform: scale(1.35); opacity: 1; box-shadow: 0 0 16px #00f0ff, 0 0 24px #ff2a7a; }
+}
+
+.ambient-exit-btn {
+    background: rgba(23, 18, 41, 0.78);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 42, 100, 0.45);
+    color: #fff;
+    padding: 8px 20px;
+    border-radius: 24px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    user-select: none;
+}
+
+.ambient-exit-btn:hover {
+    background: rgba(255, 42, 100, 0.3);
+    border-color: #ff2a7a;
+    color: #fff;
+    box-shadow: 0 0 22px rgba(255, 42, 100, 0.6);
+    transform: translateY(-2px);
+}
+
+[data-theme="light"] .ambient-exit-btn {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(244, 63, 94, 0.45);
+    color: #be123c;
+    box-shadow: 0 4px 16px rgba(244, 63, 94, 0.18);
+}
+
+[data-theme="light"] .ambient-exit-btn:hover {
+    background: rgba(244, 63, 94, 0.15);
+    border-color: #f43f5e;
+    color: #9f1239;
+    box-shadow: 0 0 18px rgba(244, 63, 94, 0.35);
+}
+
+.ambient-kbd {
+    background: rgba(255, 255, 255, 0.14);
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-family: var(--font-mono, monospace);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+[data-theme="light"] .ambient-kbd {
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+.ambient-center-spacer {
+    flex: 1;
+}
+
+/* Dock Flottant de Contrôle Inférieur */
+.ambient-dock-container {
+    display: flex;
+    justify-content: center;
+    pointer-events: auto;
+    width: 100%;
+    transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ambient-controls-bar {
+    display: grid;
+    grid-template-columns: 290px 1fr 240px;
+    align-items: center;
+    gap: 24px;
+    width: min(1080px, 94vw);
+    background: rgba(13, 10, 24, 0.78);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 110, 199, 0.35);
+    border-radius: 30px;
+    padding: 14px 28px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 35px rgba(255, 42, 125, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="light"] .ambient-controls-bar {
+    background: rgba(255, 248, 252, 0.85);
+    border-color: rgba(236, 72, 153, 0.45);
+    box-shadow: 0 20px 45px rgba(217, 70, 239, 0.25), 0 0 30px rgba(236, 72, 153, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Infos Piste Ambiance */
+.ambient-track-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.ambient-cover-wrapper {
+    position: relative;
+    width: 58px;
+    height: 58px;
+    flex-shrink: 0;
+}
+
+.ambient-cover-thumb {
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+    object-fit: cover;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ambient-cover-glow {
+    position: absolute;
+    inset: -3px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255, 42, 125, 0.3), rgba(0, 240, 255, 0.3));
+    z-index: -1;
+    filter: blur(6px);
+    opacity: 0.6;
+}
+
+.ambient-text-group {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.ambient-track-title {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 0 10px rgba(255, 110, 199, 0.4);
+}
+
+[data-theme="light"] .ambient-track-title {
+    color: #1e1b4b;
+    text-shadow: none;
+}
+
+.ambient-track-sub {
+    font-size: 0.84rem;
+    color: #00f0ff;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 0 8px rgba(0, 240, 255, 0.35);
+}
+
+[data-theme="light"] .ambient-track-sub {
+    color: #d946ef;
+    text-shadow: none;
+}
+
+/* Centre : Transport & Scrubber */
+.ambient-playback-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.ambient-transport-btns {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.ambient-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.82);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.ambient-btn svg {
+    pointer-events: none;
+}
+
+.ambient-btn:hover {
+    color: #ff6ec7;
+    transform: scale(1.1);
+    text-shadow: 0 0 10px rgba(255, 110, 199, 0.6);
+}
+
+[data-theme="light"] .ambient-btn {
+    color: #475569;
+}
+
+[data-theme="light"] .ambient-btn:hover {
+    color: #ec4899;
+}
+
+.ambient-btn-subtle {
+    opacity: 0.6;
+}
+
+.ambient-btn-subtle.active {
+    opacity: 1;
+    color: #00f0ff;
+    text-shadow: 0 0 10px #00f0ff;
+}
+
+.ambient-play-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff2a7a 0%, #a855f7 50%, #00f0ff 100%);
+    color: #fff !important;
+    box-shadow: 0 0 20px rgba(255, 42, 122, 0.5), 0 0 30px rgba(0, 240, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.ambient-play-btn:hover {
+    transform: scale(1.12);
+    box-shadow: 0 0 28px rgba(255, 42, 122, 0.8), 0 0 40px rgba(0, 240, 255, 0.5);
+}
+
+/* Scrubber Ambiance */
+.ambient-scrubber-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.ambient-time {
+    font-size: 0.78rem;
+    font-family: var(--font-mono, monospace);
+    color: rgba(255, 255, 255, 0.7);
+    min-width: 36px;
+    text-align: center;
+}
+
+[data-theme="light"] .ambient-time {
+    color: #64748b;
+}
+
+.ambient-slider-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.ambient-seek-bar {
+    width: 100%;
+    height: 5px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    transition: height 0.2s ease;
+}
+
+.ambient-seek-bar:hover {
+    height: 7px;
+}
+
+.ambient-seek-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #00f0ff;
+    box-shadow: 0 0 10px #00f0ff, 0 0 16px #ff2a7a;
+    cursor: pointer;
+    border: 2px solid #fff;
+    transition: transform 0.15s ease;
+}
+
+.ambient-seek-bar:hover::-webkit-slider-thumb {
+    transform: scale(1.25);
+}
+
+/* Droite : Volume & Actions */
+.ambient-actions-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.ambient-volume-slider {
+    width: 80px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+[data-theme="light"] .ambient-volume-slider {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.ambient-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #ff6ec7;
+    box-shadow: 0 0 8px #ff6ec7;
+    cursor: pointer;
+}
+
+/* Idle Mode (Disparition de tous les contrôles après inactivité de la souris) */
+body.ambient-mode-active.ambient-idle {
+    cursor: none !important;
+}
+
+body.ambient-mode-active.ambient-idle .ambient-top-bar {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(-24px);
+}
+
+body.ambient-mode-active.ambient-idle:not(.ambient-dock-pinned) .ambient-dock-container {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(28px);
+}
+
+body.ambient-mode-active.ambient-dock-pinned .ambient-dock-container {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateY(0) !important;
+}
+
+/* Bouton Cadenas Mode Ambiance (Maintien du Centre de Commande affiché) */
+.ambient-lock-btn {
+    opacity: 0.65;
+    transition: all 0.2s ease;
+}
+.ambient-lock-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+.ambient-lock-btn.locked {
+    opacity: 1;
+    color: #00f0ff !important;
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+}
+[data-theme="light"] .ambient-lock-btn.locked {
+    color: #0284c7 !important;
+    text-shadow: none;
+}
+
+@media (max-width: 880px) {
+    .ambient-controls-bar {
+        grid-template-columns: 1fr;
+        gap: 14px;
+        padding: 14px 18px;
+    }
+    .ambient-actions-right {
+        justify-content: center;
+    }
+    .ambient-track-info {
+        justify-content: center;
+        text-align: center;
+    }
+}
+
+/* ==========================================================================
+   Notice d'Auto-Organisation Permanente de la Collection (Tag-First Truth)
+   ========================================================================== */
+.library-auto-sync-notice {
+    margin-top: 12px;
+    background: rgba(26, 28, 42, 0.9);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-left: 4px solid var(--warning, #f59e0b);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    transition: var(--transition);
+}
+
+[data-theme="light"] .library-auto-sync-notice {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(217, 119, 6, 0.35);
+    border-left-color: #d97706;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.sync-notice-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.sync-notice-icon {
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.sync-notice-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sync-notice-title {
+    font-weight: 700;
+    color: var(--warning, #f59e0b);
+    font-size: 0.92rem;
+}
+
+[data-theme="light"] .sync-notice-title {
+    color: #b45309;
+}
+
+.badge-sync-status {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--warning, #f59e0b);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+}
+
+[data-theme="light"] .badge-sync-status {
+    background: rgba(217, 119, 6, 0.15);
+    color: #92400e;
+    border-color: rgba(217, 119, 6, 0.3);
+}
+
+.badge-sync-status.active {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.4);
+}
+
+[data-theme="light"] .badge-sync-status.active {
+    background: rgba(16, 185, 129, 0.15);
+    color: #047857;
+    border-color: rgba(16, 185, 129, 0.35);
+}
+
+.sync-notice-desc {
+    margin: 0 0 8px 0;
+    color: var(--text-main, #f1f5f9);
+    font-size: 0.84rem;
+}
+
+[data-theme="light"] .sync-notice-desc {
+    color: #334155;
+}
+
+.sync-notice-list {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-muted, #94a3b8);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+[data-theme="light"] .sync-notice-list {
+    color: #475569;
+}
+
+.sync-notice-list code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 2px 5px;
+    border-radius: 4px;
+    color: var(--accent, #89b4fa);
+}
+
+[data-theme="light"] .sync-notice-list code {
+    background: rgba(0, 0, 0, 0.06);
+    color: #1d4ed8;
+}
+
+
+
+/* --- Section : Optimisation GPU & pause des animations (lignes 12483 à 12507) --- */
+/* =========================================================
+   PHASE 122 — Optimisation GPU : Suspension animations quand cachée
+   Déclenché par body.app-hidden (Page Visibility API + IPC Electron)
+   ========================================================= */
+
+/* Pause de toutes les animations CSS quand la fenêtre est cachée/minimisée */
+body.app-hidden *,
+body.app-hidden *::before,
+body.app-hidden *::after {
+    animation-play-state: paused !important;
+    transition-duration: 0ms !important;
+}
+
+/* Exception : le canvas synthwave est géré via RAF (cancelAnimationFrame) */
+body.app-hidden #synthwave-canvas {
+    animation-play-state: paused !important;
+}
+
+/* Optimisation : désactiver will-change quand caché pour libérer les couches GPU */
+body.app-hidden .player-persistent-bar,
+body.app-hidden #ambient-mode-overlay,
+body.app-hidden .workshop-drawer {
+    will-change: auto !important;
+}
+
+
+

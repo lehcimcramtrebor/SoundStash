@@ -1,0 +1,6 @@
+# Enforce CRLF on all Windows batch files so cmd.exe never suffers from label-offset drift
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Default normalization for text files
+* text=auto

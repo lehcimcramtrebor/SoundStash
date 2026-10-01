@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0a0418" />
+            <stop offset="100%" stop-color="#200938" />
+        </linearGradient>
+        <linearGradient id="grad_accent" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#a855f7" />
+            <stop offset="100%" stop-color="#00f0ff" />
+        </linearGradient>
+        <linearGradient id="sun_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffdd00" />
+            <stop offset="60%" stop-color="#ff2a5f" />
+            <stop offset="100%" stop-color="#7928ca" />
+        </linearGradient>
+        <linearGradient id="beam_grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam_cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    <!-- Fond -->
+    <rect width="400" height="400" fill="url(#bg)" />
+    <!-- Contenu Graphique -->
+    <!-- Grille perspective 3D pure et ondes vectorielles -->
+            <!-- Montagnes vectorielles violettes en fond -->
+            <polygon points="0,220 60,160 140,220 220,130 310,220 400,170 400,220 0,220" fill="#160829" stroke="#a855f7" stroke-width="2"/>
+            <!-- Lignes de fuite perspective -->
+            <line x1="200" y1="220" x2="-40" y2="400" stroke="#00f0ff" stroke-width="2.5" filter="url(#glow)"/>
+            <line x1="200" y1="220" x2="40" y2="400" stroke="#00f0ff" stroke-width="2"/>
+            <line x1="200" y1="220" x2="120" y2="400" stroke="#00f0ff" stroke-width="2"/>
+            <line x1="200" y1="220" x2="200" y2="400" stroke="#00f0ff" stroke-width="2"/>
+            <line x1="200" y1="220" x2="280" y2="400" stroke="#00f0ff" stroke-width="2"/>
+            <line x1="200" y1="220" x2="360" y2="400" stroke="#00f0ff" stroke-width="2"/>
+            <line x1="200" y1="220" x2="440" y2="400" stroke="#00f0ff" stroke-width="2.5" filter="url(#glow)"/>
+            <!-- Lignes horizontales à espacement logarithmique -->
+            <line x1="0" y1="225" x2="400" y2="225" stroke="#a855f7" stroke-width="1.5"/>
+            <line x1="0" y1="235" x2="400" y2="235" stroke="#a855f7" stroke-width="1.5"/>
+            <line x1="0" y1="250" x2="400" y2="250" stroke="#a855f7" stroke-width="1.8"/>
+            <line x1="0" y1="275" x2="400" y2="275" stroke="#a855f7" stroke-width="2"/>
+            <line x1="0" y1="315" x2="400" y2="315" stroke="#a855f7" stroke-width="2.5"/>
+            <line x1="0" y1="370" x2="400" y2="370" stroke="#a855f7" stroke-width="3"/>
+    <!-- Cadre subtil intérieur -->
+    <rect x="2" y="2" width="396" height="396" rx="16" fill="none" stroke="#a855f7" stroke-width="1.5" opacity="0.35" />
+</svg>

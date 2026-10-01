@@ -1,0 +1,28 @@
+{
+  "name": "soundstash",
+  "productName": "SoundStash",
+  "version": "3.0.0",
+  "description": "SoundStash by Helmicretro - Univers musical 100% autonome",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:portable": "electron-builder --win portable",
+    "dist:installer": "electron-builder --win nsis"
+  },
+  "keywords": [
+    "music-player",
+    "audio-player",
+    "music-manager",
+    "tagger",
+    "audio-editor",
+    "electron"
+  ],
+  "author": "Helmicretro",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  }
+}

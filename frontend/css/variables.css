@@ -1,0 +1,117 @@
+/* ==========================================================================
+   SOUNDSTASH v3.0.0 — MODULE CSS : VARIABLES.CSS
+   ========================================================================== */
+
+/* --- Section : Variables, palettes & Design Tokens (lignes 1 à 110) --- */
+:root, [data-theme="dark"] {
+    --bg-base: #08090e;
+    --bg-gradient: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(255, 42, 75, 0.08) 0%, transparent 70%), #08090e;
+    --bg-surface: rgba(20, 22, 29, 0.88);
+    --bg-surface-sticky: rgba(18, 20, 27, 0.97);
+    --bg-surface-elevated: rgba(26, 30, 42, 0.86);
+    --bg-card: rgba(20, 22, 29, 0.88);
+    --bg-input: rgba(16, 18, 23, 0.92);
+    --border-color: #272a35;
+    --border-subtle: rgba(255, 255, 255, 0.07);
+    --border-card: rgba(255, 255, 255, 0.09);
+    --border-focus: #ff2a4b;
+    --accent: #ff2a4b;
+    --accent-hover: #e02441;
+    --accent-glow: rgba(255, 42, 75, 0.35);
+    --text-main: #f3f4f6;
+    --text-muted: #8e95a5;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --scrollbar-track: rgba(16, 18, 23, 0.6);
+    --scrollbar-thumb: #2b303d;
+    --scrollbar-thumb-hover: #454d60;
+    --modal-backdrop: rgba(0, 0, 0, 0.82);
+    /* Ombres intensifiées sous les cadres (Mode Sombre) */
+    --nav-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.2);
+    --card-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.85), 0 0 30px -5px rgba(0, 0, 0, 0.6), inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+    --item-shadow: 0 14px 35px -6px rgba(0, 0, 0, 0.8), 0 4px 12px -2px rgba(0, 0, 0, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.08);
+    --item-shadow-hover: 0 28px 65px -10px rgba(0, 0, 0, 0.95), 0 0 30px -2px var(--accent-glow), inset 0 1px 1px 0 rgba(255, 255, 255, 0.18);
+    --modal-shadow: 0 35px 80px -15px rgba(0, 0, 0, 0.95), 0 0 40px -5px rgba(0, 0, 0, 0.7), inset 0 1px 1px 0 rgba(255, 255, 255, 0.12);
+    --player-bg: rgba(20, 22, 29, 0.92);
+    --player-shadow: 0 25px 60px -8px rgba(0, 0, 0, 0.95), 0 0 35px -5px var(--accent-glow), inset 0 1px 1px 0 rgba(255, 255, 255, 0.16);
+    --hover-overlay: rgba(255, 255, 255, 0.06);
+    --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', Consolas, monospace;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* Architecture Hiérarchique Normalisée des Z-Index */
+    --player-controls-height: 136px;
+    --album-sidebar-sticky-margin: 30px;
+    --z-background: -1;
+    --z-base: 1;
+    --z-badge: 2;
+    --z-interactive: 5;
+    --z-card-actions: 6;
+    --z-scroll-shade: 80;
+    --z-player-controls: 100;
+    --z-mini-player: 900;
+    --z-dock-nav: 1000;
+    --z-header: 1500;
+    --z-bottom-player: 9000;
+    --z-fullscreen-btn: 9995;
+    --z-drawer-backdrop: 9998;
+    --z-drawer: 9999;
+    --z-ambient-overlay: 9999;
+    --z-sync-popover: 10050;
+    --z-workshop-backdrop: 200000;
+    --z-workshop-drawer: 200100;
+    --z-workshop-pull-tab: 200200;
+    --z-modal-base: 300000;
+    --z-modal-preview: 301000;
+    --z-modal-equalizer: 302000;
+    --z-modal-tray: 303000;
+    --z-modal-settings: 304000;
+    --z-modal-migration: 305000;
+    --z-modal-guide: 306000;
+    --z-modal-confirm: 320000;
+    --z-modal-close: 325000;
+    --z-party-lock: 330000;
+    --z-toast-notification: 350000; /* Premier plan absolu (infranchissable) */
+}
+
+[data-theme="light"] {
+    --bg-base: #f0f3f8;
+    --bg-gradient: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(224, 36, 65, 0.06) 0%, transparent 60%), #f0f3f8;
+    --bg-surface: rgba(255, 255, 255, 0.90);
+    --bg-surface-sticky: rgba(255, 255, 255, 0.97);
+    --bg-surface-elevated: rgba(248, 250, 252, 0.90);
+    --bg-card: rgba(255, 255, 255, 0.90);
+    --bg-input: rgba(255, 255, 255, 0.95);
+    --border-color: #cbd5e1;
+    --border-subtle: rgba(15, 23, 42, 0.07);
+    --border-card: rgba(15, 23, 42, 0.09);
+    --border-focus: #e02441;
+    --accent: #e02441;
+    --accent-hover: #c41834;
+    --accent-glow: rgba(224, 36, 65, 0.28);
+    --text-main: #0f172a;
+    --text-muted: #475569;
+    --success: #059669;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --scrollbar-track: rgba(226, 232, 240, 0.6);
+    --scrollbar-thumb: #94a3b8;
+    --scrollbar-thumb-hover: #64748b;
+    --modal-backdrop: rgba(15, 23, 42, 0.65);
+    /* Ombres raffinées et nettes (Mode Clair) */
+    --nav-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.03);
+    --card-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(15, 23, 42, 0.05);
+    --item-shadow: 0 6px 18px -3px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(15, 23, 42, 0.05);
+    --item-shadow-hover: 0 16px 36px -6px rgba(15, 23, 42, 0.12), 0 4px 14px -2px rgba(224, 36, 65, 0.16), 0 0 0 1px var(--accent);
+    --modal-shadow: 0 25px 60px -10px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(15, 23, 42, 0.08);
+    --player-bg: rgba(255, 255, 255, 0.94);
+    --player-shadow: 0 20px 45px -8px rgba(15, 23, 42, 0.16), 0 4px 14px -2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.07);
+    --hover-overlay: rgba(15, 23, 42, 0.04);
+}
+
+
+

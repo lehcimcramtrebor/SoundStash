@@ -1,0 +1,324 @@
+/* ==========================================================================
+   SOUNDSTASH v3.0.0 — MODULE CSS : BASE.CSS
+   ========================================================================== */
+
+/* --- Section : Reset, Scrollbars, Typographie & Utilitaires (lignes 111 à 405) --- */
+/* =========================================================
+   Barres de Défilement (Custom Scrollbars) Intégrées
+   ========================================================= */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+    border: 1px solid var(--scrollbar-track);
+    transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--scrollbar-track);
+}
+
+body {
+    background-color: transparent;
+    color: var(--text-main);
+    font-family: var(--font-main);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    position: relative;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Autoriser explicitement la sélection de texte dans les champs de saisie, logs et contenus textuels */
+input,
+textarea,
+[contenteditable="true"],
+.selectable-text,
+.log-content,
+.log-box,
+.lyrics-text,
+pre,
+code {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* Empêcher le glisser-déposer fantôme natif des images et liens */
+img,
+a {
+    -webkit-user-drag: none;
+}
+
+/* Synthwave Canvas d'arrière-plan interactif & réactif */
+.synthwave-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    pointer-events: none;
+    display: none;
+    opacity: 0;
+}
+
+/* En mode ambiance plein écran : activation et netteté cristalline intégrale */
+body.ambient-mode-active .synthwave-canvas {
+    display: block !important;
+    z-index: 1 !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+}
+
+.app-container {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 24px 20px 96px 20px;
+    position: relative;
+    z-index: auto;
+}
+
+@media (min-width: 1400px) {
+    .app-container {
+        max-width: min(1380px, 94vw);
+        padding: 30px 28px 110px 28px;
+    }
+}
+
+@media (min-width: 1700px) {
+    .app-container {
+        max-width: min(1560px, 92vw);
+        padding: 36px 36px 120px 36px;
+    }
+}
+
+/* Header */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: var(--bg-surface-sticky);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius);
+    box-shadow: var(--nav-shadow);
+    margin-bottom: 22px;
+    gap: 14px;
+    min-width: 0;
+    position: relative;
+    z-index: var(--z-header, 1500);
+}
+
+.logo-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.logo-icon {
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, var(--accent), #ff5e79);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    box-shadow: 0 8px 24px var(--accent-glow), inset 0 1px 1px 0 rgba(255, 255, 255, 0.35);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    flex-shrink: 0;
+}
+
+.logo-icon:hover {
+    transform: scale(1.06) rotate(-3deg);
+    box-shadow: 0 12px 28px var(--accent-glow);
+}
+
+.app-title {
+    font-family: var(--font-display);
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    line-height: 1.2;
+}
+
+.app-author {
+    font-family: var(--font-main);
+    font-size: 0.64rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 1.5px 6px;
+    border-radius: 5px;
+    background-color: var(--bg-surface-elevated);
+    border: 1px solid var(--border-card);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    white-space: nowrap;
+    flex-shrink: 0;
+    line-height: 1.25;
+    display: inline-block;
+}
+
+.app-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 0;
+    flex-shrink: 0;
+}
+
+.btn-theme-toggle {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background-color: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    outline: none;
+    flex-shrink: 0;
+}
+
+.btn-theme-toggle:hover {
+    background-color: var(--hover-overlay);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: var(--text-main);
+}
+
+.theme-icon {
+    pointer-events: none;
+    transition: transform 0.25s ease;
+}
+
+@media (max-width: 980px) {
+    .app-header {
+        gap: 10px;
+        padding: 10px 14px;
+        margin-bottom: 18px;
+    }
+    .logo-group {
+        gap: 10px;
+    }
+    .logo-icon {
+        width: 40px;
+        height: 40px;
+    }
+    .app-title {
+        font-size: 1.42rem;
+        gap: 6px;
+    }
+    .app-author {
+        font-size: 0.60rem;
+        padding: 1px 5px;
+    }
+    .app-subtitle {
+        font-size: 0.76rem;
+    }
+    .header-actions {
+        gap: 6px;
+        margin-right: 0;
+    }
+    .player-mode-switch-group, .btn-header-ambient {
+        padding: 4px 8px;
+        font-size: 0.76rem;
+        gap: 5px;
+    }
+    .badge {
+        padding: 3px 8px;
+        font-size: 0.68rem;
+    }
+    .btn-theme-toggle, .btn-header-settings, .btn-header-fullscreen, .btn-header-quit {
+        width: 32px;
+        height: 32px;
+    }
+}
+
+/* Boutons de navigation Univers : Atelier vs Lecteur */
+.btn-header-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 20px;
+    background-color: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn-header-nav:hover {
+    background-color: var(--hover-overlay);
+    border-color: var(--border-focus);
+    transform: translateY(-1px);
+}
+
+/* Bouton Déclencheur Atelier (à gauche près du logo) */
+.btn-header-workshop {
+    margin-left: 12px;
+}
+
+.drawer-caret-icon {
+    display: inline-block;
+    font-size: 0.65rem;
+    margin-left: 3px;
+    transition: transform 0.28s ease;
+    opacity: 0.85;
+}
+
+body.workshop-drawer-open .drawer-caret-icon {
+    transform: rotate(180deg);
+}
+
+
+
