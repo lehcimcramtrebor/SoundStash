@@ -174,3 +174,20 @@ npx electron scripts/test_core_modules.js
 - **Conception & Développement** : Conçu et développé par [Helmicretro](https://github.com/Helmicretro) en pair programming avec l'assistance de l'IA **Antigravity** (Google DeepMind).
 - **Projets Tiers** : Ce logiciel s'appuie sur d'excellents projets open-source dont **yt-dlp**, **FFmpeg**, **Kid3**, **Electron**, **FastAPI**, et bien d'autres.
 - Pour consulter la liste exhaustive des licences, auteurs et clauses de conformité LGPL/GPL, veuillez vous référer à [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a57c41e7-8665-4e14-82d8-fce750a46408" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/a6a99456-d27c-4bdf-852b-463362012970" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/57a4ba1c-088c-44bc-848a-1ab0a292db92" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/cdcb2d3f-3c51-4703-bbde-c7cde2f46305" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/c188eb99-044c-4926-a129-4518d0268c58" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f3b5e76c-4b2e-483f-a1e9-20f86311362d" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/5013e98c-eb54-41e6-8c31-6e90adf6d8f8" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/bbd76cfd-e9f4-4297-be00-cc85ad2125d3" />
+
