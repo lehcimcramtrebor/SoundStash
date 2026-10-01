@@ -61,7 +61,7 @@ from backend.playback_stats import playback_stats
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.0.0")
+app = FastAPI(title="SoundStash API", version="3.0.1")
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -1624,6 +1624,7 @@ async def export_custom_endpoint(req: ExportCustomRequest):
         shutil.copytree(str(src), str(dest_folder))
         if req.delete_source:
             safe_rmtree(src)
+            dispatch_library_updated()
         return {
             "success": True,
             "target_path": str(dest_folder),
@@ -1921,6 +1922,7 @@ async def export_album_endpoint(req: ExportRequest):
                 import gc
                 gc.collect()
                 safe_rmtree(album_p)
+            dispatch_library_updated()
         return res
     except Exception as e:
         return {"success": False, "message": f"Erreur lors de l'export : {str(e)}"}
@@ -1938,6 +1940,8 @@ async def delete_temp_endpoint(req: ActionPathRequest):
         raise HTTPException(status_code=400, detail="Seuls les sous-dossiers d'albums temporaires peuvent être supprimés.")
     
     res = delete_temp_album(album_p)
+    if res.get("success"):
+        dispatch_library_updated()
     return res
 
 @app.delete("/api/album/exported")
@@ -2008,6 +2012,7 @@ async def clear_all_temp_endpoint():
                 elif item.is_file():
                     item.unlink()
                     deleted_count += 1
+        dispatch_library_updated()
         return {"success": True, "deleted_count": deleted_count, "message": f"{deleted_count} élément(s) supprimé(s) du dossier temporaire."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors du nettoyage : {str(e)}")
@@ -2022,6 +2027,8 @@ async def export_all_temp_endpoint(req: ExportAllRequest):
         delete_temp=req.delete_temp,
         conflict_policy=req.conflict_policy
     )
+    if res.get("success"):
+        dispatch_library_updated()
     return res
 
 @app.post("/api/album/open-folder")
@@ -2364,7 +2371,7 @@ async def musicbrainz_lookup(req: MusicBrainzLookupRequest):
     Interroge MusicBrainz pour obtenir les crédits d'artistes par piste d'un album.
     Retourne un dict { position: artist_credit_string } pour chaque piste trouvée.
     """
-    headers = {"User-Agent": "SoundStash/3.0.0 (contact@soundstash.local)"}
+    headers = {"User-Agent": "SoundStash/3.0.1 (contact@soundstash.local)"}
     search_url = "https://musicbrainz.org/ws/2/release/"
     params = {
         "query": f'release:"{req.album}" AND artist:"{req.artist}"',

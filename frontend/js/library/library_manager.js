@@ -144,6 +144,19 @@ function setupLibrary() {
                     });
                     const result = await res.json();
                     if (result.success) {
+                        if (!isCollectionEditorMode) {
+                            resetEditorState();
+                        }
+                        loadLibrary();
+                        if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
+                        if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                            window.AudioPlayer.loadLibraryData(true);
+                        }
+                        if (typeof window.refreshSearchBadges === "function") {
+                            window.refreshSearchBadges();
+                        } else if (typeof enrichItemsWithLibraryStatus === "function") {
+                            enrichItemsWithLibraryStatus();
+                        }
                         await showModalAlert(
                             isSmartActive ? "Exportation Intelligente réussie" : "Exportation groupée réussie",
                             isSmartActive
@@ -151,13 +164,6 @@ function setupLibrary() {
                                 : `${result.exported_albums_count} album(s) exporté(s) avec succès dans votre dossier :\n${targetDir}\n\nLe dossier temporaire a été intégralement vidé.`,
                             "success"
                         );
-                        if (!isCollectionEditorMode) {
-                            resetEditorState();
-                        }
-                        loadLibrary();
-                        if (typeof enrichItemsWithLibraryStatus === "function") {
-                            enrichItemsWithLibraryStatus();
-                        }
                     } else {
                         await showModalAlert("Erreur", result.message || "Erreur lors de l'exportation groupée.", "danger");
                     }
@@ -213,9 +219,14 @@ function setupLibrary() {
 }
 
 let isLoadingLibrary = false;
+let needsReloadLibrary = false;
 async function loadLibrary() {
-    if (isLoadingLibrary) return;
+    if (isLoadingLibrary) {
+        needsReloadLibrary = true;
+        return;
+    }
     isLoadingLibrary = true;
+    needsReloadLibrary = false;
     const tempGrid = document.getElementById("temp-albums-grid");
     if (!tempGrid) {
         isLoadingLibrary = false;
@@ -385,6 +396,10 @@ async function loadLibrary() {
     } finally {
         isLoadingLibrary = false;
         loadExternalTempAlbums();
+        if (needsReloadLibrary) {
+            needsReloadLibrary = false;
+            loadLibrary();
+        }
     }
 }
 
@@ -563,6 +578,11 @@ async function loadExternalTempAlbums() {
                         }
                         showToast(`✓ Album exporté vers la bibliothèque avec succès !`, "success");
                         loadLibrary();
+                        if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
+                        if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                            window.AudioPlayer.loadLibraryData(true);
+                        }
+                        if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
                     } else {
                         await showModalAlert("Erreur d'exportation", expData.message || expData.detail || "Échec de l'exportation", "error");
                         btn.disabled = false;
@@ -614,6 +634,11 @@ async function loadExternalTempAlbums() {
                         }
                         showToast(`✓ Exporté avec succès vers ${data.target_path}`, "success");
                         loadLibrary();
+                        if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
+                        if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                            window.AudioPlayer.loadLibraryData(true);
+                        }
+                        if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
                     } else {
                         await showModalAlert("Erreur d'exportation", data.detail || data.message || "Erreur lors de l'export", "error");
                     }

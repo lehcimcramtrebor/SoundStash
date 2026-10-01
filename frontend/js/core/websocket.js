@@ -94,6 +94,22 @@ function setupWebSocket() {
 }
 window.setupWebSocket = setupWebSocket;
 
+let badgeResetTimer = null;
+function scheduleBadgeReset(delay = 5000) {
+    if (badgeResetTimer) {
+        clearTimeout(badgeResetTimer);
+        badgeResetTimer = null;
+    }
+    badgeResetTimer = setTimeout(() => {
+        const badge = document.getElementById("global-status-badge");
+        if (badge && (badge.classList.contains("badge-finished") || badge.textContent === "File Terminée" || badge.textContent === "Prêt à Exporter")) {
+            badge.className = "badge badge-idle";
+            badge.textContent = "Atelier";
+            badge.title = "Ouvrir / Replier l'Atelier (Raccourci: Maj+W)";
+        }
+    }, delay);
+}
+
 // ===================================================
 // Réception & Dispatch des Événements WebSocket
 // ===================================================
@@ -116,6 +132,9 @@ function handleWsEvent(data) {
             if (typeof loadLibrary === "function") {
                 loadLibrary();
             }
+            if (typeof refreshAlbumNavList === "function") {
+                refreshAlbumNavList();
+            }
             if (typeof window.refreshSearchBadges === "function") {
                 window.refreshSearchBadges();
             }
@@ -129,6 +148,9 @@ function handleWsEvent(data) {
         }
         if (typeof loadLibrary === "function") {
             loadLibrary();
+        }
+        if (typeof refreshAlbumNavList === "function") {
+            refreshAlbumNavList();
         }
         if (typeof window.refreshSearchBadges === "function") {
             window.refreshSearchBadges();
@@ -147,6 +169,10 @@ function handleWsEvent(data) {
         if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
 
         if (data.is_downloading || (data.queue && data.queue.length > 0)) {
+            if (badgeResetTimer) {
+                clearTimeout(badgeResetTimer);
+                badgeResetTimer = null;
+            }
             startBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Ajouter à la file d'attente`;
             startBtn.className = "btn btn-success btn-large";
             startBtn.disabled = false;
@@ -168,6 +194,10 @@ function handleWsEvent(data) {
         const msg = data.message || "";
 
         if (status === "started") {
+            if (badgeResetTimer) {
+                clearTimeout(badgeResetTimer);
+                badgeResetTimer = null;
+            }
             setDownloadTabWorking(true);
             if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
             badge.className = "badge badge-downloading";
@@ -198,6 +228,10 @@ function handleWsEvent(data) {
                 }
             }
         } else if (status === "tagging") {
+            if (badgeResetTimer) {
+                clearTimeout(badgeResetTimer);
+                badgeResetTimer = null;
+            }
             setDownloadTabWorking(true);
             badge.className = "badge badge-tagging";
             badge.textContent = "Retaggage Kid3";
@@ -239,6 +273,7 @@ function handleWsEvent(data) {
                 cancelBtn.style.display = "none";
                 document.getElementById("progress-fill").style.width = "100%";
                 document.getElementById("progress-percentage").textContent = "100%";
+                scheduleBadgeReset(5000);
             }
 
             // Gestion de détection de pistes manquantes (Approche A + B via pendingMissingAlbumsQueue)
@@ -260,6 +295,7 @@ function handleWsEvent(data) {
         } else if (status === "queue_completed") {
             setDownloadTabWorking(false);
             if (typeof loadLibrary === "function") loadLibrary();
+            if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
             if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
             badge.className = "badge badge-finished";
             badge.textContent = "File Terminée";
@@ -269,6 +305,7 @@ function handleWsEvent(data) {
             startBtn.className = "btn btn-primary btn-large";
             startBtn.disabled = false;
             cancelBtn.style.display = "none";
+            scheduleBadgeReset(5000);
         } else if (status === "error") {
             const remaining = data.remaining_in_queue || 0;
             if (remaining === 0) {

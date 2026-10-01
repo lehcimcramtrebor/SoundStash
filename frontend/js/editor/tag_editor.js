@@ -663,33 +663,30 @@ function setupEditorActions() {
                 if (result.conflict) {
                     successMsg += `\n\nℹ️ Cet album existait déjà dans votre collection : fusion effectuée (${result.conflict_policy === 'overwrite' ? 'pistes remplacées' : 'pistes existantes préservées sans doublon'}).`;
                 }
-                await showModalAlert(
-                    "Exportation réussie",
-                    successMsg,
-                    "success"
-                );
+
                 exportPanel.style.display = "none";
-                // Nettoyer le dirty state de cet album
+                // Nettoyer immédiatement le dirty state de cet album
                 delete editorDirtyState[currentAlbumPath];
 
-                // Actualiser la bibliothèque et les statuts des recherches
+                // Synchronisation instantanée : Bibliothèque locale + Atelier + Navigation
                 if (typeof loadLibrary === "function") {
                     loadLibrary();
+                }
+                if (typeof refreshAlbumNavList === "function") {
+                    await refreshAlbumNavList();
                 }
                 if (typeof window.refreshSearchBadges === "function") {
                     window.refreshSearchBadges();
                 } else if (typeof enrichItemsWithLibraryStatus === "function") {
                     enrichItemsWithLibraryStatus();
                 }
-                // Auto-sync du Lecteur Audio si l'export est vers la collection musicale principale
-                if (result.is_smart && window.AudioPlayer && window.AudioPlayer.loadLibraryData) {
-                    // Rechargement silencieux — l'index backend est déjà à jour via add_or_update_album
-                    window.AudioPlayer.loadLibraryData();
-                    showToast("Lecteur Audio mis à jour avec le nouvel album", "success", 2500);
+                // Auto-sync immédiate du Lecteur Audio (Collection & Temporaire)
+                if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                    window.AudioPlayer.loadLibraryData(true);
                 }
+
                 if (deleteTemp) {
                     // Rafraîchir la navigation et charger l'album suivant s'il y en a
-                    await refreshAlbumNavList();
                     if (tempAlbumsList.length > 0) {
                         currentAlbumIndex = Math.min(currentAlbumIndex, tempAlbumsList.length - 1);
                         await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path);
@@ -714,7 +711,12 @@ function setupEditorActions() {
                         document.getElementById("global-status-badge").title = "Ouvrir / Replier l'Atelier (Raccourci: Maj+W)";
                     }
                 }
-                loadLibrary();
+
+                await showModalAlert(
+                    "Exportation réussie",
+                    successMsg,
+                    "success"
+                );
             } else {
                 await showModalAlert("Erreur d'exportation", result.message || "Erreur lors de l'export.", "danger");
             }
@@ -958,8 +960,14 @@ function setupEditorActions() {
                     tempAlbumsList = [];
                     currentAlbumIndex = -1;
                     resetEditorState("Tous les albums exportés", "");
-                    loadLibrary();
-                    if (typeof enrichItemsWithLibraryStatus === "function") {
+                    if (typeof loadLibrary === "function") loadLibrary();
+                    if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
+                    if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                        window.AudioPlayer.loadLibraryData(true);
+                    }
+                    if (typeof window.refreshSearchBadges === "function") {
+                        window.refreshSearchBadges();
+                    } else if (typeof enrichItemsWithLibraryStatus === "function") {
                         enrichItemsWithLibraryStatus();
                     }
                     await showModalAlert(

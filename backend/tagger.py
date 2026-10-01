@@ -213,7 +213,7 @@ _MB_TRACK_ARTISTS_CACHE: Dict[Tuple[str, str], Optional[Dict[str, str]]] = {}
 _MB_TRACKS_CACHE: Dict[Tuple[str, str], Optional[Dict[int, Dict[str, str]]]] = {}
 
 # MusicBrainz exige ce format : AppName/version (email) — sans email, les requêtes sont rejetées
-_MB_HEADERS = {"User-Agent": "SoundStash/3.0.0 (soundstash@helmicretro.local)"}
+_MB_HEADERS = {"User-Agent": "SoundStash/3.0.1 (soundstash@helmicretro.local)"}
 
 _LAST_MB_REQUEST_TIME = 0
 
