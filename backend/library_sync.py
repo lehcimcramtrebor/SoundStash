@@ -24,7 +24,8 @@ from backend.config import config, CONFIG_DIR
 from backend.logger import get_logger
 from backend.tagger import (
     get_track_metadata, clean_artist_name, clean_track_title,
-    AUDIO_EXTENSIONS, consolidate_album_cover, sanitize_path
+    AUDIO_EXTENSIONS, consolidate_album_cover, sanitize_path,
+    normalize_cover_artwork
 )
 from backend.library_indexer import library_indexer, normalize_text, DISC_SUBFOLDER_RE
 
@@ -752,7 +753,76 @@ def heal_misnamed_albums(
                         except Exception as e:
                             logger.warning(f"Impossible de renommer le dossier '{album_dir.name}' vers '{safe_album_name}': {e}")
 
-    return actions_count
+def heal_album_covers(
+    library_dir: Path,
+    notify_cb: Optional[Callable[[str, str, str], None]] = None
+) -> int:
+    """
+    Phase 5 : Analyse et normalisation des jaquettes d'albums en plein carré 1:1 (Full Bleed).
+    Élimine les bandes latérales pillarbox (issues des rips YouTube) et réinjecte
+    l'image 1:1 dans les tags audio pour un affichage propre sur CloudBeats et les lecteurs mobiles.
+    Grâce au fichier marqueur '.cover_normalized', cette passe est quasi-instantanée (< 5ms)
+    sur les albums déjà traités.
+    """
+    if not library_dir.is_dir():
+        return 0
+
+    healed_count = 0
+    try:
+        with os.scandir(str(library_dir)) as it_artists:
+            for artist_entry in it_artists:
+                if _sync_stop_requested.is_set():
+                    break
+                if not artist_entry.is_dir() or artist_entry.name.startswith(".") or artist_entry.name.lower() == "_imports":
+                    continue
+
+                try:
+                    with os.scandir(artist_entry.path) as it_albums:
+                        for album_entry in it_albums:
+                            if _sync_stop_requested.is_set():
+                                break
+                            if not album_entry.is_dir() or album_entry.name.startswith("."):
+                                continue
+
+                            album_dir = Path(album_entry.path)
+                            cov = album_dir / "cover.jpg"
+                            if not cov.exists():
+                                cov_alt = album_dir / "folder.jpg"
+                                if cov_alt.exists():
+                                    cov = cov_alt
+
+                            marker = album_dir / ".cover_normalized"
+                            if cov.exists() and marker.exists():
+                                try:
+                                    if marker.stat().st_mtime >= cov.stat().st_mtime:
+                                        continue
+                                except Exception:
+                                    pass
+
+                            if not cov.exists():
+                                try:
+                                    cov_str = consolidate_album_cover(album_dir)
+                                    if cov_str:
+                                        cov = Path(cov_str)
+                                except Exception:
+                                    continue
+
+                            if cov.exists():
+                                try:
+                                    if normalize_cover_artwork(cov, embed_in_tracks=True):
+                                        healed_count += 1
+                                        if notify_cb:
+                                            notify_cb("orange", f"🖼️ Pochette 1:1 plein carré normalisée : {album_dir.name}", str(album_dir))
+                                except Exception as err:
+                                    logger.debug(f"Erreur heal_album_covers pour '{album_dir.name}': {err}")
+
+                except Exception as err:
+                    logger.debug(f"Erreur scan albums pour '{artist_entry.name}': {err}")
+
+    except Exception as e:
+        logger.warning(f"Erreur lors de la phase heal_album_covers: {e}")
+
+    return healed_count
 
 def synchronize_collection(
     library_dir: Optional[str | Path] = None,
@@ -831,6 +901,12 @@ def synchronize_collection(
 
             # Phase 4 : Nettoyage automatique des dossiers artistes orphelins ou vides
             total_actions += heal_empty_artist_dirs(target_dir)
+
+            # Phase 5 : Normalisation plein carré 1:1 des jaquettes (anti-pillarbox)
+            total_actions += heal_album_covers(target_dir, eff_notify)
+            if _sync_stop_requested.is_set():
+                logger.info("🛑 Arrêt propre LibrarySync validé après Phase 5.")
+                return {"status": "interrupted_cleanly", "actions_count": total_actions}
 
         # Mémoriser la signature si le cycle complet n'a généré aucune action
         if total_actions == 0 and current_fingerprint is not None:

@@ -859,7 +859,132 @@ def consolidate_album_cover(album_dir: Path) -> Optional[str]:
                 except Exception:
                     pass
 
+    # Phase d'auto-normalisation 1:1 : élimine le pillarbox (bandes latérales YouTube) et met à jour les tags
+    if target_cover.exists():
+        try:
+            normalize_cover_artwork(target_cover, embed_in_tracks=True)
+        except Exception as e:
+            logger.debug(f"Erreur normalize_cover_artwork dans consolidate_album_cover: {e}")
+
     return str(target_cover.resolve()) if target_cover.exists() else None
+
+def normalize_cover_artwork(
+    cover_path: Path | str,
+    embed_in_tracks: bool = True
+) -> bool:
+    """
+    Détecte et normalise automatiquement les jaquettes présentant des bandes
+    latérales (pillarbox 9:16) ou horizontales (letterbox 16:9), typiques des
+    téléchargements YouTube, pour les convertir en plein carré 1:1 (Full Bleed).
+    Réinjecte la nouvelle pochette 1:1 dans les tags des pistes de l'album via kid3-cli
+    pour un affichage optimal et sans marge sur les applications mobiles (CloudBeats).
+    """
+    cov = Path(cover_path)
+    if not cov.exists() or not cov.is_file():
+        return False
+
+    album_dir = cov.parent
+    marker = album_dir / ".cover_normalized"
+    if marker.exists() and marker.stat().st_mtime >= cov.stat().st_mtime:
+        return False
+
+    try:
+        from PIL import Image
+        import numpy as np
+
+        with Image.open(cov) as im:
+            w, h = im.size
+            if w < 100 or h < 100:
+                return False
+
+            square_img = None
+            arr = np.array(im, dtype=float)
+
+            # Cas 1 : Miniature vidéo 16:9 panoramique (w / h > 1.25)
+            if w / h > 1.25:
+                grad_x = np.abs(np.diff(arr, axis=1)).mean(axis=(0, 2))
+                l_min, l_max = int(w * 0.20), int(w * 0.38)
+                scores = []
+                for cand in range(l_min, l_max):
+                    sl = grad_x[cand-2:cand+3].max()
+                    sr = grad_x[w - 1 - cand - 2 : w - 1 - cand + 3].max()
+                    scores.append((min(sl, sr), cand))
+                scores.sort(reverse=True)
+                if scores and scores[0][0] > 7.0:
+                    c = scores[0][1]
+                    content = im.crop((c + 2, 0, w - c - 2, h))
+                    cw, ch = content.size
+                    sy = int((ch - cw) * 0.45)
+                    square_img = content.crop((0, sy, cw, sy + cw)).resize((640, 640), Image.Resampling.LANCZOS)
+                else:
+                    cx = (w - h) // 2
+                    square_img = im.crop((cx, 0, cx + h, h)).resize((640, 640), Image.Resampling.LANCZOS)
+
+            # Cas 2 : Faux carré avec bandes latérales (Pillarbox 9:16)
+            elif abs(w - h) / max(w, h) <= 0.10:
+                grad_x = np.abs(np.diff(arr, axis=1)).mean(axis=(0, 2))
+                l_min, l_max = int(w * 0.12), int(w * 0.36)
+                r_min, r_max = int(w * 0.64), int(w * 0.88)
+
+                l_cand = l_min + int(np.argmax(grad_x[l_min:l_max]))
+                r_cand = r_min + int(np.argmax(grad_x[r_min:r_max]))
+                l_score = float(grad_x[l_cand])
+                r_score = float(grad_x[r_cand])
+
+                content_w = r_cand - l_cand
+                content_ratio = content_w / float(h)
+
+                jl = np.abs(arr[:, l_cand + 1, :] - arr[:, l_cand, :]).mean(axis=1)
+                jr = np.abs(arr[:, r_cand, :] - arr[:, r_cand - 1, :]).mean(axis=1)
+                frac_l = float((jl > 3.0).mean())
+                frac_r = float((jr > 3.0).mean())
+
+                is_pillarbox = False
+                if 0.35 <= content_ratio <= 0.70:
+                    if l_score >= 8.0 and r_score >= 8.0 and min(frac_l, frac_r) >= 0.20:
+                        is_pillarbox = True
+                    elif min(l_score, r_score) >= 6.5 and min(frac_l, frac_r) >= 0.25:
+                        is_pillarbox = True
+
+                if is_pillarbox:
+                    content = im.crop((l_cand + 2, 0, r_cand - 2, h))
+                    cw, ch = content.size
+                    if ch > cw:
+                        sy = int((ch - cw) * 0.45)
+                        square_img = content.crop((0, sy, cw, sy + cw)).resize((640, 640), Image.Resampling.LANCZOS)
+                    else:
+                        sx = (cw - ch) // 2
+                        square_img = content.crop((sx, 0, sx + ch, ch)).resize((640, 640), Image.Resampling.LANCZOS)
+
+            if square_img is not None:
+                square_img.save(cov, "JPEG", quality=95)
+                logger.info(f"Pochette normalisée 1:1 plein carré pour l'album : {album_dir.name}")
+
+                if embed_in_tracks and Path(KID3_CLI_PATH).exists():
+                    audio_files = [f for f in album_dir.iterdir() if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS]
+                    for d in album_dir.iterdir():
+                        if d.is_dir() and DISC_SUBFOLDER_RE.match(d.name):
+                            audio_files.extend([f for f in d.iterdir() if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS])
+                    if audio_files:
+                        cmd = [str(KID3_CLI_PATH), "-c", f'set picture:"{str(cov.resolve())}" ""'] + [str(af.resolve()) for af in audio_files]
+                        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+                        logger.info(f"Tags audio mis à jour avec la pochette 1:1 ({len(audio_files)} pistes) dans {album_dir.name}")
+
+                try:
+                    marker.touch()
+                except Exception:
+                    pass
+                return True
+
+            try:
+                marker.touch()
+            except Exception:
+                pass
+            return False
+
+    except Exception as e:
+        logger.warning(f"Erreur normalisation jaquette pour {album_dir.name}: {e}")
+        return False
 
 def extract_track_num(track: dict) -> Optional[int]:
     """Extrait le numéro de piste depuis le nom de fichier ou les métadonnées."""

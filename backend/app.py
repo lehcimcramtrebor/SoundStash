@@ -50,7 +50,7 @@ from backend.library_curator import (
 )
 from backend.library_sync import (
     synchronize_collection, library_watcher, set_sync_event_callback, set_sync_status_callback,
-    set_library_updated_callback, heal_imports_folder
+    set_library_updated_callback, heal_imports_folder, heal_album_covers
 )
 from backend.video_indexer import video_indexer, VIDEO_EXTENSIONS, generate_rip_audio_cover
 from backend.video_sync import synchronize_videos, set_video_sync_callback, set_video_status_callback, clean_video_title
@@ -203,6 +203,21 @@ async def app_startup_sync_watcher():
     if getattr(config, "auto_update_yt_dlp", True):
         asyncio.create_task(background_startup_check())
     asyncio.create_task(asyncio.to_thread(library_indexer.ensure_tracks_indexed))
+
+    async def _startup_cover_healing():
+        try:
+            lib_dir = config.library_dir
+            if lib_dir and Path(lib_dir).is_dir():
+                logger.info("Vérification d'auto-normalisation 1:1 des jaquettes au démarrage...")
+                healed = await asyncio.to_thread(heal_album_covers, Path(lib_dir), dispatch_sync_notification)
+                if healed > 0:
+                    logger.info(f"Auto-normalisation terminée au démarrage : {healed} jaquette(s) convertie(s) en 1:1.")
+                    dispatch_sync_notification("green", f"{healed} jaquette(s) normalisée(s) en 1:1 plein carré (anti-pillarbox)", str(lib_dir))
+                    dispatch_library_updated()
+        except Exception as e:
+            logger.debug(f"Erreur vérification jaquettes au démarrage: {e}")
+
+    asyncio.create_task(_startup_cover_healing())
 
 @app.on_event("shutdown")
 async def app_shutdown_sync_watcher():
