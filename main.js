@@ -777,6 +777,59 @@ ipcMain.on('confirm-quit', () => {
     doQuit();
 });
 
+// Lancement propre et autonome de la mise à jour
+ipcMain.handle('install-update', async (event, installerPath) => {
+    console.log('[Updater] Demande d\'installation de mise à jour reçue:', installerPath);
+    if (!installerPath || !fs.existsSync(installerPath)) {
+        console.error('[Updater] Fichier d\'installation introuvable:', installerPath);
+        return { success: false, error: 'Fichier d\'installation introuvable sur le disque' };
+    }
+
+    isQuitting = true;
+
+    // 1. Débloquer la fermeture de la fenêtre pour que taskkill / WM_CLOSE ne soit jamais intercepté
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.removeAllListeners('close');
+        mainWindow.hide();
+    }
+
+    // 2. Libérer le verrou d'écran
+    if (displayWakeLockId !== null && powerSaveBlocker.isStarted(displayWakeLockId)) {
+        try { powerSaveBlocker.stop(displayWakeLockId); } catch (e) {}
+        displayWakeLockId = null;
+    }
+
+    // 3. Fermer le backend Python pour libérer TOUS les fichiers du répertoire SoundStash
+    killPythonServer();
+
+    // 4. Détruire le Systray
+    if (tray) {
+        try { tray.destroy(); } catch (e) {}
+        tray = null;
+    }
+
+    // 5. Lancer l'installeur Windows de manière 100% autonome et détachée
+    try {
+        const { spawn } = require('child_process');
+        const child = spawn(installerPath, [], {
+            detached: true,
+            stdio: 'ignore'
+        });
+        child.unref();
+        console.log('[Updater] Installeur détaché démarré avec succès');
+    } catch (err) {
+        console.error('[Updater] Erreur spawn détaché, tentative via shell.openPath:', err);
+        shell.openPath(installerPath);
+    }
+
+    // 6. Quitter définitivement Electron après un bref délai pour laisser la commande cmd se lancer
+    setTimeout(() => {
+        app.exit(0);
+    }, 400);
+
+    return { success: true };
+});
+
 // Bascule et état du plein écran
 ipcMain.handle('toggle-fullscreen', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return false;
@@ -1004,7 +1057,7 @@ function killPythonServer() {
         console.log('[Electron] Arrêt du serveur Python...');
         try {
             if (process.platform === 'win32') {
-                exec(`taskkill /pid ${pythonProcess.pid} /T /F`, (err) => {
+                exec(`taskkill /pid ${pythonProcess.pid} /F`, (err) => {
                     if (err) console.warn('[Electron] Info taskkill:', err.message);
                 });
             } else {

@@ -70,7 +70,7 @@ body.video-playback-active .floating-fullscreen-btn,
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    pointer-events: none;
+    pointer-events: auto;
     padding: 24px 32px 30px 32px;
     box-sizing: border-box;
     overflow: hidden;
@@ -436,6 +436,23 @@ body.video-playback-active .floating-fullscreen-btn,
     opacity: 1;
     color: #00f0ff;
     text-shadow: 0 0 10px #00f0ff;
+}
+
+.ambient-btn-video-toggle.disabled {
+    opacity: 0.28 !important;
+    cursor: not-allowed !important;
+    filter: grayscale(100%);
+    pointer-events: none;
+}
+
+.ambient-btn-video-toggle.video-active {
+    color: #00f0ff !important;
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+}
+
+/* Masquage de la vignette vidéo en mode Ambiance (audio continu) */
+body.ambient-mode-active.ambient-video-hidden #video-modal-backdrop {
+    display: none !important;
 }
 
 .ambient-play-btn {

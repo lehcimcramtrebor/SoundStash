@@ -88,6 +88,11 @@ function setupVideoModal() {
 
     if (!backdrop) return;
 
+    if (videoPlayer) {
+        videoPlayer.disablePictureInPicture = true;
+        videoPlayer.addEventListener("contextmenu", (e) => e.preventDefault());
+    }
+
     // Gestion du positionnement en Mode Ambiance (4 positions stylisées et persistantes)
     let currentAmbientPos = localStorage.getItem("ytm_ambient_video_pos") || "bottom-center";
     if (!["bottom-center", "bottom-left", "bottom-right", "center"].includes(currentAmbientPos)) {
@@ -199,6 +204,10 @@ function setupVideoModal() {
                 updateHeaderNowPlayingButton();
             }
 
+            if (typeof updateVideoToggleButtons === "function") {
+                updateVideoToggleButtons();
+            }
+
             setTimeout(() => {
                 backdrop.style.display = "none";
                 if (window.AmbientVisualizer && window.AmbientVisualizer.isActive) {
@@ -232,6 +241,9 @@ function setupVideoModal() {
             if (miniPlayIcon) miniPlayIcon.style.display = "none";
             if (miniPauseIcon) miniPauseIcon.style.display = "block";
 
+            if (typeof updateVideoToggleButtons === "function") {
+                updateVideoToggleButtons();
+            }
             showToast("Lecture vidéo en arrière-plan (audio actif). Cliquez sur la barre pour rouvrir.", "info");
         }
     }
@@ -243,6 +255,9 @@ function setupVideoModal() {
         backdrop.style.display = "flex";
         void backdrop.offsetWidth;
         backdrop.classList.add("active");
+        if (typeof updateVideoToggleButtons === "function") {
+            updateVideoToggleButtons();
+        }
     }
 
     window.closeVideoModal = closeVideoModal;
@@ -279,18 +294,15 @@ function setupVideoModal() {
         });
     }
 
-    // Clic sur la vignette vidéo en mode ambiance pour la rétablir en grand format
+    // Clic sur la vignette vidéo en mode ambiance : réveille l'interface sans quitter le mode
     if (theaterDialog) {
         theaterDialog.addEventListener("click", (e) => {
             if (e.target.closest(".video-ambient-nav") || e.target.closest(".btn-ambient-arrow")) {
                 return;
             }
             if (document.body.classList.contains("ambient-mode-active")) {
-                if (!e.target.closest(".video-modal-body")) {
-                    return;
-                }
-                if (window.AmbientVisualizer) {
-                    window.AmbientVisualizer.exit();
+                if (window.AmbientVisualizer && typeof window.AmbientVisualizer.handleUserActivity === "function") {
+                    window.AmbientVisualizer.handleUserActivity();
                 }
             }
         });
@@ -528,6 +540,10 @@ function setupVideoModal() {
             }
         });
     }
+
+    if (typeof updateVideoToggleButtons === "function") {
+        updateVideoToggleButtons();
+    }
 }
 
 function syncAudioPlayerWithVideo(item) {
@@ -612,6 +628,28 @@ function openVideoModal(item) {
 
     if (!backdrop || !item) return;
 
+    // Si la même vidéo en ligne est déjà chargée, réafficher sans recharger le flux pour éviter toute coupure audio
+    const isSameActiveOnlineVideo = currentModalVideoItem && (
+        (item.id && currentModalVideoItem.id && item.id === currentModalVideoItem.id) ||
+        (item.url && currentModalVideoItem.url && item.url === currentModalVideoItem.url) ||
+        (item.title && currentModalVideoItem.title && item.title === currentModalVideoItem.title && item.artist === currentModalVideoItem.artist)
+    );
+
+    if (isSameActiveOnlineVideo && videoPlayer && videoPlayer.src) {
+        window.isVideoPlayingInBackground = false;
+        document.body.classList.add("video-playback-active");
+        backdrop.style.display = "flex";
+        void backdrop.offsetWidth;
+        backdrop.classList.add("active");
+        if (videoPlayer.paused) {
+            videoPlayer.play().catch(e => console.warn(e));
+        }
+        if (typeof updateVideoToggleButtons === "function") {
+            updateVideoToggleButtons();
+        }
+        return;
+    }
+
     currentModalVideoItem = item;
     window.currentModalVideoItem = item;
     window.isVideoPlayingInBackground = false;
@@ -687,6 +725,30 @@ function openLocalVideoModal(item) {
     const extractAudioBtn = document.getElementById("video-modal-extract-audio-btn");
 
     if (!backdrop || !item) return;
+
+    // Si la même vidéo locale est déjà active/en arrière-plan, réafficher sans recharger le flux (0ms coupure de son !)
+    const isSameActiveLocalVideo = currentModalVideoItem && (
+        (item.rel_path && (item.rel_path === currentModalVideoItem.rel_path || item.rel_path === currentModalVideoItem.path)) ||
+        (item.path && (item.path === currentModalVideoItem.path || item.path === currentModalVideoItem.rel_path)) ||
+        (item.filepath && (item.filepath === currentModalVideoItem.filepath || item.filepath === currentModalVideoItem.path)) ||
+        (item.id && currentModalVideoItem.id && item.id === currentModalVideoItem.id) ||
+        (item.title && currentModalVideoItem.title && item.title === currentModalVideoItem.title && item.artist === currentModalVideoItem.artist)
+    );
+
+    if (isSameActiveLocalVideo && videoPlayer && videoPlayer.src) {
+        window.isVideoPlayingInBackground = false;
+        document.body.classList.add("video-playback-active");
+        backdrop.style.display = "flex";
+        void backdrop.offsetWidth;
+        backdrop.classList.add("active");
+        if (videoPlayer.paused) {
+            videoPlayer.play().catch(e => console.warn(e));
+        }
+        if (typeof updateVideoToggleButtons === "function") {
+            updateVideoToggleButtons();
+        }
+        return;
+    }
 
     currentModalVideoItem = item;
     window.currentModalVideoItem = item;
@@ -790,8 +852,92 @@ function openLocalVideoModal(item) {
     backdrop.style.display = "flex";
     void backdrop.offsetWidth;
     backdrop.classList.add("active");
+    updateVideoToggleButtons();
 }
 
+function updateVideoToggleButtons() {
+    const videoPlayer = document.getElementById("video-modal-player");
+    const backdrop = document.getElementById("video-modal-backdrop");
+    const miniBtn = document.getElementById("mini-player-video-toggle-btn");
+    const ambientBtn = document.getElementById("ambient-video-toggle-btn");
+
+    const hasActiveVideo = Boolean(
+        (window.currentModalVideoItem || currentModalVideoItem) &&
+        videoPlayer &&
+        videoPlayer.src &&
+        !videoPlayer.ended
+    );
+
+    const isAmbient = document.body.classList.contains("ambient-mode-active");
+    const isVideoVisible = isAmbient
+        ? !document.body.classList.contains("ambient-video-hidden")
+        : Boolean(backdrop && backdrop.classList.contains("active"));
+
+    const buttons = [miniBtn, ambientBtn].filter(Boolean);
+
+    buttons.forEach(btn => {
+        if (!hasActiveVideo) {
+            btn.disabled = true;
+            btn.classList.add("disabled");
+            btn.classList.remove("video-active");
+            btn.title = "Aucune vidéo en cours de lecture";
+            btn.style.opacity = "0.28";
+            btn.style.cursor = "not-allowed";
+        } else {
+            btn.disabled = false;
+            btn.classList.remove("disabled");
+            btn.style.opacity = "1";
+            btn.style.cursor = "pointer";
+            if (isVideoVisible) {
+                btn.classList.add("video-active");
+                btn.title = "Masquer l'affichage vidéo (continuer l'écoute sonore) [Raccourci: V]";
+                btn.style.color = "var(--primary, #00f0ff)";
+            } else {
+                btn.classList.remove("video-active");
+                btn.title = "Afficher l'écran vidéo [Raccourci: V]";
+                btn.style.color = "";
+            }
+        }
+    });
+}
+
+function toggleVideoDisplay() {
+    const videoPlayer = document.getElementById("video-modal-player");
+    const backdrop = document.getElementById("video-modal-backdrop");
+    const hasActiveVideo = Boolean(
+        (window.currentModalVideoItem || currentModalVideoItem) &&
+        videoPlayer &&
+        videoPlayer.src
+    );
+
+    if (!hasActiveVideo) {
+        if (typeof showToast === "function") {
+            showToast("Aucune vidéo en cours de lecture", "info");
+        }
+        return;
+    }
+
+    const isAmbient = document.body.classList.contains("ambient-mode-active");
+
+    if (isAmbient) {
+        const isHidden = document.body.classList.toggle("ambient-video-hidden");
+        if (typeof showToast === "function") {
+            showToast(isHidden ? "Vignette vidéo masquée (audio actif)" : "Vignette vidéo affichée", "info");
+        }
+    } else {
+        const isModalVisible = backdrop && backdrop.classList.contains("active");
+        if (isModalVisible) {
+            if (typeof window.closeVideoModal === "function") {
+                window.closeVideoModal(false);
+            }
+        } else {
+            if (typeof window.reopenVideoModal === "function") {
+                window.reopenVideoModal();
+            }
+        }
+    }
+    updateVideoToggleButtons();
+}
 
 // Exports globaux
 window.VideoAudioManager = VideoAudioManager;
@@ -801,4 +947,6 @@ window.reopenVideoModal = window.reopenVideoModal || function() {};
 window.syncAudioPlayerWithVideo = syncAudioPlayerWithVideo;
 window.openVideoModal = openVideoModal;
 window.openLocalVideoModal = openLocalVideoModal;
+window.updateVideoToggleButtons = updateVideoToggleButtons;
+window.toggleVideoDisplay = toggleVideoDisplay;
 

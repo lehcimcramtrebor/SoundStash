@@ -5,7 +5,7 @@
  */
 
 window.AppUpdater = {
-    currentVersion: "3.2.2",
+    currentVersion: "3.2.4",
     latestRelease: null,
     isChecking: false,
     isDownloading: false,
@@ -364,6 +364,38 @@ window.AppUpdater = {
         }
 
         try {
+            // Vérification de sécurité : vérifier si un téléchargement est en cours
+            try {
+                const checkRes = await fetch("/api/status");
+                if (checkRes.ok) {
+                    const statusData = await checkRes.json();
+                    if (statusData.is_downloading) {
+                        if (typeof showToast === "function") {
+                            showToast("Un téléchargement est en cours. Veuillez patienter avant d'installer la mise à jour.", "warning", 5000);
+                        }
+                        if (btnInstall) {
+                            btnInstall.disabled = false;
+                            btnInstall.textContent = "Lancer l'installation";
+                        }
+                        return;
+                    }
+                }
+            } catch (ignore) {}
+
+            // 1. Priorité Electron native : détachement absolu de l'installeur et fermeture propre
+            if (window.electronAPI && typeof window.electronAPI.installUpdate === "function") {
+                if (typeof showToast === "function") {
+                    showToast("Fermeture de SoundStash pour application de la mise à jour...", "info", 4000);
+                }
+                this.closeModal();
+                const res = await window.electronAPI.installUpdate(this.installerPath);
+                if (res && res.error) {
+                    throw new Error(res.error);
+                }
+                return;
+            }
+
+            // 2. Fallback hors Electron (ex: mode web standard)
             const res = await fetch("/api/app/update/install", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

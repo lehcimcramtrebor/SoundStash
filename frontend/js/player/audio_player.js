@@ -381,7 +381,7 @@ const AudioPlayer = {
         const miniVolBtn = document.getElementById("mini-player-volume-btn");
         const miniCloseBtn = document.getElementById("mini-player-close-btn");
         const miniOpenTab = document.getElementById("mini-player-open-tab");
-        const miniExpandBtn = document.getElementById("mini-player-expand-btn");
+        const miniVideoToggleBtn = document.getElementById("mini-player-video-toggle-btn");
 
         if (miniPlayBtn) {
             miniPlayBtn.addEventListener("click", () => {
@@ -494,7 +494,13 @@ const AudioPlayer = {
             window.goToNowPlaying();
         };
         if (miniOpenTab) miniOpenTab.addEventListener("click", handleOpenFullPlayer);
-        if (miniExpandBtn) miniExpandBtn.addEventListener("click", handleOpenFullPlayer);
+        if (miniVideoToggleBtn) {
+            miniVideoToggleBtn.addEventListener("click", () => {
+                if (typeof window.toggleVideoDisplay === "function") {
+                    window.toggleVideoDisplay();
+                }
+            });
+        }
 
 
 
@@ -3070,20 +3076,42 @@ const AudioPlayer = {
 
     setAllCatalogPreparingState(isPreparing, hasError = false) {
         const btn = document.getElementById("player-subtab-all");
-        if (!btn) return;
+        const refreshIndicator = document.getElementById("player-catalog-refresh-indicator");
+        const refreshText = document.getElementById("player-catalog-refresh-text");
+
         if (isPreparing) {
-            btn.classList.add("is-preparing", "tab-disabled");
-            btn.title = "Rafraîchissement et préparation du catalogue complet...";
-            btn.innerHTML = `<span class="subtab-all-icon">🔄</span> <span class="subtab-all-label">Rafraîchissement...</span>`;
+            if (btn) {
+                btn.classList.add("is-preparing", "tab-disabled");
+                btn.title = "Rafraîchissement et préparation du catalogue complet...";
+                btn.innerHTML = `<span class="subtab-all-icon">🌐</span> <span class="subtab-all-label">Tout</span>`;
+            }
+            if (refreshIndicator) {
+                refreshIndicator.classList.add("visible");
+                if (refreshText) refreshText.textContent = "Rafraîchissement…";
+            }
         } else if (hasError) {
-            btn.classList.remove("is-preparing");
-            btn.classList.add("tab-disabled");
-            btn.title = "Erreur lors du rafraîchissement du catalogue complet";
-            btn.innerHTML = `<span class="subtab-all-icon">⚠️</span> <span class="subtab-all-label">Erreur Tout</span>`;
+            if (btn) {
+                btn.classList.remove("is-preparing");
+                btn.classList.add("tab-disabled");
+                btn.title = "Erreur lors du rafraîchissement du catalogue complet";
+                btn.innerHTML = `<span class="subtab-all-icon">⚠️</span> <span class="subtab-all-label">Tout</span>`;
+            }
+            if (refreshIndicator) {
+                refreshIndicator.classList.add("visible");
+                if (refreshText) refreshText.textContent = "Erreur rafraîchissement";
+                setTimeout(() => {
+                    refreshIndicator.classList.remove("visible");
+                }, 4000);
+            }
         } else {
-            btn.classList.remove("is-preparing", "tab-disabled");
-            btn.title = "Tout le catalogue (vue continue et recherche globale)";
-            btn.innerHTML = `<span class="subtab-all-icon">🌐</span> <span class="subtab-all-label">Tout</span>`;
+            if (btn) {
+                btn.classList.remove("is-preparing", "tab-disabled");
+                btn.title = "Tout le catalogue (vue continue et recherche globale)";
+                btn.innerHTML = `<span class="subtab-all-icon">🌐</span> <span class="subtab-all-label">Tout</span>`;
+            }
+            if (refreshIndicator) {
+                refreshIndicator.classList.remove("visible");
+            }
         }
     },
 
@@ -3179,37 +3207,63 @@ const AudioPlayer = {
         let targetTrack = null;
         let targetBlock = null;
 
-        // Stratégie A : Recherche directe par chemin absolu du fichier audio (100% universel et instantané)
+        // Stratégie A : Recherche directe par attribut data-track-path (100% robuste sur chemins Windows sans parsing CSS)
         if (curTrackPath) {
-            const escapedTrackPath = CSS.escape ? CSS.escape(curTrackPath) : curTrackPath.replace(/["\\]/g, '\\$&');
-            targetTrack = allContainer.querySelector(`.player-track-item[data-track-path="${escapedTrackPath}"], .dense-track-row[data-track-path="${escapedTrackPath}"]`);
+            const items = allContainer.querySelectorAll(".player-track-item, .dense-track-row");
+            const curNorm = curTrackPath.replace(/\\/g, "/").toLowerCase();
+            for (let i = 0; i < items.length; i++) {
+                const p = items[i].getAttribute("data-track-path");
+                if (!p) continue;
+                if (p === curTrackPath || p.replace(/\\/g, "/").toLowerCase() === curNorm) {
+                    targetTrack = items[i];
+                    break;
+                }
+            }
         }
 
-        // Stratégie B : Recherche par chemin d'album standard si disponible
+        // Stratégie B : Recherche par chemin d'album et index de piste
         if (!targetTrack && this.activeAlbumPath && !this.activeAlbumPath.startsWith("system:") && !this.activeAlbumPath.startsWith("playlist:")) {
-            const escapedPath = CSS.escape ? CSS.escape(this.activeAlbumPath) : this.activeAlbumPath.replace(/["\\]/g, '\\$&');
-            targetTrack = allContainer.querySelector(`.player-track-item[data-alb-path="${escapedPath}"][data-trk-idx="${this.currentIndex}"], .dense-track-row[data-alb-path="${escapedPath}"][data-trk-idx="${this.currentIndex}"]`);
+            const albNorm = this.activeAlbumPath.replace(/\\/g, "/").toLowerCase();
+            const items = allContainer.querySelectorAll(".player-track-item, .dense-track-row");
+            for (let i = 0; i < items.length; i++) {
+                const ap = items[i].getAttribute("data-alb-path");
+                if (ap && ap.replace(/\\/g, "/").toLowerCase() === albNorm) {
+                    const idxStr = items[i].getAttribute("data-trk-idx");
+                    if (idxStr !== null && parseInt(idxStr, 10) === this.currentIndex) {
+                        targetTrack = items[i];
+                        break;
+                    }
+                }
+            }
         }
 
         // Stratégie C : Recherche dans le bloc album par titre de morceau
         if (!targetTrack && curAlbPath && curTrack) {
-            const escapedAlb = CSS.escape ? CSS.escape(curAlbPath) : curAlbPath.replace(/["\\]/g, '\\$&');
-            const albBlock = allContainer.querySelector(`.player-all-album-block[data-alb-path="${escapedAlb}"]`);
+            const curAlbNorm = curAlbPath.replace(/\\/g, "/").toLowerCase();
+            const blocks = allContainer.querySelectorAll(".player-all-album-block");
+            let albBlock = null;
+            for (let i = 0; i < blocks.length; i++) {
+                const ap = blocks[i].getAttribute("data-alb-path");
+                if (ap && ap.replace(/\\/g, "/").toLowerCase() === curAlbNorm) {
+                    albBlock = blocks[i];
+                    break;
+                }
+            }
             if (albBlock) {
                 const trkNum = curTrack.track_number ? parseInt(curTrack.track_number, 10) : null;
-                if (trkNum !== null && !isNaN(trkNum) && trkNum > 0) {
-                    targetTrack = albBlock.querySelector(`.player-track-item[data-trk-idx="${trkNum - 1}"]`);
+                const trackItems = albBlock.querySelectorAll(".player-track-item");
+                if (trkNum !== null && !isNaN(trkNum) && trkNum > 0 && trackItems[trkNum - 1]) {
+                    targetTrack = trackItems[trkNum - 1];
                 }
                 if (!targetTrack && curTrack.title) {
                     const titleLower = curTrack.title.trim().toLowerCase();
-                    albBlock.querySelectorAll(".player-track-item").forEach(item => {
-                        if (!targetTrack) {
-                            const tEl = item.querySelector(".player-track-item-title");
-                            if (tEl && tEl.textContent.trim().toLowerCase() === titleLower) {
-                                targetTrack = item;
-                            }
+                    for (let i = 0; i < trackItems.length; i++) {
+                        const tEl = trackItems[i].querySelector(".player-track-item-title");
+                        if (tEl && tEl.textContent.trim().toLowerCase() === titleLower) {
+                            targetTrack = trackItems[i];
+                            break;
                         }
-                    });
+                    }
                 }
             }
         }
@@ -3219,8 +3273,15 @@ const AudioPlayer = {
             targetBlock = targetTrack.closest(".player-all-album-block");
         }
         if (!targetBlock && curAlbPath) {
-            const escapedAlb = CSS.escape ? CSS.escape(curAlbPath) : curAlbPath.replace(/["\\]/g, '\\$&');
-            targetBlock = allContainer.querySelector(`.player-all-album-block[data-alb-path="${escapedAlb}"]`);
+            const curAlbNorm = curAlbPath.replace(/\\/g, "/").toLowerCase();
+            const blocks = allContainer.querySelectorAll(".player-all-album-block");
+            for (let i = 0; i < blocks.length; i++) {
+                const ap = blocks[i].getAttribute("data-alb-path");
+                if (ap && ap.replace(/\\/g, "/").toLowerCase() === curAlbNorm) {
+                    targetBlock = blocks[i];
+                    break;
+                }
+            }
         }
 
         // 2. Mettre à jour les classes sur les blocs d'albums
@@ -5585,7 +5646,7 @@ const AudioPlayer = {
         // ── Auto-scroll intelligent vers la piste active quelle que soit la vue active ──────
         // (Appelé impérativement APRÈS la mise à jour des classes .active sur le DOM pour cibler instantanément le bon élément)
         if (this.currentView === "now-playing" || (this.currentView === "albums" && this.isAlbumDetailOpen) || this.currentView === "playlists" || this.currentView === "all") {
-            this.scrollToActiveTrack();
+            this.scrollToActiveTrack(this.isShuffle || Boolean(this.userQueue && this.userQueue.length > 0));
         }
 
         const queueEq = document.querySelector("#queue-current-card .player-equalizer-bars");
@@ -5612,6 +5673,9 @@ const AudioPlayer = {
         }
 
         this.syncSystemMediaState();
+        if (typeof window.updateVideoToggleButtons === "function") {
+            window.updateVideoToggleButtons();
+        }
         if (typeof window.updateScreenWakeLock === "function") {
             window.updateScreenWakeLock();
         }
@@ -6913,7 +6977,18 @@ const AudioPlayer = {
     }
 };
 
+window.goToNowPlaying = function() {
+    if (window.AudioPlayer) {
+        window.AudioPlayer.navigateToCurrentlyPlaying();
+    }
+};
+
 function setupAudioPlayer() {
+    window.goToNowPlaying = function() {
+        if (window.AudioPlayer) {
+            window.AudioPlayer.navigateToCurrentlyPlaying();
+        }
+    };
     AudioPlayer.init();
 }
 

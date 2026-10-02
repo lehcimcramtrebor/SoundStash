@@ -198,8 +198,43 @@ body.ambient-mode-active .player-scroll-shade {
 .player-header-left {
     display: flex;
     align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
+    gap: 14px;
+    flex-wrap: nowrap;
+}
+
+.player-header-status-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 2px;
+}
+
+.player-header-badge-status {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 6px;
+    background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--border-color);
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--text-muted, rgba(255, 255, 255, 0.65));
+    white-space: nowrap;
+    opacity: 0.85;
+    user-select: none;
+    transition: opacity 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+
+.player-header-badge-status.visible {
+    display: inline-flex !important;
+}
+
+#player-catalog-refresh-indicator {
+    color: var(--primary, #00f0ff);
+    border-color: rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
 }
 
 .player-source-group {
@@ -1830,6 +1865,17 @@ body.player-mode-active .nav-tabs {
     color: var(--accent);
 }
 
+.mini-btn-video-toggle.disabled {
+    opacity: 0.28 !important;
+    cursor: not-allowed !important;
+    filter: grayscale(100%);
+    pointer-events: none;
+}
+
+.mini-btn-video-toggle.video-active {
+    color: var(--primary, #00f0ff) !important;
+}
+
 .mini-btn-circle {
     width: 34px;
     height: 34px;
@@ -3085,21 +3131,18 @@ body:not(.workshop-drawer-open) .btn-header-now-playing {
    ======================================================== */
 #player-cache-warm-indicator {
     display: none;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.78rem;
     opacity: 0;
     transition: opacity 0.3s ease;
-    color: var(--text-muted, rgba(255,255,255,0.55));
-    white-space: nowrap;
 }
 #player-cache-warm-indicator.visible {
-    display: flex !important;
-    opacity: 0.8;
+    display: inline-flex !important;
+    opacity: 0.85;
 }
 #player-cache-warm-indicator.done {
     color: #4ade80;
-    opacity: 0.9;
+    border-color: rgba(74, 222, 128, 0.35);
+    background: rgba(74, 222, 128, 0.08);
+    opacity: 1;
 }
 
 /* Rotation du spinner SVG */

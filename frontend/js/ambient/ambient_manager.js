@@ -217,7 +217,7 @@ const AmbientVisualizer = {
         const volSlider = document.getElementById("ambient-volume-slider");
         const volBtn = document.getElementById("ambient-volume-btn");
         const eqBtn = document.getElementById("ambient-eq-btn");
-        const fsBtn = document.getElementById("ambient-fullscreen-btn");
+        const videoToggleBtn = document.getElementById("ambient-video-toggle-btn");
 
         if (playBtn) playBtn.addEventListener("click", () => {
             const videoPlayer = document.getElementById("video-modal-player");
@@ -285,14 +285,21 @@ const AmbientVisualizer = {
             });
         }
 
-        if (fsBtn) {
-            fsBtn.addEventListener("click", () => {
-                if (window.electronAPI && window.electronAPI.toggleFullscreen) {
-                    window.electronAPI.toggleFullscreen();
-                } else if (document.fullscreenElement) {
-                    document.exitFullscreen().catch(() => {});
-                } else {
-                    document.documentElement.requestFullscreen().catch(() => {});
+        if (videoToggleBtn) {
+            videoToggleBtn.addEventListener("click", () => {
+                if (typeof window.toggleVideoDisplay === "function") {
+                    window.toggleVideoDisplay();
+                }
+                this.handleUserActivity();
+            });
+        }
+
+        const overlayEl = document.getElementById("ambient-mode-overlay");
+        if (overlayEl) {
+            overlayEl.addEventListener("click", (e) => {
+                // Clic dans le vide : réveiller les contrôles cinématiques sans JAMAIS quitter le mode ambiance
+                if (e.target === overlayEl) {
+                    this.handleUserActivity();
                 }
             });
         }
@@ -398,6 +405,9 @@ const AmbientVisualizer = {
 
         this.syncState();
         this.handleUserActivity();
+        if (typeof window.updateVideoToggleButtons === "function") {
+            window.updateVideoToggleButtons();
+        }
         if (typeof window.updateScreenWakeLock === "function") {
             window.updateScreenWakeLock();
         }
@@ -405,7 +415,7 @@ const AmbientVisualizer = {
 
     exit() {
         this.isActive = false;
-        document.body.classList.remove("ambient-mode-active", "ambient-idle", "ambient-dock-pinned");
+        document.body.classList.remove("ambient-mode-active", "ambient-idle", "ambient-dock-pinned", "ambient-video-hidden");
         if (window.AmbientThemeManager) {
             window.AmbientThemeManager.stop();
         }
@@ -419,6 +429,9 @@ const AmbientVisualizer = {
         // Si une vidéo était ouverte, rétablir la classe de théâtre vidéo
         if (currentModalVideoItem && document.getElementById("video-modal-backdrop")?.classList.contains("active")) {
             document.body.classList.add("video-playback-active");
+        }
+        if (typeof window.updateVideoToggleButtons === "function") {
+            window.updateVideoToggleButtons();
         }
         if (typeof window.updateScreenWakeLock === "function") {
             window.updateScreenWakeLock();
@@ -465,6 +478,9 @@ const AmbientVisualizer = {
             if (seekBar && dur > 0 && !seekBar.matches(":active")) {
                 seekBar.value = (cur / dur) * 100;
             }
+            if (typeof window.updateVideoToggleButtons === "function") {
+                window.updateVideoToggleButtons();
+            }
             return;
         }
 
@@ -491,6 +507,10 @@ const AmbientVisualizer = {
         } else {
             const ambRepeatBtn = document.getElementById("ambient-repeat-btn");
             if (ambRepeatBtn) ambRepeatBtn.classList.toggle("active", player.repeatMode !== "none");
+        }
+
+        if (typeof window.updateVideoToggleButtons === "function") {
+            window.updateVideoToggleButtons();
         }
     }
 };

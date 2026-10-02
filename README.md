@@ -1,4 +1,4 @@
-# 🎵 SoundStash v3.2.2
+# 🎵 SoundStash v3.2.5
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -64,6 +64,7 @@ Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve tou
 | `Flèche Haut` / `Flèche Bas` | Volume (+ / - 5%) |
 | `Molette de la souris` | Réglage précis du volume sur la barre de lecture ou le mini-lecteur |
 | `M` | Couper / Rétablir le son (Mute) |
+| `V` | Alterner l'affichage de la vidéo (Mode standard et Mode ambiance) |
 | `L` | Basculer le mode de répétition (Désactivé / Répéter tout / Répéter la piste) |
 | `Ctrl + F` | Activer instantanément la barre de recherche |
 | `Échap` | Fermer le volet ouvert / Quitter le mode plein écran |

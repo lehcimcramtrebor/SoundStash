@@ -20,7 +20,7 @@ from backend.config import config, CONFIG_DIR, TEMP_DOWNLOAD_DIR
 
 logger = logging.getLogger("soundstash_updater")
 
-CURRENT_APP_VERSION = "3.2.2"
+CURRENT_APP_VERSION = "3.2.4"
 GITHUB_REPO = "lehcimcramtrebor/SoundStash"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -195,10 +195,14 @@ def launch_installer(installer_path: Optional[str] = None) -> Dict[str, Any]:
 
     try:
         if sys.platform == "win32":
-            # os.startfile délègue l'exécution à l'explorateur Windows (ShellExecuteW),
-            # ce qui détache l'installeur de l'arbre de processus de Python.
-            # Ainsi, un arrêt du serveur Python (ex. taskkill /T) ne tuera pas l'installeur.
-            os.startfile(path_to_run)
+            # Détachement absolu de l'arbre de processus Windows via flags du noyau Win32
+            DETACHED_PROCESS = 0x00000008
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            subprocess.Popen(
+                [path_to_run],
+                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                close_fds=True
+            )
         else:
             subprocess.Popen([path_to_run], close_fds=True)
         return {"success": True, "status": "success", "message": "Installeur lancé avec succès"}

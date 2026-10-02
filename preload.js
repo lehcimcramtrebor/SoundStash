@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     minimize: () => ipcRenderer.send('minimize'),
     minimizeToTray: () => ipcRenderer.send('minimize-to-tray'),
     confirmQuit: () => ipcRenderer.send('confirm-quit'),
+    installUpdate: (installerPath) => ipcRenderer.invoke('install-update', installerPath),
     toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
     isFullscreen: () => ipcRenderer.invoke('is-fullscreen'),
     markTrayNoticeSeen: () => ipcRenderer.send('mark-tray-notice-seen'),

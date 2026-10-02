@@ -132,6 +132,15 @@ function setupPlayerShortcutsAndWheel() {
             return;
         }
 
+        // Touche V : Alterner l'affichage de la vidéo (Mode standard et Mode ambiance)
+        if (!e.shiftKey && (e.key === "v" || e.key === "V")) {
+            e.preventDefault();
+            if (typeof window.toggleVideoDisplay === "function") {
+                window.toggleVideoDisplay();
+            }
+            return;
+        }
+
         // Touche T (seule) : Activer / Quitter le Mode Ambiance
         if (!e.shiftKey && (e.key === "t" || e.key === "T")) {
             e.preventDefault();
