@@ -349,6 +349,73 @@ function setupSearch() {
         }
     }
 
+    function resetConfirmOverrideState(btnEl) {
+        if (!btnEl) return;
+        if (btnEl._overrideTimer) {
+            clearTimeout(btnEl._overrideTimer);
+            btnEl._overrideTimer = null;
+        }
+        delete btnEl.dataset.confirmOverride;
+        btnEl.classList.remove("btn-confirm-override");
+        if (btnEl.dataset.savedHtml) {
+            btnEl.innerHTML = btnEl.dataset.savedHtml;
+            delete btnEl.dataset.savedHtml;
+        }
+    }
+    window.resetConfirmOverrideState = resetConfirmOverrideState;
+
+    async function handleDownloadWithGuards(url, title, formatParam, btnEl, originalHtml, item) {
+        if (!btnEl || btnEl.disabled) return;
+
+        const status = item ? item.status : null;
+
+        // 1. Si en cours de téléchargement ou en file d'attente -> bloqué
+        if (status === "downloading" || status === "queued") {
+            return;
+        }
+
+        // 2. Si déjà présent dans le dossier temporaire -> confirmation explicite d'écrasement
+        if (status === "temp") {
+            const itemType = (item && item.type) || "élément";
+            const itemLabel = itemType === "album" ? "Cet album" : (itemType === "playlist" ? "Cette playlist" : (itemType === "video" ? "Ce clip" : "Ce titre"));
+            const displayTitle = title || (item && item.title) || "";
+            const confirmed = await showModalConfirm(
+                "Écraser le téléchargement temporaire ?",
+                `${itemLabel} « ${displayTitle} » est déjà présent dans vos téléchargements temporaires.\n\nSouhaitez-vous le retélécharger et écraser le contenu temporaire existant ?`,
+                "Écraser & Retélécharger",
+                false,
+                "Annuler"
+            );
+            if (!confirmed) return;
+            return await downloadItemFromSearch(url, title, formatParam, btnEl, originalHtml, item);
+        }
+
+        // 3. Si déjà possédé dans la collection maître (ou exporté) -> double état au clic
+        if (status === "owned_library" || status === "exported") {
+            if (!btnEl.dataset.confirmOverride) {
+                // 1er clic : armer la confirmation
+                btnEl.dataset.confirmOverride = "true";
+                btnEl.dataset.savedHtml = btnEl.innerHTML;
+                btnEl.classList.add("btn-confirm-override");
+                btnEl.innerHTML = `⚠️ Télécharger quand même ?`;
+
+                if (btnEl._overrideTimer) clearTimeout(btnEl._overrideTimer);
+                btnEl._overrideTimer = setTimeout(() => {
+                    resetConfirmOverrideState(btnEl);
+                }, 4500);
+                return;
+            } else {
+                // 2ème clic : confirmé !
+                resetConfirmOverrideState(btnEl);
+                return await downloadItemFromSearch(url, title, formatParam, btnEl, originalHtml, item);
+            }
+        }
+
+        // 4. Cas normal (non possédé)
+        return await downloadItemFromSearch(url, title, formatParam, btnEl, originalHtml, item);
+    }
+    window.handleDownloadWithGuards = handleDownloadWithGuards;
+
     function updateCardStatusBadge(item) {
         if (!item || !item._cardElement) return;
         const thumbContainer = item._cardElement.querySelector(".search-thumb-container");
@@ -401,7 +468,37 @@ function setupSearch() {
             if (listenBtn) listenBtn.remove();
             if (btnSendPlayer) btnSendPlayer.style.display = "";
         }
+
+        // Mise à jour de l'état des boutons de téléchargement de la carte selon le statut
+        const dlButtons = item._cardElement.querySelectorAll(".search-card-download-btn");
+        dlButtons.forEach(btn => {
+            if (!btn.dataset.defaultHtml) {
+                btn.dataset.defaultHtml = btn.innerHTML;
+            }
+
+            if (item.status === "downloading") {
+                resetConfirmOverrideState(btn);
+                btn.disabled = true;
+                btn.classList.add("btn-dl-state-disabled");
+                btn.title = "Déjà en cours de téléchargement";
+                btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px; margin-right: 4px; display: inline-block;"></span>⚡ En cours`;
+            } else if (item.status === "queued") {
+                resetConfirmOverrideState(btn);
+                btn.disabled = true;
+                btn.classList.add("btn-dl-state-disabled");
+                btn.title = "Déjà présent dans la file d'attente";
+                btn.innerHTML = `⏳ En file`;
+            } else {
+                btn.disabled = false;
+                btn.classList.remove("btn-dl-state-disabled");
+                btn.title = "";
+                if (!btn.dataset.confirmOverride && btn.dataset.defaultHtml) {
+                    btn.innerHTML = btn.dataset.defaultHtml;
+                }
+            }
+        });
     }
+    window.updateCardStatusBadge = updateCardStatusBadge;
 
     async function enrichItemsWithLibraryStatus(items, allowAutoRefilter = true) {
         const targetItems = (items && items.length > 0) ? items : (window.currentSearchResults || currentRawResults || []);
@@ -771,9 +868,10 @@ function setupSearch() {
         const dlMainBtn = card.querySelector(".btn-dl-main");
         if (dlMainBtn) {
             const origHtml = dlMainBtn.innerHTML;
+            dlMainBtn.dataset.defaultHtml = origHtml;
             dlMainBtn.addEventListener("click", () => {
                 const fmt = currentConfig.default_format || (document.getElementById("format-select") ? document.getElementById("format-select").value : "m4a");
-                downloadItemFromSearch(item.url, item.title, fmt, dlMainBtn, origHtml, item);
+                handleDownloadWithGuards(item.url, item.title, fmt, dlMainBtn, origHtml, item);
             });
         }
 
@@ -781,9 +879,10 @@ function setupSearch() {
         const dlAudioBtn = card.querySelector(".btn-dl-audio");
         if (dlAudioBtn) {
             const origHtml = dlAudioBtn.innerHTML;
+            dlAudioBtn.dataset.defaultHtml = origHtml;
             dlAudioBtn.addEventListener("click", () => {
                 const fmt = currentConfig.default_format || (document.getElementById("format-select") ? document.getElementById("format-select").value : "m4a");
-                downloadItemFromSearch(item.url, item.title, fmt, dlAudioBtn, origHtml, item);
+                handleDownloadWithGuards(item.url, item.title, fmt, dlAudioBtn, origHtml, item);
             });
         }
 
@@ -791,8 +890,9 @@ function setupSearch() {
         const dlVideoBtn = card.querySelector(".btn-dl-video");
         if (dlVideoBtn) {
             const origHtml = dlVideoBtn.innerHTML;
+            dlVideoBtn.dataset.defaultHtml = origHtml;
             dlVideoBtn.addEventListener("click", () => {
-                downloadItemFromSearch(item.url, item.title, "mp4", dlVideoBtn, origHtml, item);
+                handleDownloadWithGuards(item.url, item.title, "mp4", dlVideoBtn, origHtml, item);
             });
         }
 
@@ -1261,6 +1361,7 @@ function setupAlbumPreview() {
     if (!backdrop) return;
 
     function closePreview() {
+        if (downloadAllBtn) resetConfirmOverrideState(downloadAllBtn);
         backdrop.classList.remove("active");
         setTimeout(() => {
             backdrop.style.display = "none";
@@ -1286,6 +1387,36 @@ function setupAlbumPreview() {
 
     downloadAllBtn.addEventListener("click", async () => {
         if (!currentPreviewAlbum || !currentPreviewAlbum.url) return;
+        if (downloadAllBtn.disabled) return;
+
+        const status = currentPreviewAlbum.status;
+        if (status === "downloading" || status === "queued") return;
+
+        if (status === "temp") {
+            const confirmed = await showModalConfirm(
+                "Écraser le téléchargement temporaire ?",
+                `« ${currentPreviewAlbum.title} » est déjà présent dans vos téléchargements temporaires.\n\nSouhaitez-vous le retélécharger et écraser le contenu temporaire existant ?`,
+                "Écraser & Retélécharger",
+                false,
+                "Annuler"
+            );
+            if (!confirmed) return;
+        } else if (status === "owned_library" || status === "exported") {
+            if (!downloadAllBtn.dataset.confirmOverride) {
+                downloadAllBtn.dataset.confirmOverride = "true";
+                downloadAllBtn.dataset.savedHtml = downloadAllBtn.innerHTML;
+                downloadAllBtn.classList.add("btn-confirm-override");
+                downloadAllBtn.innerHTML = `⚠️ Télécharger quand même ?`;
+                if (downloadAllBtn._overrideTimer) clearTimeout(downloadAllBtn._overrideTimer);
+                downloadAllBtn._overrideTimer = setTimeout(() => {
+                    resetConfirmOverrideState(downloadAllBtn);
+                }, 4500);
+                return;
+            } else {
+                resetConfirmOverrideState(downloadAllBtn);
+            }
+        }
+
         downloadAllBtn.disabled = true;
         downloadAllBtn.innerHTML = `⏳ Ajout...`;
 
@@ -1303,6 +1434,7 @@ function setupAlbumPreview() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     url: currentPreviewAlbum.url,
+                    title: currentPreviewAlbum.title,
                     format: defaultFormat,
                     quality: defaultQuality,
                     auto_retag: autoRetag,
@@ -1317,6 +1449,12 @@ function setupAlbumPreview() {
 
             const data = await res.json();
             if (data.success) {
+                currentPreviewAlbum.status = "queued";
+                currentPreviewAlbum.statusLabel = "⏳ En file";
+                currentPreviewAlbum.statusBadgeClass = "badge-status-queued";
+                if (typeof window.updateCardStatusBadge === "function") {
+                    window.updateCardStatusBadge(currentPreviewAlbum);
+                }
                 showToast(`"${currentPreviewAlbum.title}" ajouté à la file d'attente !`, "Voir la file", () => {
                     switchTab("tab-download");
                 });
@@ -1382,6 +1520,25 @@ async function openAlbumPreview(album) {
             typeName = "Single";
             badgeClass = "badge-single";
             btnLabel = "Télécharger le single";
+        }
+    }
+
+    if (downloadAllBtn) {
+        resetConfirmOverrideState(downloadAllBtn);
+        if (album.status === "downloading") {
+            downloadAllBtn.disabled = true;
+            downloadAllBtn.classList.add("btn-dl-state-disabled");
+            btnLabel = "⚡ En cours de téléchargement";
+            downloadAllBtn.title = "Déjà en cours de téléchargement";
+        } else if (album.status === "queued") {
+            downloadAllBtn.disabled = true;
+            downloadAllBtn.classList.add("btn-dl-state-disabled");
+            btnLabel = "⏳ Déjà dans la file d'attente";
+            downloadAllBtn.title = "Déjà présent dans la file d'attente";
+        } else {
+            downloadAllBtn.disabled = false;
+            downloadAllBtn.classList.remove("btn-dl-state-disabled");
+            downloadAllBtn.title = "";
         }
     }
 
@@ -1541,6 +1698,7 @@ async function openAlbumPreview(album) {
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 url: trackUrl,
+                                title: mt.title || "",
                                 format: defaultFormat,
                                 quality: defaultQuality,
                                 auto_retag: true,
@@ -1734,6 +1892,7 @@ async function openAlbumPreview(album) {
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
                                     url: trackUrl,
+                                    title: t.title || "",
                                     format: defaultFormat,
                                     quality: defaultQuality,
                                     auto_retag: true,

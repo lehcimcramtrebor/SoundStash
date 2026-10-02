@@ -1295,11 +1295,43 @@ class SmartMatcher:
     def __init__(self, indexer: LibraryIndexer):
         self.indexer = indexer
 
+    @staticmethod
+    def _normalize_url(u: Optional[str]) -> str:
+        if not u:
+            return ""
+        clean = str(u).strip()
+        # 1. Extraction ID de playlist YouTube si présent (ex: list=PLxyz...)
+        if "list=" in clean:
+            match = re.search(r"[?&]list=([a-zA-Z0-9_\-]+)", clean)
+            if match:
+                return f"playlist:{match.group(1)}"
+
+        # 2. Extraction ID vidéo YouTube (watch?v=XYZ, youtu.be/XYZ, shorts/XYZ, embed/XYZ)
+        if "watch?v=" in clean or "watch/" in clean:
+            match = re.search(r"(?:[?&]v=|watch/)([a-zA-Z0-9_\-]+)", clean)
+            if match:
+                return f"video:{match.group(1)}"
+        if "youtu.be/" in clean:
+            match = re.search(r"youtu\.be/([a-zA-Z0-9_\-]+)", clean)
+            if match:
+                return f"video:{match.group(1)}"
+        if "/shorts/" in clean:
+            match = re.search(r"/shorts/([a-zA-Z0-9_\-]+)", clean)
+            if match:
+                return f"video:{match.group(1)}"
+
+        # 3. Repli générique nettoyé
+        clean = clean.lower().replace("https://", "").replace("http://", "").replace("www.", "").replace("music.", "")
+        clean = clean.split("&")[0].split("#")[0].rstrip("/")
+        return clean
+
     def match_item(
         self,
         title: str,
         artist: str = "",
         item_type: str = "album",
+        url: Optional[str] = None,
+        current_downloading_item: Optional[dict] = None,
         downloading_url_or_title: Optional[str] = None,
         queued_items: Optional[List[dict]] = None
     ) -> dict:
@@ -1308,19 +1340,76 @@ class SmartMatcher:
         """
         norm_title = normalize_text(title)
         norm_art = normalize_text(artist)
+        norm_item_url = self._normalize_url(url)
 
-        # 1. Vérification téléchargement en cours
-        if downloading_url_or_title:
-            norm_down = normalize_text(downloading_url_or_title)
-            if (norm_title and norm_title in norm_down) or (norm_down and norm_down in norm_title):
+        # 1. Vérification téléchargement en cours / file d'attente
+        if norm_item_url:
+            # L'élément possède une URL YouTube canonique (résultat de recherche en ligne).
+            # L'URL est le SEUL critère objectif et certain : deux vidéos différentes ou deux playlists
+            # d'un même artiste ne doivent JAMAIS être confondues sous prétexte d'un titre similaire !
+
+            # 1.1 Téléchargement en cours
+            curr_url = None
+            if isinstance(current_downloading_item, dict):
+                curr_url = self._normalize_url(current_downloading_item.get("url"))
+            elif downloading_url_or_title and ("youtube.com" in downloading_url_or_title or "youtu.be" in downloading_url_or_title):
+                curr_url = self._normalize_url(downloading_url_or_title)
+
+            if curr_url and curr_url == norm_item_url:
                 return {"status": "downloading", "label": "⚡ En cours", "badge_class": "badge-status-downloading"}
 
-        # 2. Vérification file d'attente
-        if queued_items:
-            for q in queued_items:
-                q_title = normalize_text(q.get("title") or "")
-                if norm_title and (norm_title == q_title or norm_title in q_title or q_title in norm_title):
-                    return {"status": "queued", "label": "⏳ En file", "badge_class": "badge-status-queued"}
+            # 1.2 File d'attente
+            if queued_items:
+                for q in queued_items:
+                    if isinstance(q, dict):
+                        q_url = self._normalize_url(q.get("url"))
+                        if q_url and q_url == norm_item_url:
+                            return {"status": "queued", "label": "⏳ En file", "badge_class": "badge-status-queued"}
+
+            # NOTA BENE : L'élément possède une URL et celle-ci ne correspond ni à la tâche en cours
+            # ni aux tâches en file. Il n'est donc ni en cours ni en file.
+            # On NE PASSE PAS au match par titre ci-dessous pour éviter de faux positifs entre vidéos
+            # ayant des titres proches chez le même artiste (ex: synthwave compilations).
+        else:
+            # 2. Repli par titre/artiste UNIQUEMENT pour les éléments qui n'ont aucune URL
+            curr_title = ""
+            curr_art = ""
+            if isinstance(current_downloading_item, dict):
+                curr_title = current_downloading_item.get("title") or current_downloading_item.get("custom_album") or ""
+                curr_art = current_downloading_item.get("custom_artist") or ""
+            elif downloading_url_or_title and not ("youtube.com" in downloading_url_or_title or "youtu.be" in downloading_url_or_title):
+                curr_title = downloading_url_or_title
+
+            norm_down = normalize_text(curr_title)
+            if norm_down and len(norm_down) >= 3 and norm_title and len(norm_title) >= 3:
+                is_match = (norm_title == norm_down)
+                if not is_match and calculate_token_similarity(norm_title, norm_down) >= 0.90:
+                    is_match = True
+
+                if is_match:
+                    norm_curr_art = normalize_text(curr_art)
+                    if not (norm_art and norm_curr_art and norm_art != norm_curr_art and calculate_token_similarity(norm_art, norm_curr_art) < 0.70):
+                        return {"status": "downloading", "label": "⚡ En cours", "badge_class": "badge-status-downloading"}
+
+            if queued_items and norm_title and len(norm_title) >= 3:
+                for q in queued_items:
+                    if not isinstance(q, dict):
+                        continue
+                    q_title_raw = q.get("title") or q.get("custom_album") or ""
+                    q_title = normalize_text(q_title_raw)
+                    if not q_title or len(q_title) < 3:
+                        continue
+
+                    is_match = (norm_title == q_title)
+                    if not is_match and calculate_token_similarity(norm_title, q_title) >= 0.90:
+                        is_match = True
+
+                    if is_match:
+                        q_art = normalize_text(q.get("custom_artist") or "")
+                        if norm_art and q_art and norm_art != q_art and calculate_token_similarity(norm_art, q_art) < 0.70:
+                            continue
+                        return {"status": "queued", "label": "⏳ En file", "badge_class": "badge-status-queued"}
+
 
         # 3. Traitement spécialisé selon le type d'élément (Artiste / Piste / Vidéo)
         if item_type == "artist":

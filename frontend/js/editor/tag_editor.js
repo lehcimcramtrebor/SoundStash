@@ -486,12 +486,15 @@ function setupEditorActions() {
         });
     }
 
+    let currentSmartDestInfo = null;
+
     openExportModalBtn.addEventListener("click", async () => {
         if (!currentAlbumPath) {
             await showModalAlert("Aucun album sélectionné", "Veuillez d'abord sélectionner ou télécharger un album.", "warning");
             return;
         }
         exportPanel.style.display = exportPanel.style.display === "none" ? "block" : "none";
+        currentSmartDestInfo = null;
         
         const isVideo = (currentAlbumPath && (currentAlbumPath.includes("[Vidéo]") || currentAlbumPath.includes("[Video]"))) ||
             document.querySelectorAll('#tracks-table-body td[title$=".mp4"], #tracks-table-body td[title$=".mkv"], #tracks-table-body td[title$=".webm"]').length > 0;
@@ -531,6 +534,7 @@ function setupEditorActions() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ album_dir: currentAlbumPath })
                 }).then(res => res.json()).then(destInfo => {
+                    currentSmartDestInfo = destInfo;
                     if (smartDestText) {
                         let text = destInfo.dest_dir;
                         if (destInfo.matched_existing_artist) {
@@ -666,6 +670,25 @@ function setupEditorActions() {
         const selectedRadio = document.querySelector('input[name="export-conflict-choice"]:checked');
         if (selectedRadio) {
             conflictPolicy = selectedRadio.value;
+        }
+
+        // Si l'album existe déjà dans la collection, ouvrir la modale dédiée d'arbitrage
+        if (currentSmartDestInfo && currentSmartDestInfo.conflict) {
+            const albumDisplayName = exportWithCustomTags ? albumName : (currentAlbumInfo ? currentAlbumInfo.album_name : (currentAlbumPath ? currentAlbumPath.split(/[/\\]/).pop() : "Album"));
+            const artistDisplayName = exportWithCustomTags ? albumArtist : (currentAlbumInfo ? currentAlbumInfo.album_artist : "Artiste");
+            const chosenPolicy = await showExportConflictModal(
+                albumDisplayName,
+                artistDisplayName,
+                currentSmartDestInfo.existing_tracks_count || 0,
+                conflictPolicy
+            );
+            if (!chosenPolicy) {
+                // Annulé par l'utilisateur
+                return;
+            }
+            conflictPolicy = chosenPolicy;
+            const radio = document.querySelector(`input[name="export-conflict-choice"][value="${conflictPolicy}"]`);
+            if (radio) radio.checked = true;
         }
 
         confirmExportBtn.disabled = true;

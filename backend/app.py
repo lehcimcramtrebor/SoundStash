@@ -205,6 +205,7 @@ async def app_shutdown_sync_watcher():
 # Modèles Pydantic pour requêtes
 class DownloadRequest(BaseModel):
     url: str
+    title: Optional[str] = None
     format: str = "m4a"
     quality: str = "128K"
     video_quality: Optional[str] = None
@@ -565,6 +566,7 @@ async def trigger_download(req: DownloadRequest):
 
     res = download_manager.enqueue_download(
         url=req.url,
+        title=req.title,
         audio_format=req.format,
         audio_quality=req.quality,
         auto_retag=req.auto_retag,
@@ -2496,7 +2498,6 @@ async def match_search_endpoint(req: MatchSearchRequest):
     """
     queue_state = download_manager.get_queue_state()
     current_item = queue_state.get("current")
-    current_down_str = current_item.get("title") if current_item else None
     queued_items = queue_state.get("queue", [])
 
     results = []
@@ -2505,7 +2506,8 @@ async def match_search_endpoint(req: MatchSearchRequest):
             title=item.title,
             artist=item.artist or "",
             item_type=item.type or "album",
-            downloading_url_or_title=current_down_str,
+            url=item.url,
+            current_downloading_item=current_item,
             queued_items=queued_items
         )
         results.append({

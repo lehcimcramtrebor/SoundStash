@@ -19,19 +19,22 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
 
         const isPlaylist = isPlaylistUrlOrItem(item, url);
 
+        const effectiveTitle = (item && item.title) ? item.title : title;
+        const effectiveArtist = (item && item.artist) ? item.artist : null;
         const dlRes = await fetch("/api/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 url: url,
+                title: effectiveTitle,
                 format: formatParam,
                 quality: defaultQuality,
                 auto_retag: autoRetag,
                 naming_pattern: namingPattern,
                 clean_titles: cleanTitles,
                 is_playlist: isPlaylist,
-                custom_album: isPlaylist ? (item && item.title ? item.title : title) : null,
-                custom_artist: isPlaylist ? (item && item.artist ? item.artist : null) : null,
+                custom_album: isPlaylist ? effectiveTitle : null,
+                custom_artist: isPlaylist ? effectiveArtist : null,
                 origin_album: (item && item.type === "track" && item.album) ? item.album : null,
                 thumbnail_url: item && item.thumbnail ? item.thumbnail : null
             })
@@ -44,7 +47,15 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
             showToast(successLabel, "Voir la file", () => {
                 switchTab("tab-download");
             });
-            if (btnEl && originalHtml) {
+
+            if (item) {
+                item.status = "queued";
+                item.statusLabel = "⏳ En file";
+                item.statusBadgeClass = "badge-status-queued";
+                if (typeof window.updateCardStatusBadge === "function") {
+                    window.updateCardStatusBadge(item);
+                }
+            } else if (btnEl && originalHtml) {
                 setTimeout(() => {
                     btnEl.disabled = false;
                     btnEl.innerHTML = originalHtml;

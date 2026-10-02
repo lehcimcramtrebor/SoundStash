@@ -2338,6 +2338,30 @@ textarea:focus {
     border-color: #dc2626;
 }
 
+.search-card-download-btn.btn-dl-state-disabled,
+.btn.btn-dl-state-disabled {
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+    filter: grayscale(0.5) !important;
+    box-shadow: none !important;
+}
+
+.search-card-download-btn.btn-confirm-override,
+.btn.btn-confirm-override {
+    background-color: #f59e0b !important;
+    border-color: #d97706 !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.45) !important;
+    animation: pulse-override 0.8s ease-in-out infinite alternate !important;
+}
+
+@keyframes pulse-override {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.02); }
+}
+
 .search-card-subaction-btn {
     flex: 1;
     font-size: 0.82rem;

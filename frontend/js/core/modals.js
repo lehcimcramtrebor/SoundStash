@@ -249,6 +249,73 @@ function showModalChoice3(title, message, confirmText = "Confirmer", cancelText 
 }
 window.showModalChoice3 = showModalChoice3;
 
+// ===================================================
+// Modale Dédiée : Conflit d'Exportation Album en Collection
+// ===================================================
+function showExportConflictModal(albumTitle, artistName, existingTracksCount = 0, defaultPolicy = "merge") {
+    return new Promise((resolve) => {
+        const backdrop = document.getElementById("export-conflict-modal-backdrop");
+        if (!backdrop) {
+            resolve(defaultPolicy || "merge");
+            return;
+        }
+
+        const albumEl = document.getElementById("export-conflict-album-name");
+        const artistEl = document.getElementById("export-conflict-artist-name");
+        const tracksEl = document.getElementById("export-conflict-tracks-count");
+        const confirmBtn = document.getElementById("export-conflict-confirm-btn");
+        const cancelBtn = document.getElementById("export-conflict-cancel-btn");
+
+        if (albumEl) albumEl.textContent = albumTitle || "Album";
+        if (artistEl) artistEl.textContent = artistName || "Artiste";
+        if (tracksEl) {
+            const count = parseInt(existingTracksCount, 10) || 0;
+            tracksEl.textContent = `${count} piste${count > 1 ? "s" : ""}`;
+        }
+
+        const effPolicy = (defaultPolicy && ["merge", "overwrite", "distinct"].includes(defaultPolicy)) ? defaultPolicy : "merge";
+        const radio = backdrop.querySelector(`input[name="modal-conflict-choice"][value="${effPolicy}"]`);
+        if (radio) radio.checked = true;
+
+        backdrop.style.display = "flex";
+        void backdrop.offsetWidth;
+        backdrop.classList.add("active");
+
+        function cleanup(result) {
+            backdrop.classList.remove("active");
+            setTimeout(() => {
+                backdrop.style.display = "none";
+            }, 200);
+            confirmBtn.removeEventListener("click", onConfirm);
+            cancelBtn.removeEventListener("click", onCancel);
+            backdrop.removeEventListener("click", onBackdropClick);
+            resolve(result);
+        }
+
+        function onConfirm() {
+            const selected = backdrop.querySelector('input[name="modal-conflict-choice"]:checked');
+            const policy = selected ? selected.value : "merge";
+            cleanup(policy);
+        }
+
+        function onCancel() {
+            cleanup(null);
+        }
+
+        function onBackdropClick(e) {
+            if (e.target === backdrop) {
+                cleanup(null);
+            }
+        }
+
+        confirmBtn.addEventListener("click", onConfirm, { once: true });
+        cancelBtn.addEventListener("click", onCancel, { once: true });
+        backdrop.addEventListener("click", onBackdropClick);
+        confirmBtn.focus();
+    });
+}
+window.showExportConflictModal = showExportConflictModal;
+
 // =========================================================
 // Notifications Toast Universelles (Premier plan absolu)
 // =========================================================

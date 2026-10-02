@@ -789,6 +789,7 @@ async function sendDirectDownload(url, title, itemType = "album") {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             url: url,
+            title: title,
             format: currentConfig.default_format || "m4a",
             quality: currentConfig.default_quality || "128K",
             auto_retag: true,

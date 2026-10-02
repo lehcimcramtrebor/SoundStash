@@ -2074,6 +2074,73 @@
         </div>
     </div>
 
+    <!-- Modale Conflit d'Exportation (Album déjà existant dans la collection) -->
+    <div id="export-conflict-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog" style="max-width: 580px;">
+            <div class="modal-header">
+                <div class="modal-icon-box icon-warning">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="modal-title" style="margin: 0; font-size: 1.15rem;">Conflit d'Exportation Détecté</h3>
+                    <p class="text-muted" style="margin: 4px 0 0 0; font-size: 0.82rem;">Cet album est déjà présent dans votre collection musicale</p>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+                <p id="export-conflict-modal-desc" style="font-size: 0.88rem; margin-bottom: 16px; line-height: 1.5; color: var(--text);">
+                    L'album <strong>« <span id="export-conflict-album-name">Album</span> »</strong> de <strong><span id="export-conflict-artist-name">Artiste</span></strong> contient déjà <span id="export-conflict-tracks-count" style="color: var(--accent); font-weight: 600;">des</span> dans votre bibliothèque. Que souhaitez-vous faire ?
+                </p>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px;">
+                    <!-- Option 1: Fusionner (Compléter) -->
+                    <label class="conflict-option-card" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: rgba(16, 185, 129, 0.08); border: 1.5px solid rgba(16, 185, 129, 0.35); border-radius: 8px; cursor: pointer; transition: all 0.2s;">
+                        <input type="radio" name="modal-conflict-choice" value="merge" checked style="margin-top: 4px;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; font-size: 0.92rem; color: #10b981; display: flex; align-items: center; gap: 6px;">
+                                🔀 Fusionner & Compléter <span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.2); padding: 2px 6px; border-radius: 4px;">Recommandé</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 3px;">
+                                Conserve vos fichiers existants sans les écraser, et ajoute uniquement les nouvelles pistes ou morceaux manquants.
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Option 2: Remplacer complètement -->
+                    <label class="conflict-option-card" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: rgba(239, 68, 68, 0.06); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: 8px; cursor: pointer; transition: all 0.2s;">
+                        <input type="radio" name="modal-conflict-choice" value="overwrite" style="margin-top: 4px;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; font-size: 0.92rem; color: #ef4444;">
+                                🔄 Remplacer intégralement (Écraser)
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 3px;">
+                                Remplace les anciennes pistes de votre collection par ces nouveaux fichiers (idéal si meilleur rip ou meilleurs tags).
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Option 3: Conserver les deux en version distincte -->
+                    <label class="conflict-option-card" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: rgba(137, 180, 250, 0.06); border: 1.5px solid rgba(137, 180, 250, 0.25); border-radius: 8px; cursor: pointer; transition: all 0.2s;">
+                        <input type="radio" name="modal-conflict-choice" value="distinct" style="margin-top: 4px;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; font-size: 0.92rem; color: var(--accent, #89b4fa);">
+                                📁 Conserver les deux (Version distincte)
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 3px;">
+                                Crée un sous-dossier distinct <code>[Album] (YTM)</code> pour garder les deux versions sans conflit.
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
+                <button type="button" id="export-conflict-cancel-btn" class="btn btn-secondary">Annuler</button>
+                <button type="button" id="export-conflict-confirm-btn" class="btn btn-primary" style="font-weight: 600;">Confirmer l'Exportation</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modale Aperçu des pistes (Disponibilité & Pré-écoute) -->
     <div id="preview-modal-backdrop" class="modal-backdrop" style="display: none;">
         <div class="modal-dialog preview-dialog">

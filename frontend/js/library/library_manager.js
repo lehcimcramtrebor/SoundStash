@@ -548,13 +548,52 @@ async function loadExternalTempAlbums() {
                     return;
                 }
 
-                const confirmed = await showModalConfirm(
-                    "Exporter vers la Bibliothèque",
-                    `Exporter l'album « ${album.title} » de « ${album.artist} » vers votre collection musicale ?\n\n📁 Destination : ${libDir}\n\nLe dossier temporaire sera nettoyé après l'exportation.`,
-                    "Exporter",
-                    false
-                );
-                if (!confirmed) return;
+                let conflictPolicy = (currentConfig && currentConfig.smart_export_conflict_policy) || "merge";
+                try {
+                    const checkRes = await fetch("/api/library/resolve-export-destination", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ album_dir: album.path })
+                    });
+                    if (checkRes.ok) {
+                        const destInfo = await checkRes.json();
+                        if (destInfo.conflict) {
+                            const chosenPolicy = await showExportConflictModal(
+                                album.title || "Album",
+                                album.artist || "Artiste",
+                                destInfo.existing_tracks_count || 0,
+                                conflictPolicy
+                            );
+                            if (!chosenPolicy) return;
+                            conflictPolicy = chosenPolicy;
+                        } else {
+                            const confirmed = await showModalConfirm(
+                                "Exporter vers la Bibliothèque",
+                                `Exporter l'album « ${album.title} » de « ${album.artist} » vers votre collection musicale ?\n\n📁 Destination : ${libDir}\n\nLe dossier temporaire sera nettoyé après l'exportation.`,
+                                "Exporter",
+                                false
+                            );
+                            if (!confirmed) return;
+                        }
+                    } else {
+                        const confirmed = await showModalConfirm(
+                            "Exporter vers la Bibliothèque",
+                            `Exporter l'album « ${album.title} » de « ${album.artist} » vers votre collection musicale ?\n\n📁 Destination : ${libDir}\n\nLe dossier temporaire sera nettoyé après l'exportation.`,
+                            "Exporter",
+                            false
+                        );
+                        if (!confirmed) return;
+                    }
+                } catch (e) {
+                    const confirmed = await showModalConfirm(
+                        "Exporter vers la Bibliothèque",
+                        `Exporter l'album « ${album.title} » de « ${album.artist} » vers votre collection musicale ?\n\n📁 Destination : ${libDir}\n\nLe dossier temporaire sera nettoyé après l'exportation.`,
+                        "Exporter",
+                        false
+                    );
+                    if (!confirmed) return;
+                }
+
                 releaseMediaHandlesForPath(album.path);
 
                 const btn = card.querySelector(".btn-ext-export-lib");
@@ -568,7 +607,8 @@ async function loadExternalTempAlbums() {
                         body: JSON.stringify({
                             album_dir: album.path,
                             target_base_dir: libDir,
-                            delete_temp: true
+                            delete_temp: true,
+                            conflict_policy: conflictPolicy
                         })
                     });
                     const expData = await expRes.json();

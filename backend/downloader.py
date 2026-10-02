@@ -58,6 +58,7 @@ class DownloadManager:
     def enqueue_download(
         self,
         url: str,
+        title: Optional[str] = None,
         audio_format: str = "m4a",
         audio_quality: str = "128K",
         auto_retag: bool = True,
@@ -72,9 +73,11 @@ class DownloadManager:
         is_external: bool = False
     ) -> dict:
         clean_art = clean_artist_name(custom_artist) if custom_artist else None
+        effective_title = (title or custom_album or origin_album or "").strip()
         task = {
             "id": uuid.uuid4().hex[:8],
             "url": url,
+            "title": effective_title,
             "format": audio_format,
             "quality": audio_quality,
             "video_quality": video_quality or getattr(config, "default_video_quality", "1080p"),
