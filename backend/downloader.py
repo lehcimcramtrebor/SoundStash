@@ -4,6 +4,9 @@ import os
 import re
 import shutil
 import uuid
+import time
+import tempfile
+import atexit
 from pathlib import Path
 from typing import Callable, Optional
 from backend.config import YTM_BAT_PATH, YTM_OGG_BAT_PATH, YT_DLP_PATH, FFMPEG_PATH, TEMP_DOWNLOAD_DIR, config
@@ -21,9 +24,44 @@ from backend.logger import get_logger
 
 logger = get_logger(__name__)
 
+def _get_download_lock_paths() -> list[Path]:
+    """Retourne les chemins des fichiers de verrouillage interrogés par l'installeur NSIS."""
+    paths = []
+    try:
+        paths.append(Path(tempfile.gettempdir()) / "soundstash_download.lock")
+    except Exception:
+        pass
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    if local_appdata:
+        try:
+            paths.append(Path(local_appdata) / "SoundStash" / "download.lock")
+        except Exception:
+            pass
+    return paths
+
+def set_download_lock_state(active: bool, task_info: str = ""):
+    """Crée ou supprime le fichier flag indiquant un téléchargement en cours pour l'installeur NSIS."""
+    for lock_path in _get_download_lock_paths():
+        try:
+            if active:
+                lock_path.parent.mkdir(parents=True, exist_ok=True)
+                lock_path.write_text(
+                    f"active={active}\ntimestamp={time.time()}\npid={os.getpid()}\ninfo={task_info}\n",
+                    encoding="utf-8"
+                )
+            else:
+                if lock_path.exists():
+                    lock_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.debug(f"Erreur gestion flag lock ({lock_path}): {e}")
+
+# Nettoyage automatique au déchargement du processus
+atexit.register(lambda: set_download_lock_state(False))
+
 class DownloadManager:
     def __init__(self):
         self.is_downloading = False
+        set_download_lock_state(False)
         self.current_process: Optional[asyncio.subprocess.Process] = None
         self.log_callback: Optional[Callable[[dict], None]] = None
         self.current_album_dir: Optional[Path] = None
@@ -112,11 +150,14 @@ class DownloadManager:
 
     async def _process_queue(self):
         self.is_downloading = True
+        set_download_lock_state(True, "File d'attente de téléchargement active")
         try:
             while self.queue:
                 task = self.queue.pop(0)
                 self.current_task = task
                 task["status"] = "downloading"
+                task_title = task.get("custom_album") or task.get("title") or task.get("url") or "Tâche"
+                set_download_lock_state(True, f"Téléchargement : {task_title}")
                 await self.broadcast_queue()
 
                 await self._execute_download(task)
@@ -143,6 +184,7 @@ class DownloadManager:
             self.is_downloading = False
             self.current_task = None
             self.current_process = None
+            set_download_lock_state(False)
             await self.broadcast_queue()
             await self.broadcast("status", {
                 "status": "queue_completed",

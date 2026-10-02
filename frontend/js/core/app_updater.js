@@ -372,6 +372,16 @@ window.AppUpdater = {
             const data = await res.json();
             const isSuccess = data.success === true || data.status === "success";
             if (!res.ok || !isSuccess) {
+                if (data.status === "downloading_active") {
+                    if (typeof showToast === "function") {
+                        showToast(data.error || "Téléchargement en cours. Veuillez patienter.", "warning", 5000);
+                    }
+                    if (btnInstall) {
+                        btnInstall.disabled = false;
+                        btnInstall.textContent = "Lancer l'installation";
+                    }
+                    return;
+                }
                 throw new Error(data.error || "Impossible d'exécuter l'installeur");
             }
 

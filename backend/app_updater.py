@@ -184,6 +184,15 @@ def launch_installer(installer_path: Optional[str] = None) -> Dict[str, Any]:
     if not path_to_run or not os.path.isfile(path_to_run):
         return {"success": False, "status": "error", "error": "Fichier d'installation introuvable sur le disque"}
 
+    # Protection anti-corruption : refuser le lancement de l'installeur si un téléchargement est en cours
+    from backend.downloader import download_manager
+    if download_manager.is_downloading or (download_manager.queue and len(download_manager.queue) > 0):
+        return {
+            "success": False,
+            "status": "downloading_active",
+            "error": "Un téléchargement de contenu musical est actuellement en cours. Veuillez patienter qu'il se termine avant de lancer la mise à jour."
+        }
+
     try:
         DETACHED_PROCESS = 0x00000008
         subprocess.Popen([path_to_run], creationflags=DETACHED_PROCESS, close_fds=True)
