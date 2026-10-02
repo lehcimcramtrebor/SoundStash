@@ -753,6 +753,8 @@ def heal_misnamed_albums(
                         except Exception as e:
                             logger.warning(f"Impossible de renommer le dossier '{album_dir.name}' vers '{safe_album_name}': {e}")
 
+    return actions_count
+
 def heal_album_covers(
     library_dir: Path,
     notify_cb: Optional[Callable[[str, str, str], None]] = None

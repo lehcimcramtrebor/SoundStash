@@ -279,7 +279,11 @@ class DownloadManager:
             else:  # 1080p par défaut
                 fmt_str = 'bv*[vcodec^=avc1][height<=1080]+ba[ext=m4a]/bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080]/best'
 
-            cmd_args += ['-f', fmt_str, '--merge-output-format', 'mp4']
+            cmd_args += [
+                '-f', fmt_str, '--merge-output-format', 'mp4',
+                '--socket-timeout', '30',
+                '--extractor-args', 'youtube:player_client=android,web'
+            ]
             cmd_args += ['--embed-metadata', '--write-thumbnail', '--convert-thumbnails', 'jpg']
             cmd_args += ['--parse-metadata', '%(title)s:%(artist)s - %(title)s']
             cmd_args += ['--parse-metadata', '%(channel,uploader)s:%(artist)s']
@@ -302,7 +306,11 @@ class DownloadManager:
                 script_name = "yt-dlp (Audio AAC)"
                 a_format = "aac"
 
-            cmd_args = [YT_DLP_PATH, '-x', '-f', 'ba/b', '--ignore-errors', '--newline', '--windows-filenames']
+            cmd_args = [
+                YT_DLP_PATH, '-x', '-f', 'ba/b', '--ignore-errors', '--newline', '--windows-filenames',
+                '--socket-timeout', '30',
+                '--extractor-args', 'youtube:player_client=android,web'
+            ]
             if Path(FFMPEG_PATH).exists():
                 cmd_args += ['--ffmpeg-location', FFMPEG_PATH]
             
@@ -461,9 +469,11 @@ class DownloadManager:
                 )
                 if not has_audio:
                     # Échec total sans aucun fichier téléchargé
+                    logger.error(f"Échec total du téléchargement (code {process.returncode}) | aucun média audio récupéré | url={url}")
                     for d in temp_dir.iterdir():
-                        if d.is_dir() and not any(d.iterdir()):
-                            safe_rmtree(d)
+                        if d.is_dir() and d.name not in {"_external", "_Hors_Analyse"}:
+                            if not any(f.suffix.lower() in ALL_MEDIA_EXTENSIONS for f in d.iterdir() if f.is_file()):
+                                safe_rmtree(d)
                     await self.broadcast("status", {
                         "status": "error",
                         "message": f"Le téléchargement a échoué (code {process.returncode}). Aucun fichier n'a pu être récupéré.",
