@@ -1,6 +1,6 @@
 ; ==============================================================================
 ; SoundStash - Script d'extension d'installation NSIS (electron-builder)
-; v3.2.1 - Protection anti-corruption pendant les téléchargements actifs
+; v3.2.2 - Protection anti-corruption pendant les téléchargements actifs
 ; ==============================================================================
 
 !macro customInit

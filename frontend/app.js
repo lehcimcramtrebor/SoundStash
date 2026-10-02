@@ -410,33 +410,25 @@ window.goToNowPlaying = function() {
         }
     }
 
-    // 2. Si l'utilisateur est déjà dans le Lecteur sur "En cours d'écoute", réinitialiser le scroll et ne rien faire d'autre
-    const isAlreadyAtNowPlaying = isPlayerModeActive && ap && ap.currentView === "now-playing";
-    if (isAlreadyAtNowPlaying) {
-        if (ap && typeof ap.resetPlayerScrollRobust === "function") {
-            ap.resetPlayerScrollRobust();
-        }
-        return;
-    }
+    if (!ap) return;
 
-    // 3. Basculer vers le Mode Lecteur et la vue En cours d'écoute
+    // Fermer l'Atelier si ouvert et entrer dans le mode lecteur
     const wasWorkshop = !isPlayerModeActive;
+    if (typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen && typeof closeWorkshopDrawer === "function") {
+        closeWorkshopDrawer();
+    }
     if (typeof enterPlayerMode === "function") {
         enterPlayerMode();
     }
-    if (ap) {
-        if (wasWorkshop) {
-            ap.previousModeWasWorkshop = true;
-        }
-        if (typeof ap.resetPlayerScrollRobust === "function") {
-            ap.resetPlayerScrollRobust();
-        }
-        if (typeof ap.setView === "function") {
-            ap.setView("now-playing");
-        }
-        if (typeof ap.resetPlayerScrollRobust === "function") {
-            ap.resetPlayerScrollRobust();
-        }
+    if (wasWorkshop) {
+        ap.previousModeWasWorkshop = true;
+    }
+
+    // Touche N : Placer TOUJOURS le morceau en cours dans le champ de vision de l'utilisateur
+    if (typeof ap.navigateToCurrentlyPlaying === "function") {
+        ap.navigateToCurrentlyPlaying();
+    } else if (typeof ap.scrollToActiveTrack === "function") {
+        ap.scrollToActiveTrack(true);
     }
 };
 

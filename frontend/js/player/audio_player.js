@@ -1336,6 +1336,9 @@ const AudioPlayer = {
                     activeItem = document.querySelector("#player-album-detail-block .player-track-item.active");
                 }
             } else if (this.currentView === "all") {
+                if (typeof this.updateActiveTrackInAllContainer === "function") {
+                    this.updateActiveTrackInAllContainer();
+                }
                 activeItem = document.querySelector("#player-view-all .player-track-item.active, #player-view-all .dense-track-row.active");
             } else if (this.currentView === "now-playing") {
                 activeItem = document.querySelector("#player-tracklist-container .player-track-item.active");
@@ -1344,9 +1347,11 @@ const AudioPlayer = {
             // Fallback si rien trouvé dans la vue spécifique
             if (!activeItem) {
                 const candidates = document.querySelectorAll(
+                    "#player-view-all .player-track-item.active, " +
+                    "#player-view-all .dense-track-row.active, " +
                     "#playlist-tracks-body tr.active-track-row, " +
-                    "#player-tracklist-container .player-track-item.active, " +
                     "#player-album-detail-block .player-track-item.active, " +
+                    "#player-tracklist-container .player-track-item.active, " +
                     ".dense-track-row.active"
                 );
                 for (const cand of candidates) {
@@ -1364,30 +1369,43 @@ const AudioPlayer = {
             // CRITIQUE : Si l'élément est dans un conteneur masqué ou n'a aucune dimension, NE JAMAIS scroller !
             if (rect.height <= 0 || rect.width <= 0) return;
 
+            // 1. En-tête supérieur sticky (#player-controls-card)
             const headerCard = document.getElementById("player-controls-card");
-            const headerBottom = headerCard ? headerCard.getBoundingClientRect().bottom : 160;
-            const bottomBar = document.querySelector(".persistent-player-bar");
-            const bottomTop = bottomBar ? bottomBar.getBoundingClientRect().top : (window.innerHeight - 85);
+            const headerHeight = headerCard ? (headerCard.offsetHeight || headerCard.getBoundingClientRect().height) : 150;
+            // Quand le document scrolle, headerCard colle au top (top: 0), son bas est donc à headerHeight du viewport
+            const effectiveHeaderBottom = Math.max(headerHeight, 130);
 
-            // Marge de confort pour ne jamais toucher le bord des barres fixes
-            const safeMargin = 35;
-            const safetyTop = headerBottom + safeMargin;
-            const safetyBottom = bottomTop - safeMargin;
+            // 2. Centre de commandes inférieur fixe (#persistent-player-bar)
+            const bottomBar = document.getElementById("persistent-player-bar");
+            const isBottomBarVisible = Boolean(
+                bottomBar &&
+                bottomBar.style.display !== "none" &&
+                (bottomBar.offsetHeight > 0 || (this.playlist && this.playlist.length > 0))
+            );
+            const effectiveBottomTop = (isBottomBarVisible && bottomBar && bottomBar.getBoundingClientRect().top > 0)
+                ? bottomBar.getBoundingClientRect().top
+                : (window.innerHeight - (isBottomBarVisible ? 90 : 20));
 
-            // Si déjà confortablement visible avec la marge de sécurité requise
-            if (rect.top >= safetyTop && rect.bottom <= safetyBottom) {
+            // Marges de confort indispensables (tampon anti-collision avec l'en-tête et le centre de commandes)
+            const safeMarginTop = 45;
+            const safeMarginBottom = 45;
+            const safetyTop = effectiveHeaderBottom + safeMarginTop;
+            const safetyBottom = effectiveBottomTop - safeMarginBottom;
+
+            // Si le morceau est déjà confortablement visible dans la zone sécurisée et non forcé : ne pas faire bouger l'écran
+            if (!force && rect.top >= safetyTop && rect.bottom <= safetyBottom) {
                 return;
             }
 
-            // Hors champ : centrer la piste dans la zone utile visible (coordonnées absolues dans le document)
+            // Hors champ ou forcé : centrer parfaitement la piste dans la zone utile visible
             const currentScrollY = window.scrollY || document.documentElement.scrollTop || 0;
-            const visibleHeight = Math.max(bottomTop - headerBottom, 120);
-            const targetCenterY = headerBottom + (visibleHeight / 2);
+            const visibleHeight = Math.max(effectiveBottomTop - effectiveHeaderBottom, 150);
+            const targetCenterY = effectiveHeaderBottom + (visibleHeight / 2);
             const itemAbsoluteCenterY = currentScrollY + rect.top + (rect.height / 2);
             const targetScrollY = Math.max(0, Math.round(itemAbsoluteCenterY - targetCenterY));
 
-            // Ignorer les micro-deltas (< 8px) pour éviter les micro-saccades
-            if (Math.abs(targetScrollY - currentScrollY) < 8) {
+            // Ignorer les micro-deltas (< 6px) pour éviter les micro-saccades
+            if (!force && Math.abs(targetScrollY - currentScrollY) < 6) {
                 return;
             }
 
@@ -1405,7 +1423,7 @@ const AudioPlayer = {
     /**
      * Redirige dynamiquement vers le contenu en cours de lecture
      * (l'album dans l'onglet Albums, la playlist dans l'onglet Playlists,
-     * ou le clip dans l'onglet Clips) et scrolle jusqu'au morceau actif.
+     * la vue Tout si active, ou le clip dans l'onglet Clips) et scrolle jusqu'au morceau actif.
      */
     navigateToCurrentlyPlaying() {
         const isVideo = Boolean(
@@ -1422,43 +1440,63 @@ const AudioPlayer = {
             return;
         }
 
+        // Fermer l'Atelier si ouvert et entrer dans le mode lecteur
+        if (typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen && typeof closeWorkshopDrawer === "function") {
+            closeWorkshopDrawer();
+        }
+        if (typeof isPlayerModeActive !== "undefined" && !isPlayerModeActive && typeof enterPlayerMode === "function") {
+            enterPlayerMode();
+        }
+
+        // Si l'utilisateur est déjà sur la vue "Tout" : maintenir la vue Tout et placer le morceau en vision
+        if (this.currentView === "all") {
+            if (typeof this.updateActiveTrackInAllContainer === "function") {
+                this.updateActiveTrackInAllContainer();
+            }
+            this.scrollToActiveTrack(true);
+            return;
+        }
+
         // 1. Playlist en cours de lecture (Toute la Collection ou Playlist Utilisateur)
         if (this.isUserPlaylistActive || (this.currentAlbum && (this.currentAlbum.is_playlist || this.currentAlbum.is_collection))) {
             const curPath = this.currentAlbum ? this.currentAlbum.path : "";
+            if (this.currentView === "playlists") {
+                // Déjà sur les playlists, scroller immédiatement
+                this.scrollToActiveTrack(true);
+                return;
+            }
+            this.setView("playlists");
             if (curPath && (curPath === "system:all-collection" || curPath.includes("all-collection"))) {
-                this.setView("playlists");
                 if (window.UserPlaylists && window.UserPlaylists.openAllCollectionDetail) {
                     window.UserPlaylists.openAllCollectionDetail();
                 }
             } else if (curPath && curPath.startsWith("playlist:")) {
                 const plId = curPath.replace("playlist:", "");
-                if (plId.includes("all-collection")) {
-                    this.setView("playlists");
-                    if (window.UserPlaylists && window.UserPlaylists.openAllCollectionDetail) {
-                        window.UserPlaylists.openAllCollectionDetail();
-                    }
-                } else {
-                    this.setView("playlists");
-                    if (window.UserPlaylists && window.UserPlaylists.openDetail) {
-                        window.UserPlaylists.openDetail(plId);
-                    }
+                if (window.UserPlaylists && window.UserPlaylists.openDetail) {
+                    window.UserPlaylists.openDetail(plId);
                 }
             }
-            setTimeout(() => this.scrollToActiveTrack(true), 200);
+            setTimeout(() => this.scrollToActiveTrack(true), 150);
             return;
         }
 
         // 2. Album de la collection en cours de lecture
         if (this.currentAlbum && this.activeAlbumPath) {
+            if (this.currentView === "albums" && this.isAlbumDetailOpen) {
+                this.scrollToActiveTrack(true);
+                return;
+            }
             this.setView("albums");
             this.openAlbumDetail(this.activeAlbumPath);
-            setTimeout(() => this.scrollToActiveTrack(true), 200);
+            setTimeout(() => this.scrollToActiveTrack(true), 150);
             return;
         }
 
-        // 3. Fallback (ex: titre seul en ligne)
-        this.setView("now-playing");
-        setTimeout(() => this.scrollToActiveTrack(true), 150);
+        // 3. Fallback (ex: titre seul en ligne ou grand lecteur)
+        if (this.currentView !== "now-playing") {
+            this.setView("now-playing");
+        }
+        setTimeout(() => this.scrollToActiveTrack(true), 120);
     },
 
     updateNowPlayingBackLabel() {
@@ -3133,52 +3171,81 @@ const AudioPlayer = {
         const allContainer = document.getElementById("player-all-container");
         if (!allContainer) return;
 
-        // 1. Désactiver les anciens éléments actifs
+        const curTrack = (this.activePlaylist && this.activePlaylist[this.currentIndex]) || (this.playlist && this.playlist[this.currentIndex]);
+        const curTrackPath = curTrack ? (curTrack.filepath || curTrack.path || "") : "";
+        const curAlbPath = curTrack ? (curTrack.album_path || (this.activeAlbumPath && !this.activeAlbumPath.startsWith("system:") && !this.activeAlbumPath.startsWith("playlist:") ? this.activeAlbumPath : "")) : "";
+
+        // 1. Trouver l'élément piste cible et le bloc album cible
+        let targetTrack = null;
+        let targetBlock = null;
+
+        // Stratégie A : Recherche directe par chemin absolu du fichier audio (100% universel et instantané)
+        if (curTrackPath) {
+            const escapedTrackPath = CSS.escape ? CSS.escape(curTrackPath) : curTrackPath.replace(/["\\]/g, '\\$&');
+            targetTrack = allContainer.querySelector(`.player-track-item[data-track-path="${escapedTrackPath}"], .dense-track-row[data-track-path="${escapedTrackPath}"]`);
+        }
+
+        // Stratégie B : Recherche par chemin d'album standard si disponible
+        if (!targetTrack && this.activeAlbumPath && !this.activeAlbumPath.startsWith("system:") && !this.activeAlbumPath.startsWith("playlist:")) {
+            const escapedPath = CSS.escape ? CSS.escape(this.activeAlbumPath) : this.activeAlbumPath.replace(/["\\]/g, '\\$&');
+            targetTrack = allContainer.querySelector(`.player-track-item[data-alb-path="${escapedPath}"][data-trk-idx="${this.currentIndex}"], .dense-track-row[data-alb-path="${escapedPath}"][data-trk-idx="${this.currentIndex}"]`);
+        }
+
+        // Stratégie C : Recherche dans le bloc album par titre de morceau
+        if (!targetTrack && curAlbPath && curTrack) {
+            const escapedAlb = CSS.escape ? CSS.escape(curAlbPath) : curAlbPath.replace(/["\\]/g, '\\$&');
+            const albBlock = allContainer.querySelector(`.player-all-album-block[data-alb-path="${escapedAlb}"]`);
+            if (albBlock) {
+                const trkNum = curTrack.track_number ? parseInt(curTrack.track_number, 10) : null;
+                if (trkNum !== null && !isNaN(trkNum) && trkNum > 0) {
+                    targetTrack = albBlock.querySelector(`.player-track-item[data-trk-idx="${trkNum - 1}"]`);
+                }
+                if (!targetTrack && curTrack.title) {
+                    const titleLower = curTrack.title.trim().toLowerCase();
+                    albBlock.querySelectorAll(".player-track-item").forEach(item => {
+                        if (!targetTrack) {
+                            const tEl = item.querySelector(".player-track-item-title");
+                            if (tEl && tEl.textContent.trim().toLowerCase() === titleLower) {
+                                targetTrack = item;
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
+        // Déterminer le bloc album parent actif
+        if (targetTrack) {
+            targetBlock = targetTrack.closest(".player-all-album-block");
+        }
+        if (!targetBlock && curAlbPath) {
+            const escapedAlb = CSS.escape ? CSS.escape(curAlbPath) : curAlbPath.replace(/["\\]/g, '\\$&');
+            targetBlock = allContainer.querySelector(`.player-all-album-block[data-alb-path="${escapedAlb}"]`);
+        }
+
+        // 2. Mettre à jour les classes sur les blocs d'albums
         allContainer.querySelectorAll(".player-all-album-block.is-active-album").forEach(block => {
-            if (!this.activeAlbumPath || block.getAttribute("data-alb-path") !== this.activeAlbumPath) {
+            if (block !== targetBlock) {
                 block.classList.remove("is-active-album");
             }
         });
-        allContainer.querySelectorAll(".player-track-item.active").forEach(el => {
-            const isStillCur = this.activeAlbumPath &&
-                el.getAttribute("data-alb-path") === this.activeAlbumPath &&
-                parseInt(el.getAttribute("data-trk-idx"), 10) === this.currentIndex;
-            if (!isStillCur) {
+        if (targetBlock) {
+            targetBlock.classList.add("is-active-album");
+        }
+
+        // 3. Mettre à jour les pistes et l'égaliseur animé
+        allContainer.querySelectorAll(".player-track-item.active, .dense-track-row.active").forEach(el => {
+            if (el !== targetTrack) {
                 el.classList.remove("active");
                 const eq = el.querySelector(".player-equalizer-bars");
                 if (eq) eq.style.display = "none";
             }
         });
-        allContainer.querySelectorAll(".dense-track-row.active").forEach(row => {
-            const isStillCur = this.activeAlbumPath &&
-                row.getAttribute("data-alb-path") === this.activeAlbumPath &&
-                parseInt(row.getAttribute("data-trk-idx"), 10) === this.currentIndex;
-            if (!isStillCur) {
-                row.classList.remove("active");
-                const eq = row.querySelector(".player-equalizer-bars");
-                if (eq) eq.style.display = "none";
-            }
-        });
 
-        // 2. Activer les éléments cibles courants
-        if (this.activeAlbumPath) {
-            const escapedPath = CSS.escape ? CSS.escape(this.activeAlbumPath) : this.activeAlbumPath.replace(/["\\]/g, '\\$&');
-            const targetBlock = allContainer.querySelector(`.player-all-album-block[data-alb-path="${escapedPath}"]`);
-            if (targetBlock) {
-                targetBlock.classList.add("is-active-album");
-            }
-            const targetTrack = allContainer.querySelector(`.player-track-item[data-alb-path="${escapedPath}"][data-trk-idx="${this.currentIndex}"]`);
-            if (targetTrack) {
-                targetTrack.classList.add("active");
-                const eq = targetTrack.querySelector(".player-equalizer-bars");
-                if (eq) eq.style.display = this.isPlaying ? "inline-flex" : "none";
-            }
-            const targetDense = allContainer.querySelector(`.dense-track-row[data-alb-path="${escapedPath}"][data-trk-idx="${this.currentIndex}"]`);
-            if (targetDense) {
-                targetDense.classList.add("active");
-                const eq = targetDense.querySelector(".player-equalizer-bars");
-                if (eq) eq.style.display = this.isPlaying ? "inline-flex" : "none";
-            }
+        if (targetTrack) {
+            targetTrack.classList.add("active");
+            const eq = targetTrack.querySelector(".player-equalizer-bars");
+            if (eq) eq.style.display = this.isPlaying ? "inline-flex" : "none";
         }
     },
 
@@ -3205,18 +3272,28 @@ const AudioPlayer = {
     },
 
     _buildCatalogAlbumBlockHtml(alb, albIdx) {
-        const isPlayingThisAlbum = Boolean(this.activeAlbumPath && this.activeAlbumPath === alb.path);
+        const curTrack = (this.activePlaylist && this.activePlaylist[this.currentIndex]) || (this.playlist && this.playlist[this.currentIndex]);
+        const curTrackPath = curTrack ? (curTrack.filepath || curTrack.path || "") : "";
+        const curAlbPath = curTrack ? (curTrack.album_path || (this.activeAlbumPath && !this.activeAlbumPath.startsWith("system:") && !this.activeAlbumPath.startsWith("playlist:") ? this.activeAlbumPath : "")) : "";
+        const isPlayingThisAlbum = Boolean(
+            (curAlbPath && curAlbPath === alb.path) ||
+            (this.activeAlbumPath && this.activeAlbumPath === alb.path)
+        );
         const coverUrl = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
         const yearStr = alb.year ? `📅 ${escapeHtml(String(alb.year))} • ` : "";
         const tracksCountStr = `${alb.tracks_count || (alb.tracks ? alb.tracks.length : 0)} titre(s)`;
 
         let tracksHtml = "";
         (alb.tracks || []).forEach((trk, trkIdx) => {
-            const isThisTrackPlaying = isPlayingThisAlbum && (this.currentIndex === trkIdx);
+            const trkPath = trk.filepath || trk.path || "";
+            const isThisTrackPlaying = Boolean(
+                (curTrackPath && trkPath && curTrackPath === trkPath) ||
+                (isPlayingThisAlbum && this.currentIndex === trkIdx)
+            );
             const numStr = trk.track_number ? String(trk.track_number).padStart(2, '0') : String(trkIdx + 1).padStart(2, '0');
 
             tracksHtml += `
-                <div class="player-track-item ${isThisTrackPlaying ? "active" : ""}" data-alb-idx="${albIdx}" data-trk-idx="${trkIdx}" data-alb-path="${escapeHtml(alb.path)}">
+                <div class="player-track-item ${isThisTrackPlaying ? "active" : ""}" data-alb-idx="${albIdx}" data-trk-idx="${trkIdx}" data-alb-path="${escapeHtml(alb.path)}" data-track-path="${escapeHtml(trkPath)}">
                     <div class="player-track-item-left">
                         <span class="player-equalizer-bars" style="display: ${isThisTrackPlaying && this.isPlaying ? "inline-flex" : "none"};">
                             <span class="player-equalizer-bar"></span>
@@ -3297,7 +3374,13 @@ const AudioPlayer = {
         const trk = item.track;
         const alb = item.album;
         const trkIdx = item.trackIndex;
-        const isThisTrackPlaying = isCurrentAlbumActive && (this.activeAlbumPath === alb.path) && (this.currentIndex === trkIdx);
+        const trkPath = trk.filepath || trk.path || "";
+        const curTrack = (this.activePlaylist && this.activePlaylist[this.currentIndex]) || (this.playlist && this.playlist[this.currentIndex]);
+        const curTrackPath = curTrack ? (curTrack.filepath || curTrack.path || "") : "";
+        const isThisTrackPlaying = Boolean(
+            (curTrackPath && trkPath && curTrackPath === trkPath) ||
+            (isCurrentAlbumActive && (this.activeAlbumPath === alb.path) && (this.currentIndex === trkIdx))
+        );
         const numStr = trk.track_number ? String(trk.track_number).padStart(2, '0') : String(trkIdx + 1).padStart(2, '0');
 
         const highlightedTitle = this.highlightMatch(trk.title, query);
@@ -3305,7 +3388,7 @@ const AudioPlayer = {
         const highlightedAlbum = this.highlightMatch(alb.title, query);
 
         return `
-            <div class="dense-track-row ${isThisTrackPlaying ? "active" : ""}" data-match-idx="${matchIdx}" data-alb-path="${escapeHtml(alb.path)}" data-trk-idx="${trkIdx}">
+            <div class="dense-track-row ${isThisTrackPlaying ? "active" : ""}" data-match-idx="${matchIdx}" data-alb-path="${escapeHtml(alb.path)}" data-trk-idx="${trkIdx}" data-track-path="${escapeHtml(trkPath)}">
                 <!-- Colonne Gauche : Artiste & Album (sans pochette) -->
                 <div class="dense-col-origin">
                     <div class="dense-artist" title="${escapeHtml(trk.artist || alb.artist)}">${highlightedArtist}</div>
@@ -5934,6 +6017,7 @@ const AudioPlayer = {
         this.updateCurrentTrackUI(trk);
         this.updatePlayStateUI();
         if (this.isQueueDrawerOpen) this.renderQueueDrawer();
+        setTimeout(() => this.scrollToActiveTrack(true), 60);
     },
 
     recordCurrentTrackPlay() {
@@ -6635,10 +6719,16 @@ const AudioPlayer = {
             this.activeAlbumPath = this.currentAlbum.path;
             this.activePlaylist = this.playlist.slice();
 
-            this.resetPlayerScrollRobust();
             this.renderPlayerTab();
+            if (this.currentView === "all") {
+                if (typeof this.updateActiveTrackInAllContainer === "function") {
+                    this.updateActiveTrackInAllContainer();
+                }
+            } else if (this.currentView !== "playlists") {
+                this.resetPlayerScrollRobust();
+            }
             this.playTrackAtIndex(0);
-            setTimeout(() => this.scrollToActiveTrack(true), 150);
+            setTimeout(() => this.scrollToActiveTrack(true), 120);
 
             showToast(`▶ Lecture ${shouldShuffle ? "aléatoire " : ""}démarrée : 🌍 Toute la Collection (${playListTracks.length} pistes)`, "success", 3000);
         } catch (err) {
@@ -6703,10 +6793,16 @@ const AudioPlayer = {
         this.activeAlbumPath = this.currentAlbum.path;
         this.activePlaylist = this.playlist.slice();
 
-        this.resetPlayerScrollRobust();
         this.renderPlayerTab();
+        if (this.currentView === "all") {
+            if (typeof this.updateActiveTrackInAllContainer === "function") {
+                this.updateActiveTrackInAllContainer();
+            }
+        } else if (this.currentView !== "playlists") {
+            this.resetPlayerScrollRobust();
+        }
         this.playTrackAtIndex(0);
-        setTimeout(() => this.scrollToActiveTrack(true), 150);
+        setTimeout(() => this.scrollToActiveTrack(true), 120);
         showToast(`▶ Lecture ${shuffle ? "aléatoire " : ""}démarrée : 🔍 ${playListTracks.length} pistes`, "success", 3000);
     },
 

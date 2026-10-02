@@ -267,20 +267,21 @@ from pathlib import Path
 d = Path('frontend/assets/backdrops')
 for p in d.glob('*_raw.png'):
     im = Image.open(p)
-    blurred = im.filter(ImageFilter.GaussianBlur(radius=50))
+    # Flou très léger (radius=8 au lieu de 50) pour préserver le dessin et les motifs nets
+    blurred = im.filter(ImageFilter.GaussianBlur(radius=8))
     is_dark = 'dark' in p.stem
     if is_dark:
-        enhanced = ImageEnhance.Color(blurred).enhance(1.45)
-        enhanced = ImageEnhance.Brightness(enhanced).enhance(1.25)
-        enhanced = ImageEnhance.Contrast(enhanced).enhance(1.15)
-    else:
         enhanced = ImageEnhance.Color(blurred).enhance(1.25)
-        enhanced = ImageEnhance.Brightness(enhanced).enhance(1.03)
+        enhanced = ImageEnhance.Brightness(enhanced).enhance(1.10)
         enhanced = ImageEnhance.Contrast(enhanced).enhance(1.08)
+    else:
+        enhanced = ImageEnhance.Color(blurred).enhance(1.15)
+        enhanced = ImageEnhance.Brightness(enhanced).enhance(1.02)
+        enhanced = ImageEnhance.Contrast(enhanced).enhance(1.04)
     
     base_name = p.stem.replace('_raw', '')
-    enhanced.save(d / f'{base_name}.webp', 'WEBP', quality=88)
-    enhanced.convert('RGB').save(d / f'{base_name}.jpg', 'JPEG', quality=88)
+    enhanced.save(d / f'{base_name}.webp', 'WEBP', quality=90)
+    enhanced.convert('RGB').save(d / f'{base_name}.jpg', 'JPEG', quality=90)
     p.unlink()
 print("Images optimisées avec succès !")
 `;

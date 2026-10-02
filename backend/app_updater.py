@@ -20,7 +20,7 @@ from backend.config import config, CONFIG_DIR, TEMP_DOWNLOAD_DIR
 
 logger = logging.getLogger("soundstash_updater")
 
-CURRENT_APP_VERSION = "3.2.1"
+CURRENT_APP_VERSION = "3.2.2"
 GITHUB_REPO = "lehcimcramtrebor/SoundStash"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
