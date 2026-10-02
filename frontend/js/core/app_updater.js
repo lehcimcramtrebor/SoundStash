@@ -5,7 +5,7 @@
  */
 
 window.AppUpdater = {
-    currentVersion: "3.2.0",
+    currentVersion: "3.2.1",
     latestRelease: null,
     isChecking: false,
     isDownloading: false,

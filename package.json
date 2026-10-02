@@ -1,7 +1,7 @@
 {
   "name": "soundstash",
   "productName": "SoundStash",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "SoundStash by Helmicretro - Univers musical 100% autonome",
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,8 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:portable": "electron-builder --win portable",
-    "dist:installer": "electron-builder --win nsis"
+    "dist:installer": "electron-builder --win nsis",
+    "generate:backdrops": "electron scripts/capture_themes.js"
   },
   "keywords": [
     "music-player",

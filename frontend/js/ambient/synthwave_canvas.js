@@ -82,6 +82,23 @@ const AmbientThemeManager = {
 
     updateThemeMode() {
         this.theme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+        this.updateStaticBackdrop();
+    },
+
+    updateStaticBackdrop() {
+        const backdropImg = document.getElementById("ambient-backdrop-image");
+        if (!backdropImg) return;
+
+        const isBackdropDisabled = localStorage.getItem("ytm_static_backdrop_enabled") === "false";
+        document.body.classList.toggle("static-backdrop-disabled", isBackdropDisabled);
+        if (isBackdropDisabled) return;
+
+        const currentTheme = this.themes[this.currentThemeIndex] || this.themes[0];
+        const themeId = currentTheme ? currentTheme.id : "synthwave";
+        const mode = this.theme === "light" ? "light" : "dark";
+
+        const imgUrl = `/static/assets/backdrops/${themeId}_${mode}.webp`;
+        backdropImg.style.backgroundImage = `url('${imgUrl}')`;
     },
 
     handleResize() {
@@ -239,6 +256,7 @@ const AmbientThemeManager = {
         }
 
         this.updateThemeUI();
+        this.updateStaticBackdrop();
 
         if (notify && typeof showToast === "function" && document.body.classList.contains("ambient-mode-active")) {
             showToast(`${newTheme.icon} ${newTheme.name} (${this.currentThemeIndex + 1}/${this.themes.length})`, "info", 1800);

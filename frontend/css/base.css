@@ -71,6 +71,62 @@ a {
     -webkit-user-drag: none;
 }
 
+/* Arrière-plan thématique statique (v3.2.1 - Subtil, flouté & 0% GPU) */
+.ambient-static-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -2;
+    pointer-events: none;
+    overflow: hidden;
+    transition: opacity 0.4s ease;
+}
+
+.ambient-backdrop-image {
+    position: absolute;
+    top: -30px;
+    left: -30px;
+    width: calc(100% + 60px);
+    height: calc(100% + 60px);
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    opacity: 0.52;
+    transition: opacity 0.45s ease;
+}
+
+[data-theme="light"] .ambient-backdrop-image {
+    opacity: 0.42;
+}
+
+.ambient-backdrop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse 90% 60% at 50% 25%, transparent 0%, var(--bg-base) 85%);
+    opacity: 0.62;
+    pointer-events: none;
+}
+
+[data-theme="light"] .ambient-backdrop-overlay {
+    background: radial-gradient(ellipse 90% 60% at 50% 25%, transparent 0%, var(--bg-base) 80%);
+    opacity: 0.52;
+}
+
+/* En mode ambiance plein écran actif : masquer le fond statique */
+body.ambient-mode-active .ambient-static-backdrop {
+    opacity: 0 !important;
+}
+
+/* Si désactivé par l'utilisateur */
+body.static-backdrop-disabled .ambient-static-backdrop {
+    display: none !important;
+}
+
 /* Synthwave Canvas d'arrière-plan interactif & réactif */
 .synthwave-canvas {
     position: fixed;

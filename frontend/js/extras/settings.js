@@ -476,6 +476,21 @@ function setupQuickDestButtons() {
         }
     });
 
+    // Ambiance Visuelle & Arrière-Plan Statique (v3.2.1)
+    const staticBackdropCheckbox = document.getElementById("cfg-static-backdrop-enabled");
+    if (staticBackdropCheckbox) {
+        staticBackdropCheckbox.addEventListener("change", (e) => {
+            try {
+                localStorage.setItem("ytm_static_backdrop_enabled", e.target.checked ? "true" : "false");
+                if (window.AmbientThemeManager && typeof window.AmbientThemeManager.updateStaticBackdrop === "function") {
+                    window.AmbientThemeManager.updateStaticBackdrop();
+                }
+            } catch (err) {
+                console.error("Erreur enregistrement option static_backdrop:", err);
+            }
+        });
+    }
+
     // Gestion du Moteur yt-dlp (Mise à jour manuelle et automatique)
     const btnUpdateYtDlp = document.getElementById("btn-update-yt-dlp");
     const autoUpdateYtDlpCheckbox = document.getElementById("cfg-auto-update-yt-dlp");
@@ -634,6 +649,10 @@ async function loadConfiguration() {
             const isFaderActive = (data.audio_fader_enabled !== false) && (localStorage.getItem("ytm_audio_fader_enabled") !== "false");
             faderEl.checked = isFaderActive;
             AudioFader.enabled = isFaderActive;
+        }
+        const staticBackdropEl = document.getElementById("cfg-static-backdrop-enabled");
+        if (staticBackdropEl) {
+            staticBackdropEl.checked = localStorage.getItem("ytm_static_backdrop_enabled") !== "false";
         }
 
         // Pré-remplir les champs cooldown
