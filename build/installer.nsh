@@ -5,10 +5,9 @@
 
 !macro customInit
   ; Vérifier si SoundStash est en train de télécharger du contenu
-  check_download_lock:
-    IfFileExists "$TEMP\soundstash_download.lock" download_in_progress 0
-    IfFileExists "$LOCALAPPDATA\SoundStash\download.lock" download_in_progress 0
-    Goto install_allowed
+  IfFileExists "$TEMP\soundstash_download.lock" download_in_progress 0
+  IfFileExists "$LOCALAPPDATA\SoundStash\download.lock" download_in_progress 0
+  Goto install_allowed
 
   download_in_progress:
     MessageBox MB_YESNO|MB_ICONEXCLAMATION \
