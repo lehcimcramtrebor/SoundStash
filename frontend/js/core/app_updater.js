@@ -370,13 +370,16 @@ window.AppUpdater = {
                 body: JSON.stringify({ installer_path: this.installerPath })
             });
             const data = await res.json();
-            if (!res.ok || !data.success) {
+            const isSuccess = data.success === true || data.status === "success";
+            if (!res.ok || !isSuccess) {
                 throw new Error(data.error || "Impossible d'exécuter l'installeur");
             }
 
             if (typeof showToast === "function") {
-                showToast("Fermeture de SoundStash pour application de la mise à jour...", "info");
+                showToast("Fermeture de SoundStash pour application de la mise à jour...", "info", 3000);
             }
+
+            this.closeModal();
 
             // Fermeture propre de SoundStash pour laisser l'installeur s'exécuter
             setTimeout(() => {

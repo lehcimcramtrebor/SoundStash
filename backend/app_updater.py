@@ -182,15 +182,15 @@ def launch_installer(installer_path: Optional[str] = None) -> Dict[str, Any]:
     """Exécute l'installeur téléchargé et prépare l'arrêt propre de SoundStash."""
     path_to_run = installer_path or _update_progress.get("installer_path")
     if not path_to_run or not os.path.isfile(path_to_run):
-        return {"status": "error", "error": "Fichier d'installation introuvable sur le disque"}
+        return {"success": False, "status": "error", "error": "Fichier d'installation introuvable sur le disque"}
 
     try:
         DETACHED_PROCESS = 0x00000008
         subprocess.Popen([path_to_run], creationflags=DETACHED_PROCESS, close_fds=True)
-        return {"status": "success", "message": "Installeur lancé avec succès"}
+        return {"success": True, "status": "success", "message": "Installeur lancé avec succès"}
     except Exception as e:
         logger.error(f"Erreur lancement installeur {path_to_run}: {e}")
-        return {"status": "error", "error": str(e)}
+        return {"success": False, "status": "error", "error": str(e)}
 
 def open_release_in_browser(url: Optional[str] = None) -> Dict[str, Any]:
     """Ouvre l'URL de la release GitHub dans le navigateur Web de l'utilisateur."""
