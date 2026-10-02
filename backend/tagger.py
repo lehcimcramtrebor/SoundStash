@@ -900,31 +900,37 @@ def normalize_cover_artwork(
             square_img = None
             arr = np.array(im, dtype=float)
 
-            # Cas 1 : Miniature vidéo 16:9 panoramique (w / h > 1.25)
-            if w / h > 1.25:
-                grad_x = np.abs(np.diff(arr, axis=1)).mean(axis=(0, 2))
-                l_min, l_max = int(w * 0.20), int(w * 0.38)
-                scores = []
-                for cand in range(l_min, l_max):
-                    sl = grad_x[cand-2:cand+3].max()
-                    sr = grad_x[w - 1 - cand - 2 : w - 1 - cand + 3].max()
-                    scores.append((min(sl, sr), cand))
-                scores.sort(reverse=True)
-                if scores and scores[0][0] > 7.0:
-                    c = scores[0][1]
-                    content = im.crop((c + 2, 0, w - c - 2, h))
-                    cw, ch = content.size
-                    sy = int((ch - cw) * 0.45)
-                    square_img = content.crop((0, sy, cw, sy + cw)).resize((640, 640), Image.Resampling.LANCZOS)
+            # Cas 1 : Image non carrée (w != h) -> Crop carré parfait au milieu (Full Bleed)
+            if abs(w - h) > 2:
+                # Si panoramique large (ex: 16:9), tenter d'abord de repérer un cadre centré utile, sinon crop plein centre
+                if w > h:
+                    grad_x = np.abs(np.diff(arr, axis=1)).mean(axis=(0, 2))
+                    l_min, l_max = int(w * 0.20), int(w * 0.38)
+                    scores = []
+                    for cand in range(l_min, l_max):
+                        sl = grad_x[cand-2:cand+3].max()
+                        sr = grad_x[w - 1 - cand - 2 : w - 1 - cand + 3].max()
+                        scores.append((min(sl, sr), cand))
+                    scores.sort(reverse=True)
+                    if scores and scores[0][0] > 7.0:
+                        c = scores[0][1]
+                        content = im.crop((c + 2, 0, w - c - 2, h))
+                        cw, ch = content.size
+                        sy = int((ch - cw) * 0.45)
+                        square_img = content.crop((0, sy, cw, sy + cw)).resize((640, 640), Image.Resampling.LANCZOS)
+                    else:
+                        cx = (w - h) // 2
+                        square_img = im.crop((cx, 0, cx + h, h)).resize((640, 640), Image.Resampling.LANCZOS)
                 else:
-                    cx = (w - h) // 2
-                    square_img = im.crop((cx, 0, cx + h, h)).resize((640, 640), Image.Resampling.LANCZOS)
+                    # Cas vertical (h > w)
+                    cy = (h - w) // 2
+                    square_img = im.crop((0, cy, w, cy + w)).resize((640, 640), Image.Resampling.LANCZOS)
 
-            # Cas 2 : Faux carré avec bandes latérales (Pillarbox 9:16)
-            elif abs(w - h) / max(w, h) <= 0.10:
+            # Cas 2 : Faux carré avec bandes latérales (Pillarbox 9:16 collé dans un carré)
+            else:
                 grad_x = np.abs(np.diff(arr, axis=1)).mean(axis=(0, 2))
-                l_min, l_max = int(w * 0.12), int(w * 0.36)
-                r_min, r_max = int(w * 0.64), int(w * 0.88)
+                l_min, l_max = int(w * 0.10), int(w * 0.40)
+                r_min, r_max = int(w * 0.60), int(w * 0.90)
 
                 l_cand = l_min + int(np.argmax(grad_x[l_min:l_max]))
                 r_cand = r_min + int(np.argmax(grad_x[r_min:r_max]))
@@ -940,10 +946,10 @@ def normalize_cover_artwork(
                 frac_r = float((jr > 3.0).mean())
 
                 is_pillarbox = False
-                if 0.35 <= content_ratio <= 0.70:
-                    if l_score >= 8.0 and r_score >= 8.0 and min(frac_l, frac_r) >= 0.20:
+                if 0.25 <= content_ratio <= 0.75:
+                    if l_score >= 7.0 and r_score >= 7.0 and min(frac_l, frac_r) >= 0.18:
                         is_pillarbox = True
-                    elif min(l_score, r_score) >= 6.5 and min(frac_l, frac_r) >= 0.25:
+                    elif min(l_score, r_score) >= 5.5 and min(frac_l, frac_r) >= 0.22:
                         is_pillarbox = True
 
                 if is_pillarbox:
