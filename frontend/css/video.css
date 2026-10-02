@@ -389,6 +389,7 @@ body.ambient-mode-active #video-modal-backdrop {
     padding: 0 !important;
     display: block !important;
     inset: 0 !important;
+    z-index: 10005 !important;
 }
 
 body.ambient-mode-active .video-dialog {
@@ -407,7 +408,7 @@ body.ambient-mode-active .video-dialog {
     border-radius: 12px !important;
     border: 2px solid #00f0ff !important;
     box-shadow: 0 0 25px rgba(0, 240, 255, 0.6), 0 0 50px rgba(255, 42, 75, 0.4) !important;
-    z-index: 10001 !important;
+    z-index: 10006 !important;
     pointer-events: auto !important;
     cursor: pointer;
     overflow: visible !important;
@@ -493,21 +494,21 @@ body.ambient-mode-active.ambient-idle .video-dialog.ambient-pos-bottom-right {
     transform: translateY(156px) !important;
 }
 
-/* Position 4 : Plein Centre de l'application (Format immersif max 70% hauteur / 70% largeur) */
+/* Position 4 : Plein Centre de l'application (Format immersif calibré avec dégagement optimal au-dessus du dock) */
 body.ambient-mode-active .video-dialog.ambient-pos-center {
     top: 50% !important;
     bottom: auto !important;
     left: 50% !important;
     right: auto !important;
-    transform: translate(-50%, calc(-50% - 38px)) !important;
-    width: min(70vw, calc(70vh * 16 / 9)) !important;
+    transform: translate(-50%, calc(-50% - 56px)) !important;
+    width: min(70vw, calc((100vh - 250px) * 16 / 9)) !important;
     max-width: 70vw !important;
-    max-height: 70vh !important;
+    max-height: calc(100vh - 250px) !important;
     aspect-ratio: 16 / 9 !important;
 }
 
 body.ambient-mode-active .video-dialog.ambient-pos-center:hover {
-    transform: translate(-50%, calc(-50% - 38px)) scale(1.01) !important;
+    transform: translate(-50%, calc(-50% - 56px)) scale(1.01) !important;
 }
 
 /* En mode veille (disparition du centre de contrôle) : glissement cinématique fluide pile au centre de l'écran si le dock n'est pas verrouillé */
@@ -520,7 +521,7 @@ body.ambient-mode-active.ambient-idle:not(.ambient-dock-pinned) .video-dialog.am
     position: absolute;
     inset: -52px;
     pointer-events: none;
-    z-index: 30;
+    z-index: 10010;
     opacity: 0;
     transition: opacity 0.25s ease;
 }
@@ -549,6 +550,7 @@ body.ambient-mode-active.ambient-idle .video-ambient-nav {
     cursor: pointer;
     pointer-events: auto;
     outline: none;
+    z-index: 10012;
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -590,6 +592,7 @@ body.ambient-mode-active.ambient-idle .video-ambient-nav {
     bottom: -48px;
     left: 50%;
     transform: translateX(-50%);
+    z-index: 10015;
 }
 .btn-ambient-arrow.arrow-down:hover {
     transform: translateX(-50%) scale(1.15);

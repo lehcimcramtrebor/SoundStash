@@ -1726,13 +1726,25 @@ body.player-mode-active .nav-tabs {
 
 @media (min-width: 1400px) {
     .persistent-player-bar {
-        max-width: min(1380px, 94vw);
+        max-width: min(1480px, 94vw);
     }
 }
 
 @media (min-width: 1700px) {
     .persistent-player-bar {
-        max-width: min(1560px, 92vw);
+        max-width: min(1780px, 95vw);
+    }
+}
+
+@media (min-width: 2000px) {
+    .persistent-player-bar {
+        max-width: min(2240px, 96vw);
+    }
+}
+
+@media (min-width: 2500px) {
+    .persistent-player-bar {
+        max-width: min(2780px, 96vw);
     }
 }
 

@@ -99,19 +99,34 @@ body.ambient-mode-active .synthwave-canvas {
     padding: 24px 20px 96px 20px;
     position: relative;
     z-index: auto;
+    transition: max-width 0.25s ease-out;
 }
 
 @media (min-width: 1400px) {
     .app-container {
-        max-width: min(1380px, 94vw);
+        max-width: min(1480px, 94vw);
         padding: 30px 28px 110px 28px;
     }
 }
 
 @media (min-width: 1700px) {
     .app-container {
-        max-width: min(1560px, 92vw);
-        padding: 36px 36px 120px 36px;
+        max-width: min(1780px, 95vw);
+        padding: 34px 34px 120px 34px;
+    }
+}
+
+@media (min-width: 2000px) {
+    .app-container {
+        max-width: min(2240px, 96vw);
+        padding: 36px 40px 120px 40px;
+    }
+}
+
+@media (min-width: 2500px) {
+    .app-container {
+        max-width: min(2780px, 96vw);
+        padding: 36px 48px 120px 48px;
     }
 }
 
