@@ -191,3 +191,4 @@ npx electron scripts/test_core_modules.js
 
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/bbd76cfd-e9f4-4297-be00-cc85ad2125d3" />
 
+<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/4cb2727b-e607-4563-a1e6-ac7a722ed802" />
