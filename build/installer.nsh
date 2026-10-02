@@ -4,9 +4,12 @@
 ; ==============================================================================
 
 !macro customInit
+  ; Initialiser le contexte utilisateur pour résoudre correctement $LOCALAPPDATA
+  SetShellVarContext current
+
   ; Vérifier si SoundStash est en train de télécharger du contenu
-  IfFileExists "$TEMP\soundstash_download.lock" download_in_progress 0
-  IfFileExists "$LOCALAPPDATA\SoundStash\download.lock" download_in_progress 0
+  IfFileExists "$TEMP\soundstash_download.lock" download_in_progress
+  IfFileExists "$LOCALAPPDATA\SoundStash\download.lock" download_in_progress
   Goto install_allowed
 
   download_in_progress:
@@ -17,8 +20,8 @@
   start_wait_loop:
     ; Boucle de vérification automatique toutes les 5 secondes
     Sleep 5000
-    IfFileExists "$TEMP\soundstash_download.lock" start_wait_loop 0
-    IfFileExists "$LOCALAPPDATA\SoundStash\download.lock" start_wait_loop 0
+    IfFileExists "$TEMP\soundstash_download.lock" start_wait_loop
+    IfFileExists "$LOCALAPPDATA\SoundStash\download.lock" start_wait_loop
 
     ; Le téléchargement vient de se terminer avec succès
     MessageBox MB_OK|MB_ICONINFORMATION \

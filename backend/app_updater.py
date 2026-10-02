@@ -194,8 +194,13 @@ def launch_installer(installer_path: Optional[str] = None) -> Dict[str, Any]:
         }
 
     try:
-        DETACHED_PROCESS = 0x00000008
-        subprocess.Popen([path_to_run], creationflags=DETACHED_PROCESS, close_fds=True)
+        if sys.platform == "win32":
+            # os.startfile délègue l'exécution à l'explorateur Windows (ShellExecuteW),
+            # ce qui détache l'installeur de l'arbre de processus de Python.
+            # Ainsi, un arrêt du serveur Python (ex. taskkill /T) ne tuera pas l'installeur.
+            os.startfile(path_to_run)
+        else:
+            subprocess.Popen([path_to_run], close_fds=True)
         return {"success": True, "status": "success", "message": "Installeur lancé avec succès"}
     except Exception as e:
         logger.error(f"Erreur lancement installeur {path_to_run}: {e}")
