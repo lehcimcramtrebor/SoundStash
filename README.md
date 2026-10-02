@@ -1,4 +1,4 @@
-# 🎵 SoundStash v3.2.5
+# 🎵 SoundStash v3.2.6
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)

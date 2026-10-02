@@ -114,6 +114,11 @@ function scheduleBadgeReset(delay = 5000) {
 // Réception & Dispatch des Événements WebSocket
 // ===================================================
 function handleWsEvent(data) {
+    if (data.type === "covers_restore_progress" || data.type === "covers_restore_completed") {
+        window.dispatchEvent(new CustomEvent("covers_restore_event", { detail: data }));
+        return;
+    }
+
     if (data.type === "sync_status") {
         if (typeof updateSyncWatchIndicator === "function") {
             updateSyncWatchIndicator(data.active, data.task, data.title, data.detail);

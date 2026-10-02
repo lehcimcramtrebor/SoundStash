@@ -318,6 +318,8 @@ function setupSettings() {
         });
     }
 
+    setupCoversRestoration();
+
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const exportDir = document.getElementById("cfg-export-dir") ? document.getElementById("cfg-export-dir").value.trim() : "";
@@ -948,6 +950,171 @@ if (btnDlAllGap) {
         showToast(`${added} album(s) ajouté(s) à la file de téléchargement !`, "success");
         btnDlAllGap.textContent = "✓ Tous ajoutés";
     });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Restauration des Jaquettes Plein Carré 1:1 (Hauteur 100% Intégrale)
+// ═══════════════════════════════════════════════════════════════════════
+
+function setupCoversRestoration() {
+    const btnRestore = document.getElementById("btn-restore-all-covers");
+    const btnCancel = document.getElementById("btn-cancel-restore-covers");
+    const progressContainer = document.getElementById("covers-restore-progress-container");
+    const statusText = document.getElementById("covers-restore-status-text");
+    const percentText = document.getElementById("covers-restore-percent-text");
+    const progressBar = document.getElementById("covers-restore-progress-bar");
+    const countsText = document.getElementById("covers-restore-counts");
+    const alertBox = document.getElementById("covers-restore-alert");
+
+    let pollInterval = null;
+
+    function updateUI(state) {
+        if (!progressContainer) return;
+        if (state.running) {
+            progressContainer.style.display = "block";
+            if (btnRestore) {
+                btnRestore.disabled = true;
+                btnRestore.innerHTML = `<span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:4px;"></span> En cours...`;
+            }
+            if (statusText) statusText.textContent = state.album ? `Traitement : ${state.album}` : "Restauration en cours...";
+            if (percentText) percentText.textContent = `${state.percent || 0}%`;
+            if (progressBar) progressBar.style.width = `${state.percent || 0}%`;
+            if (countsText) countsText.textContent = `${state.current || 0} / ${state.total || 0} (${state.repaired || 0} restaurée(s), ${state.failed || 0} échec(s))`;
+            if (alertBox) alertBox.style.display = "none";
+        } else if (state.done) {
+            if (btnRestore) {
+                btnRestore.disabled = false;
+                btnRestore.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                    <span>Restaurer toutes les jaquettes</span>
+                `;
+            }
+            if (progressBar) progressBar.style.width = "100%";
+            if (percentText) percentText.textContent = "100%";
+            if (statusText) statusText.textContent = "Restauration terminée !";
+            if (countsText) countsText.textContent = `Bilan : ${state.repaired || 0} restaurée(s), ${state.failed || 0} échec(s) sur ${state.total || 0} albums.`;
+            if (alertBox) {
+                alertBox.style.display = "block";
+                alertBox.className = "alert alert-success";
+                alertBox.style.background = "rgba(16, 185, 129, 0.15)";
+                alertBox.style.border = "1px solid rgba(16, 185, 129, 0.3)";
+                alertBox.style.color = "#34d399";
+                alertBox.textContent = `Restauration complétée avec succès ! ${state.repaired || 0} pochette(s) restaurée(s) en plein carré 1:1 avec hauteur intégrale.`;
+            }
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+            // Rafraîchir l'affichage de la bibliothèque et du lecteur
+            if (typeof AudioPlayer !== "undefined" && AudioPlayer.loadLibraryData) {
+                AudioPlayer.loadLibraryData(true);
+            }
+            if (typeof loadLibrary === "function") loadLibrary();
+        } else {
+            if (btnRestore) {
+                btnRestore.disabled = false;
+                btnRestore.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                    <span>Restaurer toutes les jaquettes</span>
+                `;
+            }
+        }
+    }
+
+    // Écouter les événements WebSocket
+    window.addEventListener("covers_restore_event", (e) => {
+        if (e.detail) updateUI(e.detail);
+    });
+
+    if (btnRestore) {
+        btnRestore.addEventListener("click", async () => {
+            const confirmed = await showModalConfirm(
+                "Restaurer les jaquettes (Hauteur intégrale 100%)",
+                "Cette opération va retélécharger les miniatures originales HD depuis YouTube pour l'ensemble des albums de votre collection et appliquer le recadrage 1:1 avec 100% de la hauteur intégrale préservée (zéro rognage vertical).\n\nLes tags audio seront automatiquement mis à jour via Kid3.\n\nSouhaitez-vous lancer la restauration maintenant ?",
+                "Lancer la restauration",
+                "Annuler"
+            );
+            if (!confirmed) return;
+
+            if (alertBox) alertBox.style.display = "none";
+            if (progressContainer) progressContainer.style.display = "block";
+            if (statusText) statusText.textContent = "Démarrage du processus...";
+            btnRestore.disabled = true;
+
+            try {
+                const res = await fetch("/api/library/restore-covers", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                const data = await res.json();
+                if (data.status === "already_running") {
+                    showToast("Une restauration est déjà en cours d'exécution.", "info");
+                } else if (data.status === "error") {
+                    showToast(data.message || "Erreur lors du démarrage.", "error");
+                    btnRestore.disabled = false;
+                    return;
+                } else {
+                    showToast("Restauration des jaquettes lancée en tâche de fond.", "info");
+                }
+
+                // Polling de sécurité toutes les 2 secondes
+                if (!pollInterval) {
+                    pollInterval = setInterval(async () => {
+                        try {
+                            const sRes = await fetch("/api/library/restore-covers/status");
+                            const sData = await sRes.json();
+                            updateUI(sData);
+                            if (sData.done || !sData.running) {
+                                clearInterval(pollInterval);
+                                pollInterval = null;
+                            }
+                        } catch (err) {
+                            console.warn("Polling restore covers status error:", err);
+                        }
+                    }, 2000);
+                }
+            } catch (err) {
+                console.error("Erreur restore covers:", err);
+                showToast("Erreur lors de la demande de restauration : " + err.message, "error");
+                btnRestore.disabled = false;
+            }
+        });
+    }
+
+    if (btnCancel) {
+        btnCancel.addEventListener("click", async () => {
+            try {
+                await fetch("/api/library/restore-covers/cancel", { method: "POST" });
+                showToast("Demande d'arrêt de la restauration envoyée.", "warning");
+                if (statusText) statusText.textContent = "Interruption en cours...";
+            } catch (err) {
+                console.error("Erreur annulation restauration:", err);
+            }
+        });
+    }
+
+    // Contrôle initial au chargement si une restauration est déjà en cours
+    fetch("/api/library/restore-covers/status")
+        .then(r => r.json())
+        .then(s => {
+            if (s && s.running) {
+                updateUI(s);
+                if (!pollInterval) {
+                    pollInterval = setInterval(async () => {
+                        try {
+                            const sRes = await fetch("/api/library/restore-covers/status");
+                            const sData = await sRes.json();
+                            updateUI(sData);
+                            if (sData.done || !sData.running) {
+                                clearInterval(pollInterval);
+                                pollInterval = null;
+                            }
+                        } catch (err) {}
+                    }, 2000);
+                }
+            }
+        })
+        .catch(() => {});
 }
 
 // ═══════════════════════════════════════════════════════════════════════

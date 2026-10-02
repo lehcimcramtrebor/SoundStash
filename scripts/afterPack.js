@@ -48,4 +48,15 @@ exports.default = async function(context) {
     } catch (err) {
         console.error(`[afterPack] Erreur lors de l'exécution de rcedit :`, err.message);
     }
+
+    // Synchronisation automatique de la version de l'application pour le backend
+    try {
+        const backendVerTarget = path.join(context.appOutDir, 'resources', 'backend', 'version.json');
+        if (fs.existsSync(path.dirname(backendVerTarget))) {
+            fs.writeFileSync(backendVerTarget, JSON.stringify({ version }, null, 2), 'utf-8');
+            console.log(`[afterPack] Version ${version} injectée dans resources/backend/version.json`);
+        }
+    } catch (e) {
+        console.warn('[afterPack] Erreur écriture version.json:', e.message);
+    }
 };

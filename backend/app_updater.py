@@ -20,7 +20,31 @@ from backend.config import config, CONFIG_DIR, TEMP_DOWNLOAD_DIR
 
 logger = logging.getLogger("soundstash_updater")
 
-CURRENT_APP_VERSION = "3.2.4"
+def get_current_app_version() -> str:
+    """Récupère la version actuelle depuis backend/version.json ou package.json."""
+    try:
+        ver_file = Path(__file__).resolve().parent / "version.json"
+        if ver_file.exists():
+            with open(ver_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "version" in data and data["version"]:
+                    return str(data["version"]).strip()
+    except Exception:
+        pass
+
+    try:
+        pkg_file = Path(__file__).resolve().parent.parent / "package.json"
+        if pkg_file.exists():
+            with open(pkg_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "version" in data and data["version"]:
+                    return str(data["version"]).strip()
+    except Exception:
+        pass
+
+    return "3.2.6"
+
+CURRENT_APP_VERSION = get_current_app_version()
 GITHUB_REPO = "lehcimcramtrebor/SoundStash"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -42,8 +66,8 @@ _update_progress: Dict[str, Any] = {
 }
 
 def parse_semver(ver_str: str) -> tuple:
-    """Extrait un tuple de nombres (major, minor, patch) depuis une chaîne comme 'v3.2.0' ou '3.2.1-beta'."""
-    clean = ver_str.strip().lstrip("vV")
+    """Extrait un tuple de nombres (major, minor, patch) depuis une chaîne comme 'v3.2.0', 'v.3.2.6' ou '3.2.1-beta'."""
+    clean = re.sub(r'^[vV\.\s]+', '', ver_str.strip())
     matches = re.findall(r'\d+', clean)
     if not matches:
         return (0, 0, 0)
@@ -57,10 +81,10 @@ async def check_app_update(current_version: Optional[str] = None) -> Dict[str, A
     Interroge l'API GitHub pour récupérer la dernière release publiée.
     Compare sémantiquement avec la version locale.
     """
-    local_version = current_version or CURRENT_APP_VERSION
+    local_version = current_version or get_current_app_version()
     try:
         headers = {
-            "User-Agent": f"SoundStash/{CURRENT_APP_VERSION}",
+            "User-Agent": f"SoundStash/{local_version}",
             "Accept": "application/vnd.github.v3+json"
         }
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
@@ -75,7 +99,8 @@ async def check_app_update(current_version: Optional[str] = None) -> Dict[str, A
             data = resp.json()
 
         tag_name = data.get("tag_name", "").strip()
-        remote_semver = parse_semver(tag_name)
+        clean_tag = re.sub(r'^[vV\.\s]+', '', tag_name)
+        remote_semver = parse_semver(clean_tag)
         current_semver = parse_semver(local_version)
 
         update_available = (remote_semver > current_semver)
@@ -98,7 +123,7 @@ async def check_app_update(current_version: Optional[str] = None) -> Dict[str, A
             "status": "success",
             "update_available": update_available,
             "current_version": local_version,
-            "latest_version": tag_name.lstrip("vV"),
+            "latest_version": clean_tag,
             "latest_tag": tag_name,
             "release_name": data.get("name") or f"SoundStash {tag_name}",
             "release_notes": data.get("body", ""),

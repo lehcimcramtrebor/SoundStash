@@ -5,7 +5,7 @@
  */
 
 window.AppUpdater = {
-    currentVersion: "3.2.4",
+    currentVersion: "3.2.6",
     latestRelease: null,
     isChecking: false,
     isDownloading: false,
@@ -13,6 +13,13 @@ window.AppUpdater = {
     installerPath: null,
 
     init() {
+        // Résolution dynamique de la version installée depuis le DOM
+        const installedVerEl = document.getElementById("app-installed-version");
+        if (installedVerEl && installedVerEl.textContent) {
+            const parsed = installedVerEl.textContent.replace(/^[vV\.\s]+/, '').trim();
+            if (parsed) this.currentVersion = parsed;
+        }
+
         const btnCheck = document.getElementById("btn-check-app-update");
         const autoCheckCheckbox = document.getElementById("cfg-auto-check-app-updates");
         const headerUpdateBtn = document.getElementById("btn-header-update");

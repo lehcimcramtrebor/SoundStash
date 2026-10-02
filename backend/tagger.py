@@ -897,70 +897,27 @@ def normalize_cover_artwork(
             if w < 100 or h < 100:
                 return False
 
+            # RÈGLE D'OR ABSOLUE : JAMAIS la hauteur (y: 0 -> h) ne doit être tronquée.
+            # Tous les éléments visuels cruciaux (titre, artiste, détails) s'étendent sur toute la hauteur.
+            # Seule la largeur (axe horizontal x) est ajustée pour atteindre le format carré 1:1.
+
+            # 1. Si déjà carré (tolérance 2px), aucun traitement : jaquette parfaite
+            if abs(w - h) <= 2:
+                return False
+
             square_img = None
-            arr = np.array(im, dtype=float)
 
-            # Cas 1 : Image non carrée (w != h) -> Crop carré parfait au milieu (Full Bleed)
-            if abs(w - h) > 2:
-                # Si panoramique large (ex: 16:9), tenter d'abord de repérer un cadre centré utile, sinon crop plein centre
-                if w > h:
-                    grad_x = np.abs(np.diff(arr, axis=1)).mean(axis=(0, 2))
-                    l_min, l_max = int(w * 0.20), int(w * 0.38)
-                    scores = []
-                    for cand in range(l_min, l_max):
-                        sl = grad_x[cand-2:cand+3].max()
-                        sr = grad_x[w - 1 - cand - 2 : w - 1 - cand + 3].max()
-                        scores.append((min(sl, sr), cand))
-                    scores.sort(reverse=True)
-                    if scores and scores[0][0] > 7.0:
-                        c = scores[0][1]
-                        content = im.crop((c + 2, 0, w - c - 2, h))
-                        cw, ch = content.size
-                        sy = int((ch - cw) * 0.45)
-                        square_img = content.crop((0, sy, cw, sy + cw)).resize((640, 640), Image.Resampling.LANCZOS)
-                    else:
-                        cx = (w - h) // 2
-                        square_img = im.crop((cx, 0, cx + h, h)).resize((640, 640), Image.Resampling.LANCZOS)
-                else:
-                    # Cas vertical (h > w)
-                    cy = (h - w) // 2
-                    square_img = im.crop((0, cy, w, cy + w)).resize((640, 640), Image.Resampling.LANCZOS)
-
-            # Cas 2 : Faux carré avec bandes latérales (Pillarbox 9:16 collé dans un carré)
+            # 2. Cas horizontal / panoramique (w > h, ex: miniatures 16:9 YouTube) :
+            # La hauteur h est 100% conservée (y de 0 à h).
+            # On découpe le carré centré de dimension h x h, ce qui élimine les bandes latérales
+            # tout en préservant l'intégralité du visuel vertical d'origine.
+            if w > h:
+                cx = (w - h) // 2
+                square_img = im.crop((cx, 0, cx + h, h))
             else:
-                grad_x = np.abs(np.diff(arr, axis=1)).mean(axis=(0, 2))
-                l_min, l_max = int(w * 0.10), int(w * 0.40)
-                r_min, r_max = int(w * 0.60), int(w * 0.90)
-
-                l_cand = l_min + int(np.argmax(grad_x[l_min:l_max]))
-                r_cand = r_min + int(np.argmax(grad_x[r_min:r_max]))
-                l_score = float(grad_x[l_cand])
-                r_score = float(grad_x[r_cand])
-
-                content_w = r_cand - l_cand
-                content_ratio = content_w / float(h)
-
-                jl = np.abs(arr[:, l_cand + 1, :] - arr[:, l_cand, :]).mean(axis=1)
-                jr = np.abs(arr[:, r_cand, :] - arr[:, r_cand - 1, :]).mean(axis=1)
-                frac_l = float((jl > 3.0).mean())
-                frac_r = float((jr > 3.0).mean())
-
-                is_pillarbox = False
-                if 0.25 <= content_ratio <= 0.75:
-                    if l_score >= 7.0 and r_score >= 7.0 and min(frac_l, frac_r) >= 0.18:
-                        is_pillarbox = True
-                    elif min(l_score, r_score) >= 5.5 and min(frac_l, frac_r) >= 0.22:
-                        is_pillarbox = True
-
-                if is_pillarbox:
-                    content = im.crop((l_cand + 2, 0, r_cand - 2, h))
-                    cw, ch = content.size
-                    if ch > cw:
-                        sy = int((ch - cw) * 0.45)
-                        square_img = content.crop((0, sy, cw, sy + cw)).resize((640, 640), Image.Resampling.LANCZOS)
-                    else:
-                        sx = (cw - ch) // 2
-                        square_img = content.crop((sx, 0, sx + ch, ch)).resize((640, 640), Image.Resampling.LANCZOS)
+                # 3. Cas vertical (h > w) : la hauteur est sacrée et ne doit pas être coupée.
+                # On ajuste la largeur vers h pour un format carré sans aucune perte en haut ni en bas.
+                square_img = im.resize((h, h), Image.Resampling.LANCZOS)
 
             if square_img is not None:
                 square_img.save(cov, "JPEG", quality=95)

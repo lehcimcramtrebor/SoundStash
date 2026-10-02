@@ -1,7 +1,7 @@
 {
   "name": "soundstash",
   "productName": "SoundStash",
-  "version": "3.2.5",
+  "version": "3.2.6",
   "description": "SoundStash by Helmicretro - Univers musical 100% autonome",
   "main": "main.js",
   "scripts": {

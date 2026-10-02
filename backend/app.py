@@ -65,10 +65,16 @@ from backend.app_updater import (
     launch_installer,
     open_release_in_browser
 )
+from backend.cover_restorer import (
+    repair_album_cover,
+    start_restoration_task,
+    get_restoration_status,
+    cancel_restoration
+)
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.2.0")
+app = FastAPI(title="SoundStash API", version="3.2.6")
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -168,6 +174,21 @@ def dispatch_library_updated():
         logger.debug(f"Erreur dispatch_library_updated: {e}")
 
 set_library_updated_callback(dispatch_library_updated)
+
+def dispatch_cover_restoration(payload: dict):
+    global main_loop
+    try:
+        if main_loop and main_loop.is_running():
+            asyncio.run_coroutine_threadsafe(ws_manager.broadcast(payload), main_loop)
+        else:
+            try:
+                curr_loop = asyncio.get_running_loop()
+                if curr_loop.is_running():
+                    asyncio.run_coroutine_threadsafe(ws_manager.broadcast(payload), curr_loop)
+            except RuntimeError:
+                pass
+    except Exception as e:
+        logger.debug(f"Erreur dispatch_cover_restoration: {e}")
 
 
 def silence_winerror_10054(loop, context):
@@ -328,6 +349,10 @@ class BrowseFolderRequest(BaseModel):
     initial_dir: Optional[str] = None
 
 class LibraryScanRequest(BaseModel):
+    library_dir: Optional[str] = None
+
+class RestoreCoversRequest(BaseModel):
+    album_dir: Optional[str] = None
     library_dir: Optional[str] = None
 
 class SubstituteItem(BaseModel):
@@ -2979,6 +3004,35 @@ async def synchronize_library_endpoint(
     loop = asyncio.get_event_loop()
     res = await loop.run_in_executor(None, synchronize_collection, library_dir, None, is_automatic)
     return res
+
+@app.post("/api/library/restore-covers")
+async def restore_covers_endpoint(req: Optional[RestoreCoversRequest] = None):
+    """
+    Restaure les jaquettes originales HD depuis YouTube avec 100% de la hauteur préservée
+    (zéro rognage vertical) et les réinjecte dans les tags audio.
+    """
+    if req and req.album_dir and req.album_dir.strip():
+        p = Path(req.album_dir.strip())
+        if not p.exists() or not p.is_dir():
+            raise HTTPException(status_code=404, detail="Dossier d'album introuvable.")
+        loop = asyncio.get_event_loop()
+        ok = await loop.run_in_executor(None, repair_album_cover, p)
+        return {"success": ok, "album": p.name}
+
+    target_dir = req.library_dir if (req and req.library_dir) else None
+    res = start_restoration_task(target_dir, broadcast_fn=dispatch_cover_restoration)
+    return res
+
+@app.get("/api/library/restore-covers/status")
+async def get_restore_covers_status_endpoint():
+    """Retourne l'état d'avancement de la restauration des jaquettes."""
+    return get_restoration_status()
+
+@app.post("/api/library/restore-covers/cancel")
+async def cancel_restore_covers_endpoint():
+    """Interrompt la tâche de restauration des jaquettes en cours."""
+    cancel_restoration()
+    return {"status": "stopping"}
 
 @app.post("/api/library/check-migration")
 async def check_migration_endpoint(req: CheckMigrationRequest):
