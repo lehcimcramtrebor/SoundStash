@@ -143,6 +143,18 @@ ipcMain.handle('show-item-in-folder', async (event, targetPath) => {
     }
 });
 
+// Handler IPC pour ouvrir un lien externe dans le navigateur Web par défaut
+ipcMain.handle('open-external', async (event, url) => {
+    try {
+        if (!url || typeof url !== 'string') return { success: false, error: 'URL invalide' };
+        await shell.openExternal(url);
+        return { success: true };
+    } catch (e) {
+        console.error('Erreur shell.openExternal:', e);
+        return { success: false, error: e.message || String(e) };
+    }
+});
+
 // Verrou d'instance unique (empêche de lancer plusieurs fois l'application)
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {

@@ -678,6 +678,17 @@ const AudioPlayer = {
             });
         }
 
+        const allShuffleBtn = document.getElementById("player-btn-all-shuffle");
+        if (allShuffleBtn) {
+            allShuffleBtn.addEventListener("click", () => {
+                if (this.currentView === "all" && this.allSearchQuery && this._currentCatalogMatches && this._currentCatalogMatches.length > 0) {
+                    this.playSearchResults(this._currentCatalogMatches, true);
+                } else {
+                    this.playEntireCollection({ shuffle: true });
+                }
+            });
+        }
+
         const backToLibBtn = document.getElementById("player-btn-back-to-library");
         if (backToLibBtn) {
             backToLibBtn.addEventListener("click", () => this.setView("albums"));
@@ -1555,11 +1566,29 @@ const AudioPlayer = {
         const searchInput = document.getElementById("player-search-input");
         const typeFilters = document.getElementById("player-type-filters");
         const artistsDensityToggle = document.getElementById("player-artists-density-toggle");
+        const allShuffleBtn = document.getElementById("player-btn-all-shuffle");
+
         if (typeFilters) {
             typeFilters.style.display = (view === "albums") ? "flex" : "none";
         }
         if (artistsDensityToggle) {
             artistsDensityToggle.style.display = (view === "artists") ? "inline-flex" : "none";
+        }
+        if (allShuffleBtn) {
+            allShuffleBtn.style.display = (view === "all" || view === "albums") ? "inline-flex" : "none";
+            if (view === "all" && this.allSearchQuery && this.allSearchQuery.trim()) {
+                allShuffleBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                    <span>Aléatoire (Résultats)</span>
+                `;
+                allShuffleBtn.title = "Lancer une lecture aléatoire des morceaux trouvés";
+            } else {
+                allShuffleBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                    <span>Aléatoire (Collection)</span>
+                `;
+                allShuffleBtn.title = "Lancer une lecture aléatoire qui pioche dans tous les titres de la collection";
+            }
         }
         if (!sortSelect) return;
 
@@ -3241,9 +3270,9 @@ const AudioPlayer = {
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                             <span>Lire tout</span>
                         </button>
-                        <button type="button" class="btn-all-action btn-cat-alb-shuffle" title="Lire l'album en mode aléatoire">
+                        <button type="button" class="btn-all-action btn-cat-alb-shuffle" title="Lire uniquement cet album en mode aléatoire">
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
-                            <span>Aléatoire</span>
+                            <span>Aléatoire album</span>
                         </button>
                         <button type="button" class="btn-all-action btn-cat-alb-next" title="Lire l'album ensuite en tête de file">
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
@@ -3320,6 +3349,27 @@ const AudioPlayer = {
         container._hasAllDelegation = true;
 
         container.addEventListener("click", (e) => {
+            // ── ACTIONS BANNIÈRE GLOBALE ──
+            if (e.target.closest(".btn-all-global-shuffle") || e.target.closest(".btn-all-collection-shuffle")) {
+                e.stopPropagation();
+                this.playEntireCollection({ shuffle: true });
+                return;
+            }
+            if (e.target.closest(".btn-all-global-play") || e.target.closest(".btn-all-collection-play")) {
+                e.stopPropagation();
+                this.playEntireCollection({ shuffle: false });
+                return;
+            }
+            if (e.target.closest(".btn-search-results-shuffle")) {
+                e.stopPropagation();
+                if (this._currentCatalogMatches && this._currentCatalogMatches.length > 0) {
+                    this.playSearchResults(this._currentCatalogMatches, true);
+                } else {
+                    this.playEntireCollection({ shuffle: true });
+                }
+                return;
+            }
+
             // ── 1. MODE CATALOGUE CONTINU ──
             const albBlock = e.target.closest(".player-all-album-block");
             if (albBlock) {
@@ -3500,7 +3550,28 @@ const AudioPlayer = {
 
         // OPT: Rendu direct complet en une seule passe sans découpage (chunking) visuel.
         // content-visibility: auto assure que le navigateur ne calcule et ne peint que les blocs visibles à l'écran.
-        const allParts = [];
+        const bannerHtml = `
+            <div class="player-all-catalog-banner">
+                <div class="player-all-catalog-info">
+                    <span class="player-all-catalog-icon">🌐</span>
+                    <div class="player-all-catalog-texts">
+                        <span class="player-all-catalog-title">Catalogue Intégral</span>
+                        <span class="player-all-catalog-sub">${totalTracks} titres • ${albums.length} album${albums.length > 1 ? "s" : ""}</span>
+                    </div>
+                </div>
+                <div class="player-all-catalog-actions">
+                    <button type="button" class="btn btn-sm btn-primary btn-all-global-shuffle" id="btn-all-banner-shuffle" title="Lancer une lecture aléatoire qui pioche dans tous les titres de la collection">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                        <span>Aléatoire (Toute la collection)</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary btn-all-global-play" id="btn-all-banner-play" title="Lire tous les morceaux de la collection dans l'ordre">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        <span>Tout lire</span>
+                    </button>
+                </div>
+            </div>
+        `;
+        const allParts = [bannerHtml];
         for (let i = 0; i < albums.length; i++) {
             allParts.push(this._buildCatalogAlbumBlockHtml(albums[i], i));
         }
@@ -3623,7 +3694,30 @@ const AudioPlayer = {
             rowsParts.push(this._buildDenseSearchRowHtml(matches[i], i, query, isCurrentAlbumActive));
         }
 
+        const searchBannerHtml = `
+            <div class="player-all-catalog-banner">
+                <div class="player-all-catalog-info">
+                    <span class="player-all-catalog-icon">🔍</span>
+                    <div class="player-all-catalog-texts">
+                        <span class="player-all-catalog-title">${matches.length} titre${matches.length > 1 ? "s" : ""} trouvé${matches.length > 1 ? "s" : ""}</span>
+                        <span class="player-all-catalog-sub">Recherche : « ${escapeHtml(query)} »</span>
+                    </div>
+                </div>
+                <div class="player-all-catalog-actions">
+                    <button type="button" class="btn btn-sm btn-primary btn-search-results-shuffle" title="Lire ces ${matches.length} titres en mode aléatoire">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                        <span>Aléatoire (${matches.length} titres)</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary btn-all-global-shuffle" title="Lancer une lecture aléatoire de toute la collection">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                        <span>Aléatoire (Collection)</span>
+                    </button>
+                </div>
+            </div>
+        `;
+
         container.innerHTML = `
+            ${searchBannerHtml}
             <div class="player-dense-search-container" id="player-dense-search-wrapper">
                 <div class="dense-track-header">
                     <div style="width: 280px; max-width: 320px;">Artiste & Album</div>
@@ -6444,21 +6538,21 @@ const AudioPlayer = {
     },
 
     /**
-     * Charge toute la collection musicale et la met en lecture (mode aléatoire).
-     * Utilise le cache albumInfoCache en priorité, puis fetch en parallèle par lots.
-     * Démarre la lecture immédiatement avec les albums déjà en cache.
+     * Charge toute la collection musicale et la met en lecture (mode aléatoire ou séquentiel).
+     * Utilise les pistes déjà en mémoire (this.allCatalog) pour un lancement instantané (0 ms),
+     * ou fetch en parallèle via /api/collection/all-tracks.
      */
-    async playEntireCollection() {
+    async playEntireCollection(opts = { shuffle: true }) {
         const albums = this.libraryAlbums;
-        if (!albums || albums.length === 0) {
+        if ((!albums || albums.length === 0) && (!this.allCatalog || !this.allCatalog.albums || this.allCatalog.albums.length === 0)) {
             showToast("La bibliothèque est vide. Synchronisez d'abord votre collection.", "warning");
             return;
         }
 
-        const totalAlbums = albums.length;
+        const shouldShuffle = (opts && opts.shuffle !== undefined) ? Boolean(opts.shuffle) : true;
 
         // Fonction utilitaire : mélange Fisher-Yates
-        const shuffle = (arr) => {
+        const shuffleArr = (arr) => {
             for (let i = arr.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [arr[i], arr[j]] = [arr[j], arr[i]];
@@ -6467,33 +6561,74 @@ const AudioPlayer = {
         };
 
         try {
-            // Récupération instantanée (< 70ms) de toutes les pistes via l'index en mémoire
-            const res = await fetch(`/api/collection/all-tracks?source=${encodeURIComponent(this.librarySource)}`);
-            if (!res.ok) throw new Error("Erreur de récupération des pistes de la collection");
-            const data = await res.json();
-            const tracks = data.tracks || [];
+            let tracks = [];
+            let totalAlbumsCount = (albums && albums.length) || 0;
+
+            // 1. Extraction ultra-rapide 0 ms si le catalogue complet est déjà en mémoire
+            if (this.allCatalog && Array.isArray(this.allCatalog.albums) && this.allCatalog.albums.length > 0) {
+                totalAlbumsCount = this.allCatalog.albums.length;
+                for (const alb of this.allCatalog.albums) {
+                    const cover = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
+                    const albTitle = alb.title || "";
+                    const albArtist = alb.artist || "";
+                    const albPath = alb.path || "";
+                    for (let idx = 0; idx < (alb.tracks || []).length; idx++) {
+                        const t = alb.tracks[idx];
+                        const fp = t.filepath || t.path || "";
+                        tracks.push({
+                            id: `collection-${albPath}-${idx}`,
+                            type: "audio",
+                            title: t.title || `Piste ${idx + 1}`,
+                            artist: t.artist || albArtist,
+                            album: t.album || albTitle,
+                            album_path: albPath,
+                            duration: t.duration || "--:--",
+                            duration_seconds: t.duration_seconds || 0,
+                            path: fp,
+                            filepath: fp,
+                            rel_path: fp,
+                            stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
+                            cover_url: cover,
+                            thumbnail_url: cover,
+                            track_number: t.track_number || (idx + 1),
+                            format: t.format || "M4A"
+                        });
+                    }
+                }
+            }
+
+            // 2. Repli API si non présent en mémoire
+            if (tracks.length === 0) {
+                const res = await fetch(`/api/collection/all-tracks?source=${encodeURIComponent(this.librarySource)}`);
+                if (!res.ok) throw new Error("Erreur de récupération des pistes de la collection");
+                const data = await res.json();
+                tracks = data.tracks || [];
+                if (data.albums_count) totalAlbumsCount = data.albums_count;
+            }
 
             if (tracks.length === 0) {
                 showToast("Aucune piste trouvée dans la collection.", "warning");
                 return;
             }
 
-            const shuffled = shuffle(tracks.slice());
+            const playListTracks = shouldShuffle ? shuffleArr(tracks.slice()) : tracks.slice();
+            this.isShuffle = shouldShuffle;
+            this.updateShuffleUI();
             this.isUserPlaylistActive = true;
             this.currentAlbum = {
                 title: "🌍 Toute la Collection",
-                artist: `${data.albums_count || totalAlbums} albums • ${shuffled.length} pistes`,
+                artist: `${totalAlbumsCount} albums • ${playListTracks.length} pistes`,
                 year: "",
                 genre: "Collection",
-                cover_url: shuffled[0]?.cover_url || "/static/placeholder-cover.svg",
+                cover_url: playListTracks[0]?.cover_url || "/static/placeholder-cover.svg",
                 path: "system:all-collection",
                 is_playlist: true,
                 is_collection: true
             };
-            this.playlist = shuffled;
+            this.playlist = playListTracks;
             this.playbackContext = {
                 album: this.currentAlbum,
-                playlist: shuffled.slice(),
+                playlist: playListTracks.slice(),
                 currentIndex: 0
             };
             this.currentIndex = 0;
@@ -6502,15 +6637,77 @@ const AudioPlayer = {
 
             this.resetPlayerScrollRobust();
             this.renderPlayerTab();
-            // Lancer la lecture sur place (sans forcer de changement de vue intempestif)
             this.playTrackAtIndex(0);
             setTimeout(() => this.scrollToActiveTrack(true), 150);
 
-            showToast(`▶ Lecture démarrée : 🌍 Toute la Collection (${shuffled.length} pistes)`, "success", 3000);
+            showToast(`▶ Lecture ${shouldShuffle ? "aléatoire " : ""}démarrée : 🌍 Toute la Collection (${playListTracks.length} pistes)`, "success", 3000);
         } catch (err) {
             console.error("Erreur playEntireCollection:", err);
             showToast("Impossible de lancer toute la collection : " + err.message, "danger");
         }
+    },
+
+    playSearchResults(matches, shuffle = true) {
+        if (!matches || matches.length === 0) return;
+        const shuffleArr = (arr) => {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        };
+        const tracks = matches.map((m, idx) => {
+            const t = m.track;
+            const alb = m.album;
+            const fp = t.filepath || t.path || "";
+            return {
+                id: `search-${alb.path}-${idx}`,
+                type: "audio",
+                title: t.title || `Piste ${idx + 1}`,
+                artist: t.artist || alb.artist,
+                album: t.album || alb.title,
+                album_path: alb.path,
+                duration: t.duration || "--:--",
+                duration_seconds: t.duration_seconds || 0,
+                path: fp,
+                filepath: fp,
+                rel_path: fp,
+                stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
+                cover_url: alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`,
+                thumbnail_url: alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`,
+                track_number: t.track_number || (idx + 1),
+                format: t.format || "M4A"
+            };
+        });
+        const playListTracks = shuffle ? shuffleArr(tracks.slice()) : tracks.slice();
+        this.isShuffle = shuffle;
+        this.updateShuffleUI();
+        this.isUserPlaylistActive = true;
+        this.currentAlbum = {
+            title: "🔍 Résultats de recherche",
+            artist: `${playListTracks.length} piste${playListTracks.length > 1 ? "s" : ""}`,
+            year: "",
+            genre: "Recherche",
+            cover_url: playListTracks[0]?.cover_url || "/static/placeholder-cover.svg",
+            path: "system:search-results",
+            is_playlist: true,
+            is_collection: true
+        };
+        this.playlist = playListTracks;
+        this.playbackContext = {
+            album: this.currentAlbum,
+            playlist: playListTracks.slice(),
+            currentIndex: 0
+        };
+        this.currentIndex = 0;
+        this.activeAlbumPath = this.currentAlbum.path;
+        this.activePlaylist = this.playlist.slice();
+
+        this.resetPlayerScrollRobust();
+        this.renderPlayerTab();
+        this.playTrackAtIndex(0);
+        setTimeout(() => this.scrollToActiveTrack(true), 150);
+        showToast(`▶ Lecture ${shuffle ? "aléatoire " : ""}démarrée : 🔍 ${playListTracks.length} pistes`, "success", 3000);
     },
 
     async playUserPlaylist(playlistObj, startIndex = 0, shuffle = false) {

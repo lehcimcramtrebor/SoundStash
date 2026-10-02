@@ -2521,6 +2521,99 @@ body.player-mode-active .nav-tabs {
     white-space: nowrap;
 }
 
+/* Bannière d'En-tête de l'Onglet Tout (Catalogue Intégral & Aléatoire Global) */
+.player-all-catalog-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, rgba(255, 42, 75, 0.12), rgba(0, 240, 255, 0.08));
+    border: 1px solid rgba(255, 42, 75, 0.35);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    margin-bottom: 8px;
+}
+
+.player-all-catalog-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.player-all-catalog-icon {
+    font-size: 1.8rem;
+    line-height: 1;
+    filter: drop-shadow(0 2px 8px rgba(255, 42, 75, 0.4));
+}
+
+.player-all-catalog-texts {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.player-all-catalog-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.01em;
+}
+
+.player-all-catalog-sub {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.player-all-catalog-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.btn-all-global-shuffle,
+.btn-search-results-shuffle {
+    background: linear-gradient(135deg, #ff2a4b, #e01e37) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 14px rgba(255, 42, 75, 0.4) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.btn-all-global-shuffle:hover,
+.btn-search-results-shuffle:hover {
+    transform: translateY(-1px) scale(1.02);
+    box-shadow: 0 6px 20px rgba(255, 42, 75, 0.6) !important;
+}
+
+.player-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.player-all-shuffle-btn {
+    font-weight: 600 !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #ff2a4b, #d91b38) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 2px 10px rgba(255, 42, 75, 0.35);
+}
+
+.player-all-shuffle-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(255, 42, 75, 0.55);
+}
+
 /* Conteneur principal */
 .player-all-container {
     display: flex;

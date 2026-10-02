@@ -137,6 +137,8 @@ class AppConfig(BaseModel):
     audio_fader_duration: float = 0.5
     # Auto-mise à jour en tâche de fond de yt-dlp (cooldown 24h)
     auto_update_yt_dlp: bool = True
+    # Auto-vérification des mises à jour de SoundStash (GitHub releases)
+    auto_check_app_updates: bool = True
 
     @validator('export_dir', 'video_export_dir', 'video_library_dir', 'library_dir', pre=True)
     def ensure_parent_exists(cls, v):

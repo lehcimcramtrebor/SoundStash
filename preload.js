@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     trashItem: (targetPath) => ipcRenderer.invoke('trash-item', targetPath),
     openPath: (targetPath) => ipcRenderer.invoke('open-path', targetPath),
     showItemInFolder: (targetPath) => ipcRenderer.invoke('show-item-in-folder', targetPath),
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
     updatePlaybackState: (state) => ipcRenderer.send('playback-state-changed', state),
     setDisplayWakeLock: (enable) => ipcRenderer.invoke('set-display-wake-lock', enable),
     minimize: () => ipcRenderer.send('minimize'),

@@ -370,7 +370,8 @@ function setupSettings() {
                     start_in_fullscreen: startFullscreen,
                     audio_fader_enabled: audioFaderEnabled,
                     cooldown_album: cooldownAlbum,
-                    cooldown_single: cooldownSingle
+                    cooldown_single: cooldownSingle,
+                    auto_check_app_updates: document.getElementById("cfg-auto-check-app-updates") ? document.getElementById("cfg-auto-check-app-updates").checked : true
                 })
             });
             if (res.ok) {
@@ -710,6 +711,10 @@ async function loadConfiguration() {
         const autoUpdateCheckbox = document.getElementById("cfg-auto-update-yt-dlp");
         if (autoUpdateCheckbox) {
             autoUpdateCheckbox.checked = data.auto_update_yt_dlp !== false;
+        }
+        const autoCheckAppUpdatesCheckbox = document.getElementById("cfg-auto-check-app-updates");
+        if (autoCheckAppUpdatesCheckbox) {
+            autoCheckAppUpdatesCheckbox.checked = data.auto_check_app_updates !== false;
         }
         refreshYtDlpStatus();
     } catch (err) {

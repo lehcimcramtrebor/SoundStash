@@ -58,6 +58,13 @@ from backend.tool_updater import get_yt_dlp_status, update_yt_dlp, background_st
 from backend.library_migrator import check_migration_needed, execute_migration
 from backend.playlist_manager import playlist_manager
 from backend.playback_stats import playback_stats
+from backend.app_updater import (
+    check_app_update,
+    start_download_update,
+    get_download_progress,
+    launch_installer,
+    open_release_in_browser
+)
 
 logger = get_logger(__name__)
 
@@ -287,6 +294,7 @@ class UpdateConfigRequest(BaseModel):
     minimize_to_tray_on_minimize: Optional[bool] = None
     has_seen_tray_notice: Optional[bool] = None
     auto_update_yt_dlp: Optional[bool] = None
+    auto_check_app_updates: Optional[bool] = None
 
 class MatchSearchItem(BaseModel):
     title: str
@@ -324,6 +332,17 @@ class SaveEditorDraftRequest(BaseModel):
 
 class ClearEditorDraftRequest(BaseModel):
     album_dir: str
+
+class DownloadAppUpdateRequest(BaseModel):
+    download_url: str
+    asset_name: Optional[str] = None
+    version: Optional[str] = "latest"
+
+class OpenBrowserRequest(BaseModel):
+    url: Optional[str] = None
+
+class InstallAppUpdateRequest(BaseModel):
+    installer_path: Optional[str] = None
 
 class ReconstituteRequest(BaseModel):
     album_dir: str
@@ -448,7 +467,8 @@ async def get_configuration():
         "minimize_to_tray_on_close": config.minimize_to_tray_on_close,
         "minimize_to_tray_on_minimize": config.minimize_to_tray_on_minimize,
         "has_seen_tray_notice": config.has_seen_tray_notice,
-        "auto_update_yt_dlp": getattr(config, "auto_update_yt_dlp", True)
+        "auto_update_yt_dlp": getattr(config, "auto_update_yt_dlp", True),
+        "auto_check_app_updates": getattr(config, "auto_check_app_updates", True)
     }
 
 @app.post("/api/config")
@@ -485,6 +505,8 @@ async def update_configuration(req: UpdateConfigRequest):
         config.has_seen_tray_notice = req.has_seen_tray_notice
     if req.auto_update_yt_dlp is not None:
         config.auto_update_yt_dlp = req.auto_update_yt_dlp
+    if req.auto_check_app_updates is not None:
+        config.auto_check_app_updates = req.auto_check_app_updates
     save_config(config)
     return {"success": True, "config": config.dict()}
 
@@ -497,6 +519,31 @@ async def get_yt_dlp_status_endpoint():
 async def update_yt_dlp_endpoint():
     """Déclenche la mise à jour manuelle immédiate de yt-dlp."""
     return await update_yt_dlp(force=True)
+
+@app.get("/api/app/update/check")
+async def check_app_update_endpoint():
+    """Vérifie si une nouvelle release de SoundStash est disponible sur GitHub."""
+    return await check_app_update()
+
+@app.post("/api/app/update/download")
+async def download_app_update_endpoint(req: DownloadAppUpdateRequest):
+    """Télécharge l'exécutable de mise à jour en arrière-plan."""
+    return await start_download_update(req.download_url, req.asset_name, req.version)
+
+@app.get("/api/app/update/progress")
+async def get_app_update_progress_endpoint():
+    """Retourne la progression du téléchargement de la mise à jour."""
+    return get_download_progress()
+
+@app.post("/api/app/update/install")
+async def install_app_update_endpoint(req: InstallAppUpdateRequest):
+    """Lance l'exécutable d'installation téléchargé."""
+    return launch_installer(req.installer_path)
+
+@app.post("/api/app/update/open-browser")
+async def open_browser_release_endpoint(req: OpenBrowserRequest):
+    """Ouvre la page de release GitHub dans le navigateur par défaut."""
+    return open_release_in_browser(req.url)
 
 @app.post("/api/app/reset")
 async def reset_application():
@@ -2864,7 +2911,8 @@ async def get_all_collection_tracks_endpoint(source: str = Query("library")):
                 "title": t.get("title") or f"Piste {idx + 1}",
                 "artist": t.get("artist") or alb_artist,
                 "album": t.get("album") or alb_title,
-                "duration": "--:--",
+                "album_path": alb_path,
+                "duration": t.get("duration") or "--:--",
                 "duration_seconds": 0,
                 "path": fp,
                 "filepath": fp,

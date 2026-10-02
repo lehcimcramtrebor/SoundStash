@@ -1077,6 +1077,10 @@
                                     <path d="M12.3 2a10 10 0 0 0-1.9 19.8 10 10 0 0 0 11.5-11.5A10 10 0 0 0 12.3 2zm0 18A8 8 0 0 1 12 4a8.2 8.2 0 0 1 1.7.2 8 8 0 0 1-9.5 9.5A8 8 0 0 1 12.3 20z"/>
                                 </svg>
                             </button>
+                            <button type="button" id="btn-header-update" class="btn-header-update pulse-badge" title="Mise à jour SoundStash disponible !" style="display: none; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; align-items: center; gap: 6px; cursor: pointer;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                                <span id="header-update-label">MÀJ dispo</span>
+                            </button>
                             <button type="button" id="btn-open-settings" class="btn-header-settings" title="Paramètres de l'application">
                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                                     <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
@@ -1175,6 +1179,12 @@
                         </div>
                         <div class="player-stats-badge">
                             <span id="player-count-indicator" class="text-muted" style="font-size: 0.85rem;">0 album</span>
+                        </div>
+                        <div class="player-toolbar-actions" id="player-toolbar-actions">
+                            <button type="button" id="player-btn-all-shuffle" class="btn btn-sm btn-primary player-all-shuffle-btn" title="Lancer une lecture aléatoire qui pioche dans tous les titres de la collection" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                                <span>Aléatoire (Collection)</span>
+                            </button>
                         </div>
                         <div id="player-cache-warm-indicator" style="display: none; align-items: center; gap: 6px; font-size: 0.78rem; opacity: 0.75;">
                             <span id="player-cache-warm-icon" style="display: inline-flex; align-items: center;">
@@ -1904,6 +1914,32 @@
                             <div id="yt-dlp-update-result-alert" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;"></div>
                         </div>
 
+                        <!-- Mise à Jour SoundStash Application -->
+                        <div class="settings-section-card" id="card-app-updater">
+                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                                <div>
+                                    <h3 class="settings-card-title" style="margin-bottom: 4px;">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                                        Mise à Jour de l'Application SoundStash
+                                    </h3>
+                                    <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
+                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v3.2.0</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
+                                    </p>
+                                </div>
+                                <button type="button" id="btn-check-app-update" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
+                                    <svg id="icon-check-app-update" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                                    <span id="label-check-app-update">Rechercher une mise à jour</span>
+                                </button>
+                            </div>
+                            <div class="form-options">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="cfg-auto-check-app-updates" checked>
+                                    <span>Vérifier automatiquement les mises à jour de SoundStash au démarrage</span>
+                                </label>
+                            </div>
+                            <div id="app-update-result-alert" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;"></div>
+                        </div>
+
                         <div class="settings-section-card">
                             <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                                 <h3 class="settings-card-title" style="margin-bottom: 0;">
@@ -2070,6 +2106,81 @@
                 <button type="button" id="modal-btn-extra" class="btn btn-secondary" style="display: none;">Extra</button>
                 <button type="button" id="modal-btn-cancel" class="btn btn-secondary">Annuler</button>
                 <button type="button" id="modal-btn-confirm" class="btn btn-primary">Valider</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale de Mise à Jour de l'Application SoundStash -->
+    <div id="app-update-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog" style="max-width: 620px;">
+            <div class="modal-header">
+                <div class="modal-icon-box" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="modal-title" style="margin: 0; font-size: 1.15rem;">Mise à Jour SoundStash Disponible</h3>
+                    <p class="text-muted" style="margin: 4px 0 0 0; font-size: 0.82rem;">
+                        Une nouvelle version officielle est prête au déploiement
+                    </p>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-hover, #2a2a3e); border: 1px solid var(--border, #333); border-radius: 8px; padding: 12px 16px; margin-bottom: 14px;">
+                    <div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">Version actuelle / Nouvelle version</div>
+                        <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                            <span id="app-update-current-ver" style="color: var(--text-muted);">v3.2.0</span>
+                            <span style="color: var(--accent);">➔</span>
+                            <span id="app-update-target-ver" style="color: #10b981;">v...</span>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">Taille de l'installeur</div>
+                        <div id="app-update-asset-size" style="font-size: 0.95rem; font-weight: 600; color: var(--text); margin-top: 2px;">-- Mo</div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: var(--text);">Notes de version & Nouveautés :</div>
+                    <div id="app-update-release-notes" style="background: var(--bg-card, #1e1e2e); border: 1px solid var(--border, #333); border-radius: 8px; padding: 12px; max-height: 180px; overflow-y: auto; font-size: 0.82rem; line-height: 1.5; color: var(--text-muted); white-space: pre-wrap; font-family: inherit;">
+                        Chargement des notes de version...
+                    </div>
+                </div>
+
+                <!-- Zone de Téléchargement & Progression -->
+                <div id="app-update-progress-container" style="display: none; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 8px;">
+                        <span id="app-update-progress-status" style="font-weight: 600; color: #60a5fa;">Téléchargement en cours...</span>
+                        <span id="app-update-progress-percent" style="font-family: var(--font-mono); font-weight: 700; color: #93c5fd;">0%</span>
+                    </div>
+                    <div style="height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; overflow: hidden;">
+                        <div id="app-update-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #10b981); transition: width 0.2s linear;"></div>
+                    </div>
+                    <div id="app-update-progress-details" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; text-align: right;">
+                        0 Mo / 0 Mo
+                    </div>
+                </div>
+
+                <div id="app-update-error-alert" style="display: none; padding: 10px 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 8px; color: #fca5a5; font-size: 0.82rem; margin-bottom: 12px;"></div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
+                <button type="button" id="app-update-btn-close" class="btn btn-secondary">Plus tard</button>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" id="app-update-btn-browser" class="btn btn-secondary" title="Voir la release et télécharger manuellement dans votre navigateur" style="display: inline-flex; align-items: center; gap: 6px;">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+                        <span>Ouvrir sur GitHub</span>
+                    </button>
+                    <button type="button" id="app-update-btn-download" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+                        <span>Télécharger &amp; Installer</span>
+                    </button>
+                    <button type="button" id="app-update-btn-install" class="btn btn-primary" style="display: none; background: #10b981; border-color: #059669; font-weight: 600; align-items: center; gap: 6px;">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                        <span>Lancer l'installation</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -3773,6 +3884,7 @@
     <script src="/static/js/core/utils.js?v=3.2.0"></script>
     <script src="/static/js/core/modals.js?v=3.2.0"></script>
     <script src="/static/js/core/websocket.js?v=3.2.0"></script>
+    <script src="/static/js/core/app_updater.js?v=3.2.0"></script>
 
     <!-- Modules Autonomes : Mode Ambiance & Synthwave -->
     <script src="/static/js/ambient/synthwave_canvas.js?v=3.2.0"></script>
