@@ -1020,28 +1020,21 @@ def invalidate_album_cache(album_dir: Optional[Path | str] = None) -> None:
         _ALBUM_INFO_CACHE.clear()
 
 def get_album_info(album_dir: Path | str) -> dict:
-    """Inspecte un dossier d'album et retourne la liste des morceaux et métadonnées globales."""
+    """Inspecte un dossier d'album ou un fichier média unique et retourne la liste des morceaux et métadonnées globales."""
     if not album_dir or not str(album_dir).strip():
         return {"error": "Chemin d'album invalide ou vide", "tracks": []}
 
     p = Path(album_dir)
-    if not p.exists() or not p.is_dir():
-        return {"error": "Dossier introuvable", "tracks": []}
-    album_dir = p
+    if not p.exists():
+        return {"error": "Dossier ou fichier introuvable", "tracks": []}
 
-    p_key = str(p.resolve()).lower()
-    try:
-        dir_mtime = p.stat().st_mtime
-    except Exception:
-        dir_mtime = 0.0
-
-    draft_file = p / ".editor_draft.json"
-    draft_mtime = draft_file.stat().st_mtime if draft_file.exists() else 0.0
-
-    meta_file = p / ".playlist_meta.json"
-    meta_mtime = meta_file.stat().st_mtime if meta_file.exists() else 0.0
-
-    audio_files = [f for f in album_dir.iterdir() if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS]
+    is_single_file_mode = p.is_file()
+    if is_single_file_mode:
+        album_dir = p.parent
+        audio_files = [p]
+    else:
+        album_dir = p
+        audio_files = [f for f in album_dir.iterdir() if f.is_file() and f.suffix.lower() in (AUDIO_EXTENSIONS | {".avi", ".mov", ".m4v"})]
     
     def sort_key(f: Path):
         num, _ = parse_track_filename(f.name)
@@ -1180,13 +1173,13 @@ def get_album_info(album_dir: Path | str) -> dict:
             logger.warning(f"Lecture .editor_draft.json: {e}")
 
     CONCERT_KEYWORDS_RE = re.compile(
-        r'\b(full\s+concert|live\s+at|live\s+in|concert\s+complet|live\s+tour|festival\s+live|live\s+session|live\s+show|en\s+concert)\b',
+        r'\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b',
         re.IGNORECASE
     )
     is_video_folder = (
         "[vidéo]" in str(album_dir).lower()
         or "[video]" in str(album_dir).lower()
-        or any(f.suffix.lower() in {".mp4", ".mkv", ".webm"} for f in audio_files)
+        or any(f.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"} for f in audio_files)
     )
     is_concert = False
     if is_video_folder:
@@ -1203,19 +1196,27 @@ def get_album_info(album_dir: Path | str) -> dict:
                 dur_str = tr.get("duration", "")
                 if dur_str:
                     parts = [int(p) for p in dur_str.split(":") if p.isdigit()]
-                    if len(parts) >= 3 or (len(parts) == 2 and parts[0] >= 20):
+                    if len(parts) >= 3 or (len(parts) == 2 and parts[0] >= 10):
                         is_concert = True
                         break
 
+    if is_single_file_mode:
+        album_name = p.stem
+        if tracks:
+            album_artist = tracks[0].get("artist") or "Artiste inconnu"
+            year = tracks[0].get("year") or ""
+            genre = tracks[0].get("genre") or ""
+
     result_info = {
-        "album_dir": str(album_dir.resolve()),
+        "album_dir": str(p.resolve()) if is_single_file_mode else str(album_dir.resolve()),
+        "is_single_file": is_single_file_mode,
         "album_name": album_name,
         "album_artist": album_artist,
         "year": year,
         "genre": genre,
         "total_tracks": len(tracks),
         "max_track": max_track,
-        "missing_tracks": [] if is_playlist_folder else missing_tracks,
+        "missing_tracks": [] if (is_playlist_folder or is_single_file_mode) else missing_tracks,
         "warning": warning,
         "cover_art": cover_art,
         "tracks": tracks,
@@ -1224,6 +1225,8 @@ def get_album_info(album_dir: Path | str) -> dict:
         "is_concert": is_concert,
         "editor_draft": editor_draft
     }
+    p_key = str(p.resolve()).lower()
+    dir_mtime = p.stat().st_mtime if p.exists() else 0.0
     _ALBUM_INFO_CACHE[p_key] = (dir_mtime, len(audio_files), draft_mtime, meta_mtime, result_info)
     return result_info
 
@@ -1525,14 +1528,15 @@ def uniformize_album(
     if not album_dir or not str(album_dir).strip():
         return {"success": False, "message": "Chemin d'album invalide ou vide."}
     p = Path(album_dir)
-    if not p.exists() or not p.is_dir():
-        return {"success": False, "message": "Dossier d'album introuvable."}
-    album_dir = p
+    if not p.exists():
+        return {"success": False, "message": "Dossier ou fichier introuvable."}
+    is_single_file_mode = p.is_file()
+    album_dir = p.parent if is_single_file_mode else p
 
-    info = get_album_info(album_dir)
+    info = get_album_info(p)
     tracks = info.get("tracks", [])
     if not tracks:
-        return {"success": False, "message": "Aucun fichier audio trouvé dans le dossier."}
+        return {"success": False, "message": "Aucun fichier média trouvé dans le dossier."}
 
     # ── Déduplication automatique renforcée ─────────────────────────────────
     # yt-dlp télécharge parfois la même piste deux fois (anomalie YouTube).
@@ -2228,8 +2232,8 @@ def export_album(
                 is_concert_dest = (
                     "[concert]" in str(album_dir).lower()
                     or "concert" in album_name.lower()
-                    or any(t.get("duration", 0) >= 1200 for t in tracks)
-                    or any(re.search(r"\b(full\s+concert|live\s+at|live\s+in|concert\s+complet|live\s+tour|festival\s+live|en\s+concert)\b", t.get("title", ""), re.IGNORECASE) for t in tracks)
+                    or any(t.get("duration", 0) >= 600 for t in tracks)
+                    or any(re.search(r"\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b", t.get("title", ""), re.IGNORECASE) for t in tracks)
                 )
 
             if is_concert_dest:

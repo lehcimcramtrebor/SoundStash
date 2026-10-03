@@ -74,7 +74,7 @@ from backend.cover_restorer import (
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.3.0")
+app = FastAPI(title="SoundStash API", version="3.3.1")
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -1811,7 +1811,7 @@ async def get_album_details(path: str = Query(...)):
     if not path.strip():
         raise HTTPException(status_code=400, detail="Chemin d'album requis")
     album_p = Path(path)
-    if not album_p.exists() or not album_p.is_dir():
+    if not album_p.exists():
         # Repli intelligent : chercher si le dossier a été renommé ou existe sous une variante dans le même dossier parent
         parent_p = album_p.parent
         if parent_p.exists() and parent_p.is_dir():
@@ -1820,8 +1820,8 @@ async def get_album_details(path: str = Query(...)):
                 if sub.is_dir() and (normalize_text(sub.name) == target_norm or target_norm in normalize_text(sub.name)):
                     album_p = sub
                     break
-        if not album_p.exists() or not album_p.is_dir():
-            raise HTTPException(status_code=404, detail="Dossier d'album introuvable")
+        if not album_p.exists():
+            raise HTTPException(status_code=404, detail="Dossier ou fichier introuvable")
     return get_album_info(album_p)
 
 @app.post("/api/album/retag")
@@ -1829,8 +1829,8 @@ async def retag_album(req: RetagRequest):
     if not req.album_dir.strip():
         raise HTTPException(status_code=400, detail="Chemin d'album requis")
     album_p = Path(req.album_dir)
-    if not album_p.exists() or not album_p.is_dir():
-        raise HTTPException(status_code=404, detail="Dossier d'album introuvable")
+    if not album_p.exists():
+        raise HTTPException(status_code=404, detail="Dossier ou fichier introuvable")
     
     res = uniformize_album(
         album_dir=album_p,

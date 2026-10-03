@@ -87,21 +87,26 @@ function closeWorkshopDrawer() {
             if (confirmFn) {
                 confirmed = await confirmFn(
                     "🖼️ Jaquettes modifiées",
-                    `Vous venez de modifier ${countLabel} dans l'Atelier.\n\nSouhaitez-vous actualiser la bibliothèque du Lecteur dès maintenant pour afficher immédiatement tous les nouveaux visuels ?`,
-                    "Rafraîchir maintenant",
+                    `Vous venez de modifier ${countLabel} dans l'Atelier.\n\nSouhaitez-vous recharger l'application (Ctrl+F5) pour actualiser immédiatement tous les visuels du Lecteur ?`,
+                    "Rafraîchir (Ctrl+F5)",
                     false,
                     "Plus tard"
                 );
             }
             if (confirmed) {
-                if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
-                    await window.AudioPlayer.loadLibraryData(true);
-                }
-                if (typeof loadLibrary === "function") {
-                    loadLibrary();
-                }
-                if (typeof showToast === "function") {
-                    showToast("✓ Bibliothèque actualisée avec succès !", "success");
+                try {
+                    localStorage.setItem("ytm_active_workflow_tab", "tab-player");
+                    localStorage.setItem("ytm_active_tab", "tab-player");
+                } catch (_) {}
+
+                if (window.electronAPI && typeof window.electronAPI.hardReload === "function") {
+                    await window.electronAPI.hardReload();
+                } else if (window.location && typeof window.location.reload === "function") {
+                    window.location.reload(true);
+                } else {
+                    if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                        await window.AudioPlayer.loadLibraryData(true);
+                    }
                 }
             }
         }, 200);

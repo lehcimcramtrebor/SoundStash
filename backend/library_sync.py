@@ -25,9 +25,11 @@ from backend.logger import get_logger
 from backend.tagger import (
     get_track_metadata, clean_artist_name, clean_track_title,
     AUDIO_EXTENSIONS, consolidate_album_cover, sanitize_path,
-    normalize_cover_artwork
+    normalize_cover_artwork, sanitize_folder_name
 )
 from backend.library_indexer import library_indexer, normalize_text, DISC_SUBFOLDER_RE
+from backend.video_indexer import video_indexer, VIDEO_EXTENSIONS, probe_video_metadata
+from backend.video_sync import clean_video_title, tag_video_file, dispatch_video_notification
 
 logger = get_logger(__name__)
 
@@ -212,15 +214,135 @@ def heal_empty_artist_dirs(library_dir: Path) -> int:
                 logger.info(f"Dossier d'artiste orphelin/vide supprimé : '{entry.name}'")
     return cleaned_count
 
+def is_real_video_file(file_path: Path) -> bool:
+    """Détermine si un fichier est une véritable vidéo musicale (et non un simple conteneur audio)."""
+    if not file_path.exists() or not file_path.is_file():
+        return False
+    ext = file_path.suffix.lower()
+    if ext in {".avi", ".mov", ".m4v"}:
+        return True
+    if ext in VIDEO_EXTENSIONS:
+        try:
+            meta = probe_video_metadata(file_path)
+            # Si ffprobe détecte une résolution vidéo (width > 0 & height > 0)
+            if meta.get("width", 0) > 0 and meta.get("height", 0) > 0:
+                return True
+            # Si ffprobe a extrait une durée mais pas de flux vidéo, il s'agit d'audio pur encapsulé
+            if meta.get("duration", 0.0) > 0 and meta.get("width", 0) == 0:
+                return False
+            return True
+        except Exception:
+            return True
+    return False
+
+def route_video_to_videotheque(
+    video_file: Path,
+    preferred_artist: Optional[str] = None,
+    preferred_title: Optional[str] = None,
+    is_concert_hint: Optional[bool] = None
+) -> Optional[Path]:
+    """
+    Déplace et range automatiquement un fichier vidéo dans la Vidéothèque locale :
+    - Déduit le nom de l'artiste et le titre
+    - Détecte clip vs concert (durée >= 10 min ou mots-clés)
+    - Place dans Vidéothèque / Artiste / Concerts ou Vidéothèque / Artiste
+    - Tague le fichier et déplace les miniatures compagnons
+    """
+    if not video_file.exists() or not video_file.is_file():
+        return None
+    try:
+        video_dir = video_indexer.get_video_dir()
+        meta = probe_video_metadata(video_file)
+        dur_sec = meta.get("duration", 0.0)
+
+        stem = video_file.stem
+        artist = preferred_artist or ""
+        title = preferred_title or ""
+
+        if not artist or artist.lower() in {"inconnu", "unknown", "artiste inconnu", "singles & rips", "clips divers"}:
+            try:
+                t_meta = get_track_metadata(video_file)
+                artist = clean_artist_name(t_meta.get("album_artist") or t_meta.get("artist") or "")
+                if not title:
+                    title = t_meta.get("title") or ""
+            except Exception:
+                pass
+
+        if not artist or artist.lower() in {"inconnu", "unknown", "artiste inconnu", "singles & rips", "clips divers"}:
+            if " - " in stem:
+                parts = stem.split(" - ", 1)
+                artist = clean_artist_name(parts[0].strip())
+                if not title:
+                    title = parts[1].strip()
+            elif video_file.parent.name.lower() not in {"_imports", "singles & rips", "singles and rips", "temp"}:
+                artist = clean_artist_name(video_file.parent.name)
+
+        if not artist or artist.lower() in {"inconnu", "unknown", "artiste inconnu", "singles & rips", "clips divers"}:
+            artist = "Artiste inconnu"
+
+        if not title:
+            if " - " in stem:
+                title = stem.split(" - ", 1)[1].strip()
+            else:
+                title = stem
+
+        title = clean_video_title(title)
+
+        # Détection Concert vs Clip :
+        # 1. Durée >= 10 minutes (600s) -> met la puce à l'oreille : c'est un concert et non un clip
+        # 2. Mots-clés concert / live / tour / festival...
+        # 3. Indice ou sous-dossier explicite
+        has_concert_duration = dur_sec >= 600.0
+        has_concert_keywords = bool(re.search(
+            r"\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b",
+            f"{stem} {video_file.parent.name}",
+            re.IGNORECASE
+        ))
+        is_concert = is_concert_hint if is_concert_hint is not None else (has_concert_duration or has_concert_keywords)
+
+        target_dir = video_dir / artist / "Concerts" if is_concert else video_dir / artist
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_title = sanitize_folder_name(title) or sanitize_folder_name(stem)
+        target_file = target_dir / f"{safe_title}{video_file.suffix.lower()}"
+        if target_file.exists() and target_file.resolve() != video_file.resolve():
+            target_file = target_dir / f"{safe_title}_{int(time.time())}{video_file.suffix.lower()}"
+
+        shutil.move(str(video_file), str(target_file))
+
+        # Déplacer aussi la miniature compagnon éventuelle (.jpg, .png, .webp)
+        for img_ext in [".jpg", ".png", ".webp"]:
+            companion = video_file.with_suffix(img_ext)
+            if companion.exists() and companion.is_file():
+                comp_dest = target_dir / f"{safe_title}{img_ext}"
+                try:
+                    shutil.move(str(companion), str(comp_dest))
+                except Exception:
+                    pass
+
+        tag_video_file(target_file, artist, title)
+        video_indexer.invalidate_cache()
+
+        dispatch_video_notification(
+            "orange",
+            "Rangement concert" if is_concert else "Rangement clip vidéo",
+            f"'{title}' rangé sous '{artist}{'/Concerts' if is_concert else ''}'"
+        )
+        return target_file
+    except Exception as e:
+        logger.error(f"Erreur routage vidéo vers vidéothèque pour '{video_file.name}': {e}", exc_info=True)
+        return None
+
 def heal_imports_folder(
     library_dir: Path,
     notify_cb: Optional[Callable[[str, str, str], None]] = None
 ) -> int:
     """
     Scanne le sas '_imports' à la racine de la collection.
-    Lit les métadonnées de chaque fichier audio, déduit l'artiste/album,
-    déplace proprement les morceaux et leurs pochettes vers 'Artiste / Album / XX - Titre.ext',
-    isole les fichiers non-médias éventuels dans '_imports/_Hors_Analyse',
+    Lit les métadonnées de chaque fichier audio ou vidéo.
+    - Les vidéos sont immédiatement redirigées vers la Vidéothèque (Clips ou Concerts selon durée/mots-clés).
+    - Les fichiers audio sont classés proprement vers 'Artiste / Album / XX - Titre.ext'.
+    Isole les fichiers non-médias éventuels dans '_imports/_Hors_Analyse',
     nettoie les dossiers vides, et supprime '_imports' une fois vidé.
     """
     imports_dir = library_dir / "_imports"
@@ -228,6 +350,7 @@ def heal_imports_folder(
         return 0
 
     actions_count = 0
+    video_items: List[Path] = []
     audio_items: List[Path] = []
     other_items: List[Path] = []
 
@@ -238,17 +361,30 @@ def heal_imports_folder(
             if not _is_file_accessible(p):
                 continue
             ext = p.suffix.lower()
-            if ext in AUDIO_EXTENSIONS:
+            if ext in VIDEO_EXTENSIONS:
+                if is_real_video_file(p):
+                    video_items.append(p)
+                else:
+                    audio_items.append(p)
+            elif ext in AUDIO_EXTENSIONS:
                 audio_items.append(p)
             elif ext in IMAGE_EXTENSIONS or ext in {".lrc", ".cue", ".m3u", ".m3u8"}:
                 pass
             else:
                 other_items.append(p)
 
-    if not audio_items:
+    # 1. Rangement immédiat des vidéos vers la Vidéothèque locale (clips ou concerts)
+    for vf in video_items:
+        if _sync_stop_requested.is_set():
+            break
+        dest = route_video_to_videotheque(vf)
+        if dest:
+            actions_count += 1
+
+    if not audio_items and not video_items:
         _cleanup_empty_dirs(imports_dir)
         safe_clean_empty_artist_dir(imports_dir)
-        return 0
+        return actions_count
 
     groups: Dict[Tuple[str, str], List[Tuple[Path, dict]]] = {}
     for af in audio_items:
@@ -826,6 +962,56 @@ def heal_album_covers(
 
     return healed_count
 
+def heal_misplaced_videos(
+    library_dir: Path,
+    notify_cb: Optional[Callable[[str, str, str], None]] = None
+) -> int:
+    """
+    Rapatrie automatiquement les fichiers vidéo qui auraient été déposés ou classés
+    par erreur dans la bibliothèque audio (notamment sous 'Singles & Rips' ou à la racine d'un artiste)
+    vers la Vidéothèque locale (clips ou concerts selon durée/mots-clés).
+    """
+    if not library_dir.is_dir():
+        return 0
+
+    actions_count = 0
+    # Scanne tous les fichiers de la bibliothèque musicale
+    for root, dirs, files in os.walk(str(library_dir)):
+        if _sync_stop_requested.is_set():
+            break
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d.lower() not in {"_hors_analyse", "_imports", "previews", "cache", ".cache"}]
+        for f in files:
+            p = Path(root) / f
+            ext = p.suffix.lower()
+            if ext in VIDEO_EXTENSIONS and is_real_video_file(p):
+                try:
+                    rel = p.relative_to(library_dir)
+                    artist_hint = None
+                    if len(rel.parts) >= 2 and rel.parts[0].lower() not in {"singles & rips", "temp", "_imports"}:
+                        artist_hint = rel.parts[0]
+
+                    dest = route_video_to_videotheque(p, preferred_artist=artist_hint)
+                    if dest:
+                        actions_count += 1
+                        msg = f"🎬 Rapatriement vidéo vers la Vidéothèque : '{p.name}' rangé dans '{dest.parent.name}'"
+                        logger.info(msg)
+                        if notify_cb:
+                            notify_cb("orange", msg, str(dest))
+
+                        # Nettoyer le dossier parent s'il est devenu vide (ex: Singles & Rips vidé)
+                        parent = p.parent
+                        try:
+                            if parent != library_dir and not any(parent.iterdir()):
+                                parent.rmdir()
+                        except Exception:
+                            pass
+                except Exception as err:
+                    logger.debug(f"Erreur rapatriement vidéo {p.name}: {err}")
+
+    if actions_count > 0:
+        video_indexer.invalidate_cache()
+    return actions_count
+
 def synchronize_collection(
     library_dir: Optional[str | Path] = None,
     notify_cb: Optional[Callable[[str, str, str], None]] = None,
@@ -881,6 +1067,12 @@ def synchronize_collection(
             total_actions += heal_imports_folder(target_dir, eff_notify)
             if _sync_stop_requested.is_set():
                 logger.info("🛑 Arrêt propre LibrarySync validé après Phase 0 (_imports).")
+                return {"status": "interrupted_cleanly", "actions_count": total_actions}
+
+            # Phase 0.5 : Rapatriement automatique des vidéos égarées dans la collection audio vers la Vidéothèque
+            total_actions += heal_misplaced_videos(target_dir, eff_notify)
+            if _sync_stop_requested.is_set():
+                logger.info("🛑 Arrêt propre LibrarySync validé après Phase 0.5 (vidéos).")
                 return {"status": "interrupted_cleanly", "actions_count": total_actions}
 
             # Phase 1 : Rangement des pistes orphelines (en vrac)

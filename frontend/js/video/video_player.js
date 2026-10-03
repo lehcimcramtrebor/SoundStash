@@ -668,6 +668,8 @@ function openVideoModal(item) {
 
     if (titleEl) titleEl.textContent = item.title || "Clip vidéo";
     if (artistEl) artistEl.textContent = item.artist || "Artiste inconnu";
+    const tagArtistBtnOnline = document.getElementById("video-modal-tag-artist-btn");
+    if (tagArtistBtnOnline) tagArtistBtnOnline.style.display = "none";
 
     if (dlAudioBtn) dlAudioBtn.style.display = "inline-flex";
     if (dlVideoBtn) dlVideoBtn.style.display = "inline-flex";
@@ -767,7 +769,7 @@ function openLocalVideoModal(item) {
 
     syncAudioPlayerWithVideo(item);
 
-    const isConcert = item.video_type === 'concert' || item.is_concert || (item.duration_seconds && item.duration_seconds >= 1200) || (item.path && (item.path.toLowerCase().includes('/concerts/') || item.path.toLowerCase().includes('\\concerts\\')));
+    const isConcert = item.video_type === 'concert' || item.is_concert || (item.duration_seconds && item.duration_seconds >= 600) || (item.path && (item.path.toLowerCase().includes('/concerts/') || item.path.toLowerCase().includes('\\concerts\\')));
 
     const typeBadge = document.getElementById("video-modal-type-badge");
     if (typeBadge) {
@@ -781,7 +783,27 @@ function openLocalVideoModal(item) {
     }
 
     if (titleEl) titleEl.textContent = item.title || (isConcert ? "Concert vidéo" : "Clip vidéo");
-    if (artistEl) artistEl.textContent = item.artist || "Artiste";
+    if (artistEl) artistEl.textContent = item.artist || "Artiste inconnu";
+
+    const tagArtistBtn = document.getElementById("video-modal-tag-artist-btn");
+    const isUnknown = (window.AudioPlayer && typeof window.AudioPlayer.isUnknownArtist === "function")
+        ? window.AudioPlayer.isUnknownArtist(item.artist)
+        : (!item.artist || ["artiste inconnu", "unknown artist", "divers", "clips divers"].includes(String(item.artist).trim().toLowerCase()));
+
+    if (tagArtistBtn) {
+        if (isUnknown) {
+            tagArtistBtn.style.display = "inline-flex";
+            tagArtistBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (window.AudioPlayer && typeof window.AudioPlayer.sendVideoToTagEditor === "function") {
+                    window.AudioPlayer.sendVideoToTagEditor(item);
+                }
+            };
+        } else {
+            tagArtistBtn.style.display = "none";
+            tagArtistBtn.onclick = null;
+        }
+    }
 
     // Mode local : masquer les boutons de download (l'extraction audio se fait directement depuis la vignette)
     if (dlAudioBtn) dlAudioBtn.style.display = "none";

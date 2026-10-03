@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     installUpdate: (installerPath) => ipcRenderer.invoke('install-update', installerPath),
     toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
     isFullscreen: () => ipcRenderer.invoke('is-fullscreen'),
+    hardReload: () => ipcRenderer.invoke('hard-reload'),
     markTrayNoticeSeen: () => ipcRenderer.send('mark-tray-notice-seen'),
     onMediaAction: (callback) => {
         ipcRenderer.on('media-action', (event, action) => callback(action));

@@ -842,6 +842,18 @@ ipcMain.handle('is-fullscreen', () => {
     return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isFullScreen() : false;
 });
 
+// Rafraîchissement dur sans cache (équivalent direct CTRL+F5)
+ipcMain.handle('hard-reload', async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+            await session.defaultSession.clearCache();
+        } catch (_) {}
+        mainWindow.webContents.reloadIgnoringCache();
+        return true;
+    }
+    return false;
+});
+
 // Gestion native du maintien de l'écran éveillé (anti-veille d'écran Windows)
 let displayWakeLockId = null;
 

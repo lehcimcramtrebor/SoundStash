@@ -974,5 +974,47 @@ body.ambient-mode-active .video-modal-footer {
     background: rgba(0, 0, 0, 0.05);
 }
 
+/* Boutons et badges d'artiste inconnu -> Atelier de tag (SoundStash v3.3.1) */
+.btn-tag-unknown-artist {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    vertical-align: middle;
+    transition: all 0.15s ease;
+}
+
+.btn-tag-unknown-artist:hover {
+    background: rgba(245, 158, 11, 0.35);
+    border-color: #f59e0b;
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3);
+}
+
+.player-video-action-btn.btn-send-to-tagger {
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.player-video-action-btn.btn-send-to-tagger:hover {
+    color: #ffffff;
+    background: #f59e0b;
+    border-color: #f59e0b;
+}
+
+.player-video-artist.artist-unknown {
+    color: #fbbf24 !important;
+}
+
 
 

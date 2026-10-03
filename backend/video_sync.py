@@ -21,7 +21,7 @@ from typing import Optional, Callable, Dict, List, Tuple, Any
 
 from backend.config import config, KID3_CLI_PATH
 from backend.logger import get_logger
-from backend.video_indexer import video_indexer, VIDEO_EXTENSIONS
+from backend.video_indexer import video_indexer, VIDEO_EXTENSIONS, probe_video_metadata
 
 logger = get_logger(__name__)
 
@@ -153,7 +153,15 @@ def heal_loose_videos(video_dir: Path) -> int:
                 else:
                     title = clean_video_title(stem)
 
-                is_concert = bool(re.search(r"\b(full\s+concert|live\s+at|live\s+in|concert\s+complet|live\s+tour|festival\s+live|live\s+session|live\s+show|en\s+concert)\b", stem, re.IGNORECASE))
+                meta = probe_video_metadata(entry)
+                dur_sec = meta.get("duration", 0.0)
+                has_concert_dur = dur_sec >= 600.0  # >= 10 minutes (la durée met la puce à l'oreille : concert et non simple clip)
+                has_concert_kw = bool(re.search(
+                    r"\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b",
+                    stem,
+                    re.IGNORECASE
+                ))
+                is_concert = has_concert_dur or has_concert_kw
                 target_dir = video_dir / artist / "Concerts" if is_concert else video_dir / artist
                 target_dir.mkdir(parents=True, exist_ok=True)
 

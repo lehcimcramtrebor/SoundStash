@@ -20,7 +20,7 @@ from backend.logger import get_logger
 
 logger = get_logger(__name__)
 
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"}
 THUMB_CACHE_DIR = PREVIEW_CACHE_DIR.parent / "video_thumbs"
 
 def format_duration(seconds: float) -> str:
@@ -352,10 +352,10 @@ class VideoIndexer:
                         # Détection du type de vidéo (Clip vs Concert / Live)
                         is_in_concert_subfolder = any(p.lower() in ("concerts", "concert", "live", "lives") for p in rel.parts[:-1])
                         dur_sec = v_meta.get("duration", 0.0)
-                        has_concert_duration = dur_sec >= 1200.0  # >= 20 minutes
+                        has_concert_duration = dur_sec >= 600.0  # >= 10 minutes (la durée met la puce à l'oreille : un clip ne fait pas 10 min)
                         has_concert_keywords = bool(re.search(
-                            r"\b(full\s+concert|live\s+at|live\s+in|concert\s+complet|live\s+tour|festival\s+live|live\s+session|live\s+show|en\s+concert)\b",
-                            f_path.stem,
+                            r"\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b",
+                            f"{f_path.stem} {' '.join(rel.parts)}",
                             re.IGNORECASE
                         ))
                         is_concert = is_in_concert_subfolder or has_concert_duration or has_concert_keywords

@@ -3988,6 +3988,55 @@ const AudioPlayer = {
         }
     },
 
+    // Utilitaire : vérifie si l'artiste est inconnu ou générique (SoundStash v3.3.1)
+    isUnknownArtist(artist) {
+        if (!artist) return true;
+        const a = artist.trim().toLowerCase();
+        return [
+            "artiste inconnu", "unknown artist", "unknown", "inconnu",
+            "clips divers", "divers", "na", "n/a", "none"
+        ].includes(a);
+    },
+
+    // Action : envoyer directement un élément à l'Atelier de tag pour identifier l'artiste
+    async sendVideoToTagEditor(item) {
+        if (!item) return;
+        const targetPath = item.filepath || item.path || item.rel_path;
+        if (!targetPath) {
+            if (typeof showToast === "function") showToast("Chemin du média introuvable.", "warning");
+            return;
+        }
+
+        // Fermer la fenêtre de lecture vidéo si elle est active
+        if (typeof closeVideoModal === "function") {
+            closeVideoModal(false);
+        }
+
+        // Ouvrir le tiroir Atelier sur l'onglet Éditeur
+        if (typeof openWorkshopDrawer === "function") {
+            openWorkshopDrawer("tab-editor");
+        } else if (typeof switchTab === "function") {
+            switchTab("tab-editor");
+        }
+
+        // Charger l'élément dans l'éditeur de tags
+        if (typeof window.loadAlbumInEditor === "function") {
+            await window.loadAlbumInEditor(targetPath, false);
+        }
+
+        // Donner le focus immédiat au champ de saisie de l'artiste
+        setTimeout(() => {
+            const artInput = document.getElementById("edit-album-artist") || document.getElementById("editor-album-artist");
+            if (artInput) {
+                artInput.focus();
+                artInput.select();
+            }
+            if (typeof showToast === "function") {
+                showToast("🏷️ Vidéo chargée dans l'Atelier. Renseignez l'artiste puis validez !", "info");
+            }
+        }, 350);
+    },
+
     renderVideosGrid() {
         const grid = document.getElementById("player-videos-grid");
         const countBadge = document.getElementById("player-videos-count-badge");
@@ -4099,10 +4148,18 @@ const AudioPlayer = {
                     </div>
                     <div class="player-video-body">
                         <h4 class="player-video-title" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</h4>
-                        <div class="player-video-artist" title="${escapeHtml(v.artist)}">${escapeHtml(v.artist)}</div>
+                        <div class="player-video-artist ${this.isUnknownArtist(v.artist) ? 'artist-unknown' : ''}" title="${escapeHtml(v.artist)}">
+                            <span>${escapeHtml(v.artist)}</span>
+                            ${this.isUnknownArtist(v.artist) ? `<button type="button" class="btn-tag-unknown-artist" title="Identifier et taguer cet artiste dans l'Atelier" data-video-idx="${idx}">🏷️ Taguer</button>` : ""}
+                        </div>
                         <div class="player-video-footer">
                             <span>${v.size_str || ""}</span>
                             <div class="player-video-actions">
+                                ${this.isUnknownArtist(v.artist) ? `
+                                    <button type="button" class="player-video-action-btn btn-send-to-tagger" title="🏷️ Artiste inconnu : envoyer vers l'Atelier de tag" data-video-idx="${idx}">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+                                    </button>
+                                ` : ""}
                                 <button type="button" class="player-video-action-btn btn-video-add-playlist" title="Ajouter ce clip à une playlist" data-video-idx="${idx}">
                                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
                                 </button>
@@ -4118,11 +4175,23 @@ const AudioPlayer = {
 
         grid.innerHTML = html;
 
+        // Écouteur pour envoyer vers l'Atelier de tag si artiste inconnu
+        grid.querySelectorAll(".btn-tag-unknown-artist, .btn-send-to-tagger").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-video-idx"), 10);
+                const item = list[idx];
+                if (item) {
+                    this.sendVideoToTagEditor(item);
+                }
+            });
+        });
+
         // Écouteurs de clics sur les cartes vidéo
         grid.querySelectorAll(".player-video-card").forEach(card => {
             card.addEventListener("click", (e) => {
                 // Si l'utilisateur clique sur un bouton d'action, ne pas ouvrir la vidéo
-                if (e.target.closest(".btn-extract-audio") || e.target.closest(".btn-video-add-playlist")) return;
+                if (e.target.closest(".btn-extract-audio") || e.target.closest(".btn-video-add-playlist") || e.target.closest(".btn-send-to-tagger") || e.target.closest(".btn-tag-unknown-artist")) return;
                 const idx = parseInt(card.getAttribute("data-video-idx"), 10);
                 const item = list[idx];
                 if (item) {
@@ -4340,9 +4409,25 @@ const AudioPlayer = {
                     </div>
                     <div class="player-video-body">
                         <h4 class="player-video-title" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</h4>
-                        <div class="player-video-artist" title="${escapeHtml(v.artist)}">${escapeHtml(v.artist)}</div>
+                        <div class="player-video-artist ${this.isUnknownArtist(v.artist) ? 'artist-unknown' : ''}" title="${escapeHtml(v.artist)}">
+                            <span>${escapeHtml(v.artist)}</span>
+                            ${this.isUnknownArtist(v.artist) ? `<button type="button" class="btn-tag-unknown-artist" title="Identifier et taguer cet artiste dans l'Atelier" data-concert-idx="${idx}">🏷️ Taguer</button>` : ""}
+                        </div>
                         <div class="player-video-footer">
                             <span>${v.size_str || ""}</span>
+                            <div class="player-video-actions">
+                                ${this.isUnknownArtist(v.artist) ? `
+                                    <button type="button" class="player-video-action-btn btn-send-to-tagger" title="🏷️ Artiste inconnu : envoyer vers l'Atelier de tag" data-concert-idx="${idx}">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+                                    </button>
+                                ` : ""}
+                                <button type="button" class="player-video-action-btn btn-concert-add-playlist" title="Ajouter ce concert à une playlist" data-concert-idx="${idx}">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                                </button>
+                                <button type="button" class="player-video-action-btn btn-extract-concert-audio" title="Extraire l'audio du concert en M4A dans ma collection" data-concert-idx="${idx}">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -4351,13 +4436,108 @@ const AudioPlayer = {
 
         grid.innerHTML = html;
 
+        // Écouteur pour envoyer vers l'Atelier de tag si artiste inconnu
+        grid.querySelectorAll(".btn-tag-unknown-artist, .btn-send-to-tagger").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-concert-idx"), 10);
+                const item = list[idx];
+                if (item) {
+                    this.sendVideoToTagEditor(item);
+                }
+            });
+        });
+
         // Écouteurs de clics sur les cartes concert (lancement direct en grand écran)
         grid.querySelectorAll(".player-concert-card").forEach(card => {
-            card.addEventListener("click", () => {
+            card.addEventListener("click", (e) => {
+                if (e.target.closest(".btn-extract-concert-audio") || e.target.closest(".btn-concert-add-playlist") || e.target.closest(".btn-send-to-tagger") || e.target.closest(".btn-tag-unknown-artist")) return;
                 const idx = parseInt(card.getAttribute("data-concert-idx"), 10);
                 const item = list[idx];
                 if (item) {
                     openLocalVideoModal(item);
+                }
+            });
+        });
+
+        // Écouteur pour ajouter un concert à une playlist
+        grid.querySelectorAll(".btn-concert-add-playlist").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-concert-idx"), 10);
+                const item = list[idx];
+                if (!item) return;
+                openAddToPlaylistModal({
+                    type: "video",
+                    title: item.title,
+                    artist: item.artist,
+                    path: item.rel_path || item.filepath || item.path,
+                    filepath: item.filepath || item.path || item.rel_path,
+                    rel_path: item.rel_path || "",
+                    duration: item.duration || item.duration_seconds || 0,
+                    height: item.height || 1080,
+                    cover_url: `/api/videos/thumbnail?path=${encodeURIComponent(item.rel_path || item.path || item.filepath)}`
+                });
+            });
+        });
+
+        // Écouteurs pour l'extraction audio du concert
+        grid.querySelectorAll(".btn-extract-concert-audio").forEach(btn => {
+            btn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-concert-idx"), 10);
+                const item = list[idx];
+                if (!item) return;
+
+                const trackArtist = item.artist || "Artiste inconnu";
+                const trackTitle = item.title || "Concert";
+
+                const confirmed = await showModalConfirm(
+                    "Extraire l'audio du concert",
+                    `Voulez-vous extraire la piste audio de « ${trackTitle} » et l'ajouter à votre collection sous « ${trackArtist} / Singles & Rips » ?`,
+                    "🎵 Extraire l'audio",
+                    false,
+                    "Annuler"
+                );
+                if (!confirmed) return;
+
+                btn.disabled = true;
+                btn.style.opacity = "0.5";
+                showToast(`Extraction audio de « ${item.title} » en cours...`, "info");
+
+                try {
+                    const res = await fetch("/api/videos/extract-audio", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            path: item.rel_path || item.filepath || item.path,
+                            artist: item.artist,
+                            title: item.title
+                        })
+                    });
+                    let resData = null;
+                    try {
+                        resData = await res.json();
+                    } catch (parseErr) {
+                        resData = { detail: `Erreur serveur (${res.status})` };
+                    }
+
+                    if (res.ok && resData && resData.success) {
+                        showToast(resData.message || "Piste audio du concert extraite dans votre collection !", "success");
+                        if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                            window.AudioPlayer.loadLibraryData();
+                        }
+                        if (typeof loadLibrary === "function") {
+                            loadLibrary();
+                        }
+                    } else {
+                        showToast(resData?.detail || resData?.error || `Erreur lors de l'extraction (${res.status})`, "error");
+                    }
+                } catch (err) {
+                    showToast("Échec de communication lors de l'extraction audio", "error");
+                } finally {
+                    btn.disabled = false;
+                    btn.style.opacity = "1";
                 }
             });
         });
