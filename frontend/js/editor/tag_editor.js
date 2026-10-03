@@ -29,6 +29,8 @@ async function loadCollectionAlbumsForEditor() {
 
         const countBadge = document.getElementById("editor-collection-count-badge");
         if (countBadge) countBadge.textContent = collectionAlbumsList.length;
+        const coversBadge = document.getElementById("editor-covers-count-badge");
+        if (coversBadge) coversBadge.textContent = collectionAlbumsList.length;
 
         const select = document.getElementById("editor-collection-select");
         if (select) {
@@ -55,9 +57,11 @@ function updateEditorSourceModeUI() {
     const tempBtn = document.getElementById("editor-source-temp-btn");
     const colBtn = document.getElementById("editor-source-collection-btn");
     const genresBtn = document.getElementById("editor-source-genres-btn");
+    const coversBtn = document.getElementById("editor-source-covers-btn");
     const pickerWrap = document.getElementById("editor-collection-picker-wrapper");
     const singleView = document.getElementById("editor-single-view");
     const genreBatchView = document.getElementById("editor-genre-batch-view");
+    const coversGalleryView = document.getElementById("editor-covers-gallery-view");
     const deleteBtn = document.getElementById("delete-current-album-btn");
     const deleteLabel = document.getElementById("delete-current-album-label");
     const openExportBtn = document.getElementById("open-export-modal-btn");
@@ -67,17 +71,33 @@ function updateEditorSourceModeUI() {
     const statusBadge = document.getElementById("editor-album-tag-status");
     const applyBtn = document.getElementById("apply-uniform-btn");
 
+    const isCoversMode = (window.editorSubMode === "covers");
     const isGenresMode = (window.editorSubMode === "genres");
-    const isColMode = (!isGenresMode && isCollectionEditorMode);
-    const isTempMode = (!isGenresMode && !isCollectionEditorMode);
+    const isColMode = (!isGenresMode && !isCoversMode && isCollectionEditorMode);
+    const isTempMode = (!isGenresMode && !isCoversMode && !isCollectionEditorMode);
 
     if (tempBtn) tempBtn.classList.toggle("active", isTempMode);
     if (colBtn) colBtn.classList.toggle("active", isColMode);
     if (genresBtn) genresBtn.classList.toggle("active", isGenresMode);
+    if (coversBtn) coversBtn.classList.toggle("active", isCoversMode);
 
-    if (singleView) singleView.style.display = isGenresMode ? "none" : "block";
+    if (singleView) singleView.style.display = (isGenresMode || isCoversMode) ? "none" : "block";
     if (genreBatchView) genreBatchView.style.display = isGenresMode ? "block" : "none";
+    if (coversGalleryView) coversGalleryView.style.display = isCoversMode ? "block" : "none";
     if (pickerWrap) pickerWrap.style.display = isColMode ? "flex" : "none";
+
+    if (isCoversMode) {
+        if (deleteBtn) deleteBtn.style.display = "none";
+        if (openExportBtn) openExportBtn.style.display = "none";
+        if (exportAllBtn) exportAllBtn.style.display = "none";
+        if (exportPanel) exportPanel.style.display = "none";
+        if (navBar) navBar.style.display = "none";
+        if (statusBadge) {
+            statusBadge.className = "badge badge-warning";
+            statusBadge.textContent = "🖼️ Galerie Jaquettes";
+        }
+        return;
+    }
 
     if (isGenresMode) {
         if (deleteBtn) deleteBtn.style.display = "none";
@@ -167,6 +187,7 @@ function setupEditorActions() {
     const sourceTempBtn = document.getElementById("editor-source-temp-btn");
     const sourceColBtn = document.getElementById("editor-source-collection-btn");
     const sourceGenresBtn = document.getElementById("editor-source-genres-btn");
+    const sourceCoversBtn = document.getElementById("editor-source-covers-btn");
     const colSelect = document.getElementById("editor-collection-select");
 
     if (playAlbumBtn) {
@@ -217,6 +238,16 @@ function setupEditorActions() {
             updateEditorSourceModeUI();
             initGenreBatchUI();
             await loadGenreBatchAlbums();
+        });
+    }
+
+    if (sourceCoversBtn) {
+        sourceCoversBtn.addEventListener("click", async () => {
+            window.editorSubMode = "covers";
+            isCollectionEditorMode = false;
+            updateEditorSourceModeUI();
+            initCoversGalleryUI();
+            await loadCoversGalleryAlbums();
         });
     }
 
@@ -2404,5 +2435,187 @@ window.loadAlbumInEditor = loadAlbumInEditor;
 window.initGenreBatchUI = initGenreBatchUI;
 window.loadGenreBatchAlbums = loadGenreBatchAlbums;
 window.applyGenreBatch = applyGenreBatch;
+
+// =========================================================================
+// Galerie des Jaquettes (Onglet Jaquettes dans Uniformiser & Éditer)
+// =========================================================================
+window.coversGalleryAlbums = [];
+window.coversGalleryFilterScope = "all";
+window.coversGallerySearchQuery = "";
+let _coversGalleryInitialized = false;
+
+function initCoversGalleryUI() {
+    if (_coversGalleryInitialized) return;
+    _coversGalleryInitialized = true;
+
+    const searchInput = document.getElementById("covers-gallery-search");
+    if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+            window.coversGallerySearchQuery = e.target.value.trim().toLowerCase();
+            renderCoversGallery();
+        });
+    }
+
+    const refreshBtn = document.getElementById("covers-gallery-refresh-btn");
+    if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => {
+            loadCoversGalleryAlbums(true);
+        });
+    }
+
+    const scopeBtns = document.querySelectorAll("#covers-gallery-scope-group .genre-scope-btn");
+    scopeBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            scopeBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            window.coversGalleryFilterScope = btn.getAttribute("data-scope") || "all";
+            renderCoversGallery();
+        });
+    });
+}
+
+async function loadCoversGalleryAlbums(forceRefresh = false) {
+    const loadingEl = document.getElementById("covers-gallery-loading");
+    const emptyEl = document.getElementById("covers-gallery-empty");
+    const gridEl = document.getElementById("covers-gallery-grid");
+
+    if (loadingEl) loadingEl.style.display = "flex";
+    if (emptyEl) emptyEl.style.display = "none";
+    if (gridEl && (!window.coversGalleryAlbums || window.coversGalleryAlbums.length === 0)) {
+        gridEl.innerHTML = "";
+    }
+
+    try {
+        const res = await fetch("/api/library/albums?source=library");
+        if (!res.ok) throw new Error("Erreur chargement discothèque");
+        const data = await res.json();
+        window.coversGalleryAlbums = data.albums || [];
+
+        // Mettre à jour les compteurs
+        const total = window.coversGalleryAlbums.length;
+        const countBadge = document.getElementById("editor-covers-count-badge");
+        if (countBadge) countBadge.textContent = total;
+
+        const countAll = document.getElementById("covers-filter-count-all");
+        if (countAll) countAll.textContent = total;
+
+        const hasCount = window.coversGalleryAlbums.filter(a => a.has_cover).length;
+        const missingCount = total - hasCount;
+
+        const countHas = document.getElementById("covers-filter-count-has");
+        if (countHas) countHas.textContent = hasCount;
+
+        const countMissing = document.getElementById("covers-filter-count-missing");
+        if (countMissing) countMissing.textContent = missingCount;
+
+        renderCoversGallery();
+    } catch (err) {
+        console.error("Erreur chargement albums galerie jaquettes:", err);
+        showToast("Impossible de charger les albums de la collection.", "danger");
+    } finally {
+        if (loadingEl) loadingEl.style.display = "none";
+    }
+}
+
+function renderCoversGallery() {
+    const gridEl = document.getElementById("covers-gallery-grid");
+    const emptyEl = document.getElementById("covers-gallery-empty");
+    if (!gridEl) return;
+
+    gridEl.innerHTML = "";
+
+    const query = window.coversGallerySearchQuery || "";
+    const scope = window.coversGalleryFilterScope || "all";
+
+    const filtered = (window.coversGalleryAlbums || []).filter(alb => {
+        // Filtre de portée
+        if (scope === "has" && !alb.has_cover) return false;
+        if (scope === "missing" && alb.has_cover) return false;
+
+        // Filtre de recherche texte
+        if (query) {
+            const str = `${alb.title || ""} ${alb.artist || ""} ${alb.album_name || ""} ${alb.album_artist || ""}`.toLowerCase();
+            if (!str.includes(query)) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        if (emptyEl) emptyEl.style.display = "block";
+        return;
+    } else {
+        if (emptyEl) emptyEl.style.display = "none";
+    }
+
+    filtered.forEach(alb => {
+        const card = document.createElement("div");
+        card.className = "cover-gallery-card";
+        card.setAttribute("data-path", alb.path);
+
+        const albumTitle = alb.title || alb.album_name || "Sans titre";
+        const albumArtist = alb.artist || alb.album_artist || "Artiste inconnu";
+        const coverSrc = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}${alb.mtime ? `&v=${Math.floor(alb.mtime)}` : ''}`;
+
+        const metaParts = [];
+        if (alb.year) metaParts.push(alb.year);
+        if (alb.tracks_count) metaParts.push(`${alb.tracks_count} pistes`);
+        const metaStr = metaParts.join(" • ");
+
+        card.innerHTML = `
+            <div class="cover-gallery-thumb-wrap">
+                <img class="cover-gallery-thumb" src="${coverSrc}" alt="${escapeHtml(albumTitle)}" loading="lazy" onerror="window.handleCoverError ? window.handleCoverError(this) : (this.src='/static/placeholder-cover.svg');">
+                <div class="cover-gallery-overlay">
+                    <span class="cover-gallery-hover-action">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                        Changer jaquette
+                    </span>
+                </div>
+            </div>
+            <div class="cover-gallery-info">
+                <div class="cover-gallery-title" title="${escapeHtml(albumTitle)}">${escapeHtml(albumTitle)}</div>
+                <div class="cover-gallery-artist" title="${escapeHtml(albumArtist)}">${escapeHtml(albumArtist)}</div>
+                ${metaStr ? `<div class="cover-gallery-meta">${escapeHtml(metaStr)}</div>` : ""}
+            </div>
+        `;
+
+        // Clic sur l'album -> Déclenche immédiatement la modale de changement de jaquette multi-sources
+        card.addEventListener("click", () => {
+            openCoverSearchModalForAlbum(alb);
+        });
+
+        gridEl.appendChild(card);
+    });
+}
+
+function openCoverSearchModalForAlbum(alb) {
+    if (!alb || !alb.path) return;
+
+    window.currentAlbumPath = alb.path;
+    const albumTitle = alb.title || alb.album_name || "";
+    const albumArtist = alb.artist || alb.album_artist || "";
+
+    // Mettre à jour les champs de l'éditeur pour cohérence
+    const pathEl = document.getElementById("editor-album-path");
+    if (pathEl) pathEl.textContent = alb.path;
+    const artistInput = document.getElementById("edit-album-artist");
+    if (artistInput) artistInput.value = albumArtist;
+    const albumInput = document.getElementById("edit-album-name");
+    if (albumInput) albumInput.value = albumTitle;
+
+    const query = [albumArtist, albumTitle].filter(Boolean).join(" ");
+    const coverSearchInput = document.getElementById("cover-search-query-input");
+    if (coverSearchInput) {
+        coverSearchInput.value = query;
+    }
+
+    if (window.openCoverSearchModal) {
+        window.openCoverSearchModal(null, alb);
+    }
+}
+
+window.openCoverSearchModalForAlbum = openCoverSearchModalForAlbum;
+window.initCoversGalleryUI = initCoversGalleryUI;
+window.loadCoversGalleryAlbums = loadCoversGalleryAlbums;
+window.renderCoversGallery = renderCoversGallery;
 
 

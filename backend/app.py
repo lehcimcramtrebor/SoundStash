@@ -9,7 +9,7 @@ import subprocess
 import time
 import urllib.parse
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
@@ -74,7 +74,7 @@ from backend.cover_restorer import (
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.2.6")
+app = FastAPI(title="SoundStash API", version="3.3.0")
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -1346,11 +1346,53 @@ async def stream_audio_universal_endpoint(
         return await stream_track_endpoint(request, id=vid)
     raise HTTPException(status_code=400, detail="Paramètre 'path' ou 'id'/'video_id' requis pour la diffusion audio.")
 
+def _serve_cover_file(req: Request, file_path: Path, media_type: str) -> Response:
+    """Sert une image de pochette avec gestion rigoureuse du cache HTTP (ETag, no-cache, revalidation 304)."""
+    try:
+        st = file_path.stat()
+        etag = f'"{int(st.st_mtime)}-{st.st_size}"'
+        cache_headers = {
+            "Cache-Control": "no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "ETag": etag,
+        }
+        if_none_match = req.headers.get("if-none-match")
+        if if_none_match and if_none_match.strip() == etag:
+            return Response(status_code=304, headers=cache_headers)
+        return FileResponse(path=str(file_path), media_type=media_type, headers=cache_headers)
+    except Exception:
+        return FileResponse(path=str(file_path), media_type=media_type, headers={"Cache-Control": "no-cache, must-revalidate", "Pragma": "no-cache"})
+
+
+def _build_cover_url(path_or_str: Union[Path, str], cover_file: Optional[str] = None, mtime: Optional[float] = None) -> str:
+    """Construit une URL de pochette versionnée avec horodatage pour neutraliser le cache résiduel."""
+    try:
+        p = Path(path_or_str)
+        p_str = str(p.resolve() if p.is_dir() else p)
+    except Exception:
+        p_str = str(path_or_str)
+        p = Path(p_str)
+    encoded = urllib.parse.quote(p_str)
+    v = int(mtime) if mtime else 0
+    if not v:
+        try:
+            if cover_file and Path(cover_file).is_file():
+                v = int(Path(cover_file).stat().st_mtime)
+            elif (p / "cover.jpg").is_file():
+                v = int((p / "cover.jpg").stat().st_mtime)
+            elif p.is_dir():
+                v = int(p.stat().st_mtime)
+        except Exception:
+            pass
+    return f"/api/audio/cover?path={encoded}&v={v}" if v else f"/api/audio/cover?path={encoded}"
+
+
 @app.get("/api/audio/cover")
-async def get_local_album_cover_endpoint(path: str = Query(..., min_length=1)):
+async def get_local_album_cover_endpoint(request: Request, path: str = Query(..., min_length=1)):
     """
     Renvoie la pochette d'un album local (cover.jpg, folder.jpg, etc.)
     ou le placeholder SVG si aucune image n'est présente.
+    Revalidation HTTP temps réel pour affichage instantané sans cache périmé.
     """
     clean_p = path.strip()
     if not clean_p:
@@ -1367,16 +1409,18 @@ async def get_local_album_cover_endpoint(path: str = Query(..., min_length=1)):
     if not placeholder.is_file():
         placeholder = FRONTEND_DIR / "placeholder-cover.png"
 
+    placeholder_headers = {"Cache-Control": "no-cache, must-revalidate", "Pragma": "no-cache"}
+
     if not p.is_dir():
         if placeholder.is_file():
-            return FileResponse(path=str(placeholder), media_type="image/svg+xml" if placeholder.suffix == ".svg" else "image/png")
+            return FileResponse(path=str(placeholder), media_type="image/svg+xml" if placeholder.suffix == ".svg" else "image/png", headers=placeholder_headers)
         raise HTTPException(status_code=404, detail="Dossier d'album introuvable.")
 
     for cover_name in ("cover.jpg", "cover.png", "cover.jpeg", "folder.jpg", "folder.png", "front.jpg", "front.png"):
         candidate = p / cover_name
         if candidate.is_file() and candidate.stat().st_size > 0:
             m_type = "image/png" if candidate.suffix.lower() == ".png" else "image/jpeg"
-            return FileResponse(path=str(candidate), media_type=m_type)
+            return _serve_cover_file(request, candidate, m_type)
 
     # Vérifier s'il existe une autre image dans le dossier
     try:
@@ -1384,7 +1428,7 @@ async def get_local_album_cover_endpoint(path: str = Query(..., min_length=1)):
         if loose_images:
             best_img = loose_images[0]
             m_type = "image/png" if best_img.suffix.lower() == ".png" else "image/jpeg"
-            return FileResponse(path=str(best_img), media_type=m_type)
+            return _serve_cover_file(request, best_img, m_type)
     except Exception:
         pass
 
@@ -1400,7 +1444,7 @@ async def get_local_album_cover_endpoint(path: str = Query(..., min_length=1)):
                     for alb in library_indexer.albums:
                         if alb.path == str(p) or str(Path(alb.path).resolve()) == p_str:
                             alb.cover_file = str(target_cover)
-                    return FileResponse(path=str(target_cover), media_type="image/jpeg")
+                    return _serve_cover_file(request, target_cover, "image/jpeg")
     except Exception as e:
         logger.warning(f"Erreur extraction à la volée pochette intégrée pour {p}: {e}")
 
@@ -1464,12 +1508,12 @@ async def get_local_album_cover_endpoint(path: str = Query(..., min_length=1)):
                 for alb in library_indexer.albums:
                     if alb.path == str(p) or str(Path(alb.path).resolve()) == p_str:
                         alb.cover_file = str(target_cover)
-                return FileResponse(path=str(target_cover), media_type="image/jpeg")
+                return _serve_cover_file(request, target_cover, "image/jpeg")
     except Exception as e:
         logger.warning(f"Erreur recherche vidéo pour pochette audio {p}: {e}")
 
     if placeholder.is_file():
-        return FileResponse(path=str(placeholder), media_type="image/svg+xml" if placeholder.suffix == ".svg" else "image/png")
+        return FileResponse(path=str(placeholder), media_type="image/svg+xml" if placeholder.suffix == ".svg" else "image/png", headers=placeholder_headers)
     raise HTTPException(status_code=404, detail="Pochette introuvable.")
 
 @app.get("/api/queue")
@@ -1598,7 +1642,7 @@ async def list_external_albums():
                                 "path": str(sub.resolve()),
                                 "track_count": len(sub_media),
                                 "has_cover": bool(info.get("cover_art")),
-                                "cover_url": f"/api/audio/cover?path={urllib.parse.quote(str(sub.resolve()))}",
+                                "cover_url": _build_cover_url(sub, mtime=sub.stat().st_mtime),
                                 "is_ready_for_library": is_valid,
                                 "missing_tags": missing,
                                 "mtime": sub.stat().st_mtime
@@ -1615,7 +1659,7 @@ async def list_external_albums():
                     "path": str(item.resolve()),
                     "track_count": len(media_files),
                     "has_cover": bool(info.get("cover_art")),
-                    "cover_url": f"/api/audio/cover?path={urllib.parse.quote(str(item.resolve()))}",
+                    "cover_url": _build_cover_url(item, mtime=item.stat().st_mtime),
                     "is_ready_for_library": is_valid,
                     "missing_tags": missing,
                     "mtime": item.stat().st_mtime
@@ -1637,7 +1681,7 @@ async def list_external_albums():
                     "path": str(folder.resolve()),
                     "track_count": 1,
                     "has_cover": bool(info.get("cover_art")),
-                    "cover_url": f"/api/audio/cover?path={urllib.parse.quote(str(folder.resolve()))}",
+                    "cover_url": _build_cover_url(folder, mtime=folder.stat().st_mtime),
                     "is_ready_for_library": is_valid,
                     "missing_tags": missing,
                     "mtime": folder.stat().st_mtime
@@ -2160,7 +2204,7 @@ async def open_folder_endpoint(req: ActionPathRequest):
     return {"success": True}
 
 @app.get("/api/cover")
-async def get_cover_image(path: str = Query(...)):
+async def get_cover_image(request: Request, path: str = Query(...)):
     if not path.strip():
         raise HTTPException(status_code=400, detail="Chemin requis.")
     target = Path(path).resolve()
@@ -2169,7 +2213,7 @@ async def get_cover_image(path: str = Query(...)):
         
     if target.exists() and target.is_file():
         m_type = "image/png" if target.suffix.lower() == ".png" else "image/jpeg"
-        return FileResponse(str(target), media_type=m_type)
+        return _serve_cover_file(request, target, m_type)
     raise HTTPException(status_code=404, detail="Image de couverture introuvable")
 
 # Cache mémoire simple pour les pochettes proxy (jusqu'à 300 images)
@@ -2235,7 +2279,8 @@ async def proxy_cover_image(url: str = Query(...)):
 
 class ApplyCoverRequest(BaseModel):
     album_path: str
-    cover_url: str
+    cover_url: Optional[str] = None
+    cover_base64: Optional[str] = None
     embed_in_tags: bool = True
 
 
@@ -2246,7 +2291,10 @@ async def search_album_covers_endpoint(
     query: Optional[str] = Query(None)
 ):
     """
-    Recherche des pochettes d'albums officielles haute résolution sur YouTube Music.
+    Recherche multi-sources de pochettes d'albums officielles HD :
+    1. Apple Music / iTunes (haute résolution studio 1200x1200bb)
+    2. Deezer API (haute résolution studio 1000x1000)
+    3. YouTube Music (Innertube HD)
     """
     search_q = (query or "").strip()
     if not search_q:
@@ -2256,42 +2304,111 @@ async def search_album_covers_endpoint(
     if not search_q:
         raise HTTPException(status_code=400, detail="Terme de recherche d'album requis.")
 
-    try:
-        raw_results = await search_ytm_innertube(query=search_q, filter_type="album")
-        items = raw_results.get("results", []) or raw_results.get("items", [])
+    candidates = []
+    seen_urls = set()
 
-        candidates = []
-        for item in items:
-            thumb = item.get("thumbnail") or item.get("cover_url") or ""
-            if thumb and "googleusercontent.com" in thumb:
-                hi_res_thumb = re.sub(r'=w\d+-h\d+[^=]*$', '=w800-h800-l90-rj', thumb)
-                if not hi_res_thumb.endswith("=w800-h800-l90-rj"):
-                    hi_res_thumb = f"{thumb}=w800-h800-l90-rj" if "=" not in thumb else re.sub(r'=[^=]+$', '=w800-h800-l90-rj', thumb)
-            else:
-                hi_res_thumb = thumb
+    clean_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+    }
 
-            if hi_res_thumb:
-                candidates.append({
-                    "title": item.get("title", ""),
-                    "artist": item.get("artist", ""),
-                    "year": item.get("year", ""),
-                    "track_count": item.get("track_count"),
-                    "thumbnail": hi_res_thumb,
-                    "browse_id": item.get("id") or item.get("browse_id", "")
-                })
+    async def _fetch_itunes():
+        res_list = []
+        for country in ["FR", "US"]:
+            try:
+                url = f"https://itunes.apple.com/search?term={urllib.parse.quote(search_q)}&entity=album&country={country}&limit=5"
+                async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+                    resp = await client.get(url, headers=clean_headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        for r in data.get("results", []):
+                            thumb = (r.get("artworkUrl100") or "").replace("100x100bb", "1200x1200bb")
+                            if thumb and thumb not in seen_urls:
+                                seen_urls.add(thumb)
+                                res_list.append({
+                                    "title": r.get("collectionName", ""),
+                                    "artist": r.get("artistName", ""),
+                                    "year": (r.get("releaseDate") or "")[:4],
+                                    "track_count": r.get("trackCount"),
+                                    "thumbnail": thumb,
+                                    "source": "Apple Music",
+                                    "badge": "Apple Music (1200×1200)"
+                                })
+            except Exception as e:
+                logger.debug(f"Erreur recherche iTunes ({country}) : {e}")
+        return res_list
 
-        return {"query": search_q, "candidates": candidates, "total": len(candidates)}
-    except Exception as e:
-        logger.warning(f"Erreur recherche pochettes YTM pour '{search_q}': {e}")
-        return {"query": search_q, "candidates": [], "total": 0, "error": str(e)}
+    async def _fetch_deezer():
+        res_list = []
+        try:
+            url = f"https://api.deezer.com/search/album?q={urllib.parse.quote(search_q)}&limit=5"
+            async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+                resp = await client.get(url, headers=clean_headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for r in data.get("data", []):
+                        thumb = r.get("cover_xl") or r.get("cover_big")
+                        if thumb and thumb not in seen_urls:
+                            seen_urls.add(thumb)
+                            res_list.append({
+                                "title": r.get("title", ""),
+                                "artist": r.get("artist", {}).get("name", ""),
+                                "year": (r.get("release_date") or "")[:4] if r.get("release_date") else "",
+                                "track_count": r.get("nb_tracks"),
+                                "thumbnail": thumb,
+                                "source": "Deezer",
+                                "badge": "Deezer HD (1000×1000)"
+                            })
+        except Exception as e:
+            logger.debug(f"Erreur recherche Deezer : {e}")
+        return res_list
+
+    async def _fetch_ytm():
+        res_list = []
+        try:
+            raw_results = await search_ytm_innertube(query=search_q, filter_type="album")
+            items = raw_results.get("results", []) or raw_results.get("items", [])
+            for item in items:
+                thumb = item.get("thumbnail") or item.get("cover_url") or ""
+                if thumb and "googleusercontent.com" in thumb:
+                    hi_res_thumb = re.sub(r'=w\d+-h\d+[^=]*$', '=w800-h800-l90-rj', thumb)
+                    if not hi_res_thumb.endswith("=w800-h800-l90-rj"):
+                        hi_res_thumb = f"{thumb}=w800-h800-l90-rj" if "=" not in thumb else re.sub(r'=[^=]+$', '=w800-h800-l90-rj', thumb)
+                else:
+                    hi_res_thumb = thumb
+
+                if hi_res_thumb and hi_res_thumb not in seen_urls:
+                    seen_urls.add(hi_res_thumb)
+                    res_list.append({
+                        "title": item.get("title", ""),
+                        "artist": item.get("artist", ""),
+                        "year": item.get("year", ""),
+                        "track_count": item.get("track_count"),
+                        "thumbnail": hi_res_thumb,
+                        "source": "YouTube Music",
+                        "badge": "YouTube Music"
+                    })
+        except Exception as e:
+            logger.debug(f"Erreur recherche YTM : {e}")
+        return res_list
+
+    # Lancement parallèle ultra-rapide des 3 sources
+    results = await asyncio.gather(_fetch_itunes(), _fetch_deezer(), _fetch_ytm(), return_exceptions=True)
+
+    for r in results:
+        if isinstance(r, list):
+            candidates.extend(r)
+
+    return {"query": search_q, "candidates": candidates, "total": len(candidates)}
 
 
 @app.post("/api/album/apply-cover")
 async def apply_album_cover_endpoint(req: ApplyCoverRequest):
     """
-    Télécharge une pochette officielle depuis YouTube Music,
-    l'enregistre sous 'cover.jpg' dans le dossier de l'album,
-    et optionnellement l'injecte dans les tags audio via Kid3-CLI.
+    Applique une pochette d'album (depuis une URL ou un fichier local/base64),
+    en appliquant strictement la Règle d'Or (Hauteur 100% intégrale, zéro rognage vertical),
+    l'enregistre sous 'cover.jpg' en haute qualité 95,
+    et l'injecte dans les tags audio de toutes les pistes via Kid3-CLI.
     """
     clean_path = req.album_path.strip()
     if not clean_path:
@@ -2302,57 +2419,106 @@ async def apply_album_cover_endpoint(req: ApplyCoverRequest):
     if not _is_safe_audio_path(p):
         raise HTTPException(status_code=403, detail="Accès non autorisé hors des répertoires configurés.")
 
-    cover_url = req.cover_url.strip()
-    if not cover_url.startswith("http://") and not cover_url.startswith("https://"):
-        raise HTTPException(status_code=400, detail="URL de pochette invalide.")
+    img_bytes = None
 
-    try:
-        clean_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        }
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-            resp = await client.get(cover_url, headers=clean_headers)
-            if resp.status_code != 200 or len(resp.content) < 1000:
-                raise HTTPException(status_code=400, detail="Impossible de télécharger l'image depuis l'URL fournie.")
-            img_bytes = resp.content
-    except Exception as e:
-        logger.warning(f"Erreur téléchargement pochette YTM : {e}")
-        raise HTTPException(status_code=500, detail=f"Erreur lors du téléchargement de la pochette : {e}")
+    # Option A : Image transmise en Base64 (Glisser-Déposer ou Fichier local sélectionné)
+    if req.cover_base64:
+        try:
+            b64_data = req.cover_base64
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+            import base64
+            img_bytes = base64.b64decode(b64_data)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Données d'image base64 invalides : {e}")
+
+    # Option B : Image à télécharger depuis une URL officielle (iTunes, Deezer, YTM)
+    elif req.cover_url:
+        cover_url = req.cover_url.strip()
+        if not cover_url.startswith("http://") and not cover_url.startswith("https://"):
+            raise HTTPException(status_code=400, detail="URL de pochette invalide.")
+        try:
+            clean_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            }
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                resp = await client.get(cover_url, headers=clean_headers)
+                if resp.status_code != 200 or len(resp.content) < 500:
+                    raise HTTPException(status_code=400, detail="Impossible de télécharger l'image depuis l'URL fournie.")
+                img_bytes = resp.content
+        except Exception as e:
+            logger.warning(f"Erreur téléchargement pochette : {e}")
+            raise HTTPException(status_code=500, detail=f"Erreur lors du téléchargement de la pochette : {e}")
+    else:
+        raise HTTPException(status_code=400, detail="Veuillez fournir une URL ou un fichier image.")
+
+    if not img_bytes:
+        raise HTTPException(status_code=400, detail="Aucune donnée d'image reçue.")
 
     target_cover = p / "cover.jpg"
     try:
-        with open(target_cover, "wb") as f:
-            f.write(img_bytes)
-        logger.info(f"Pochette sauvegardée avec succès : {target_cover} ({len(img_bytes)} octets)")
+        import io
+        from PIL import Image
+
+        with Image.open(io.BytesIO(img_bytes)) as im:
+            im = im.convert("RGB")
+            w, h = im.size
+            if w > h:
+                # 16:9 ou paysage -> carré centré sans couper la hauteur (y: 0 -> h)
+                cx = (w - h) // 2
+                sq = im.crop((cx, 0, cx + h, h))
+            elif h > w:
+                # Portrait -> redimensionner en largeur vers h sans couper la hauteur
+                sq = im.resize((h, h), Image.Resampling.LANCZOS)
+            else:
+                sq = im.copy()
+
+            # Sauvegarde en haute qualité JPEG 95
+            sq.save(target_cover, "JPEG", quality=95)
+
+        logger.info(f"Pochette sauvegardée avec succès (Règle d'Or 100% hauteur) : {target_cover} ({target_cover.stat().st_size} octets)")
     except Exception as e:
-        logger.error(f"Impossible d'écrire cover.jpg dans {p} : {e}")
-        raise HTTPException(status_code=500, detail=f"Écriture disque impossible : {e}")
+        logger.error(f"Impossible de traiter/écrire cover.jpg dans {p} : {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur traitement de l'image : {e}")
 
     # Injection dans les tags audio si demandé via Kid3-CLI
     audio_files = [f for f in p.iterdir() if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS]
+    for d in p.iterdir():
+        if d.is_dir() and DISC_SUBFOLDER_RE.match(d.name):
+            audio_files.extend([f for f in d.iterdir() if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS])
+
     if req.embed_in_tags and audio_files and Path(KID3_CLI_PATH).exists():
         try:
             kid3_args = [str(KID3_CLI_PATH), "-c", f'set picture:"{str(target_cover.resolve())}" ""']
             for af in audio_files:
                 kid3_args.append(str(af.resolve()))
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, subprocess.run, kid3_args, {"capture_output": True, "timeout": 30})
+            await loop.run_in_executor(None, lambda: subprocess.run(kid3_args, capture_output=True, timeout=30))
             logger.info(f"Pochette injectée dans les tags de {len(audio_files)} fichier(s) via Kid3.")
         except Exception as e:
             logger.warning(f"Avertissement injection pochette Kid3 : {e}")
 
+    # Marquer la jaquette comme normalisée (Règle d'or)
+    marker = p / ".cover_normalized"
+    try:
+        marker.touch()
+    except Exception:
+        pass
+
     # Mettre à jour l'indexothèque en mémoire et cache
+    cov_mtime = target_cover.stat().st_mtime if target_cover.exists() else time.time()
     for alb in library_indexer.albums:
         if alb.path == str(p) or Path(alb.path).resolve() == p:
             alb.cover_file = str(target_cover)
+            alb.mtime = cov_mtime
     library_indexer._save_to_cache()
     invalidate_album_cache(p)
 
     return {
         "success": True,
         "album_path": str(p),
-        "cover_url": f"/api/audio/cover?path={urllib.parse.quote(str(p))}&t={int(time.time()*1000)}"
+        "cover_url": _build_cover_url(p, str(target_cover), cov_mtime)
     }
 
 
@@ -2741,6 +2907,8 @@ async def get_library_albums(source: str = Query("library")):
                 "path": alb.path,
                 "tracks_count": alb_tracks,
                 "has_cover": bool(alb.cover_file),
+                "cover_url": _build_cover_url(alb.path, getattr(alb, "cover_file", None), getattr(alb, "mtime", None)),
+                "mtime": getattr(alb, "mtime", 0.0),
                 "year": getattr(alb, "year", None),
                 "genre": getattr(alb, "genre", None),
                 "album_type": _classify_type(alb_title, alb.path, alb_tracks),
@@ -2852,7 +3020,7 @@ async def get_library_catalog(source: str = Query("library")):
                             "filepath": str(f.resolve()),
                             "format": ext,
                             "stream_url": f"/api/audio/stream-local?path={urllib.parse.quote(str(f.resolve()))}",
-                            "cover_url": f"/api/audio/cover?path={urllib.parse.quote(p_str)}"
+                            "cover_url": _build_cover_url(p_str, mtime=inf_mtime)
                         })
                     alb_tracks.sort(key=lambda t: (int(t["track_number"]) if t["track_number"].isdigit() else 999, t["title"].lower()))
 
@@ -2863,7 +3031,7 @@ async def get_library_catalog(source: str = Query("library")):
                             "path": p_str,
                             "tracks_count": len(alb_tracks),
                             "has_cover": any(cf.name.lower() in COVER_NAMES for cf in item.iterdir() if cf.is_file()),
-                            "cover_url": f"/api/audio/cover?path={urllib.parse.quote(p_str)}",
+                            "cover_url": _build_cover_url(p_str, mtime=inf_mtime),
                             "year": inf_year,
                             "genre": inf_genre,
                             "source": "temp",
@@ -2876,6 +3044,7 @@ async def get_library_catalog(source: str = Query("library")):
                 continue
             alb_tracks = []
             dur_map = {tr.filename: tr.duration_str for tr in getattr(alb, "tracks", [])}
+            alb_cover_url = _build_cover_url(alb.path, getattr(alb, "cover_file", None), getattr(alb, "mtime", None))
 
             def scan_dir(dir_path):
                 try:
@@ -2895,7 +3064,7 @@ async def get_library_catalog(source: str = Query("library")):
                                 "filepath": entry.path,
                                 "format": ext,
                                 "stream_url": f"/api/audio/stream-local?path={urllib.parse.quote(entry.path)}",
-                                "cover_url": f"/api/audio/cover?path={urllib.parse.quote(p)}"
+                                "cover_url": alb_cover_url
                             })
                         elif entry.is_dir() and DISC_SUBFOLDER_RE.match(entry.name):
                             scan_dir(entry.path)
@@ -2911,7 +3080,7 @@ async def get_library_catalog(source: str = Query("library")):
                 "path": alb.path,
                 "tracks_count": len(alb_tracks),
                 "has_cover": bool(alb.cover_file),
-                "cover_url": f"/api/audio/cover?path={urllib.parse.quote(alb.path)}",
+                "cover_url": alb_cover_url,
                 "year": getattr(alb, "year", None),
                 "genre": getattr(alb, "genre", None),
                 "source": getattr(alb, "source", "library"),
@@ -3475,7 +3644,7 @@ async def get_library_tree_endpoint():
             "year": getattr(alb, "year", None),
             "genre": getattr(alb, "genre", None),
             "has_cover": bool(alb.cover_file),
-            "cover_url": f"/api/audio/cover?path={urllib.parse.quote(alb.path)}"
+            "cover_url": _build_cover_url(alb.path, getattr(alb, "cover_file", None), getattr(alb, "mtime", None))
         })
 
     def _alb_year_key(a):

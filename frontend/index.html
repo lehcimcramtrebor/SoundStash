@@ -11,7 +11,7 @@
             document.documentElement.setAttribute("data-theme", savedTheme);
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=3.2.4">
+    <link rel="stylesheet" href="/static/style.css?v=3.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -63,7 +63,7 @@
     </style>
 </head>
 <body>
-    <!-- Arrière-Plan Visuel Thématique Statique (Subtil & 0% GPU v3.2.6) -->
+    <!-- Arrière-Plan Visuel Thématique Statique (Subtil & 0% GPU v3.3.0) -->
     <div id="ambient-static-backdrop" class="ambient-static-backdrop" aria-hidden="true">
         <div id="ambient-backdrop-image" class="ambient-backdrop-image" style="background-image: url('/static/assets/backdrops/synthwave_dark.webp');"></div>
         <div class="ambient-backdrop-overlay"></div>
@@ -493,6 +493,9 @@
                             <button type="button" id="editor-source-genres-btn" class="source-toggle-btn" title="Attribuer ou uniformiser les genres d'albums par lot ou à l'unité">
                                 🏷️ Genres par lot (<span id="editor-genres-count-badge">0</span>)
                             </button>
+                            <button type="button" id="editor-source-covers-btn" class="source-toggle-btn" title="Galerie visuelle de toutes les jaquettes de la collection">
+                                🖼️ Jaquettes (<span id="editor-covers-count-badge">0</span>)
+                            </button>
                         </div>
                         <div id="editor-collection-picker-wrapper" style="display: none; align-items: center; gap: 8px; flex: 1; min-width: 260px; max-width: 620px;">
                             <select id="editor-collection-select" class="form-control" style="font-size: 0.85rem; flex: 1; border-radius: var(--radius-sm);">
@@ -851,6 +854,53 @@
                             </table>
                         </div>
                     </div><!-- /#editor-genre-batch-view -->
+
+                    <!-- Vue Galerie des Jaquettes (Onglet Jaquettes) -->
+                    <div id="editor-covers-gallery-view" style="display: none;">
+                        <div class="genre-batch-header-card" style="margin-bottom: 16px;">
+                            <div class="genre-batch-top-controls" style="display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
+                                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                    <div class="genre-batch-scope-group" id="covers-gallery-scope-group">
+                                        <button type="button" class="genre-scope-btn active" data-scope="all" title="Tous les albums de la collection">
+                                            💿 Tous (<span id="covers-filter-count-all">0</span>)
+                                        </button>
+                                        <button type="button" class="genre-scope-btn" data-scope="has" title="Albums avec pochette présente">
+                                            ✓ Avec jaquette (<span id="covers-filter-count-has">0</span>)
+                                        </button>
+                                        <button type="button" class="genre-scope-btn" data-scope="missing" title="Albums sans pochette ou avec placeholder">
+                                            ⚠️ Sans jaquette (<span id="covers-filter-count-missing">0</span>)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; align-items: center; gap: 10px; flex: 1; max-width: 380px; justify-content: flex-end;">
+                                    <div class="search-input-wrapper" style="width: 100%;">
+                                        <input type="text" id="covers-gallery-search" class="form-control" placeholder="Filtrer un album ou un artiste..." style="font-size: 0.85rem; padding: 7px 12px; border-radius: var(--radius-sm);">
+                                    </div>
+                                    <button type="button" id="covers-gallery-refresh-btn" class="btn btn-secondary btn-sm" title="Recharger les jaquettes" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                                        Actualiser
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- État de chargement -->
+                        <div id="covers-gallery-loading" class="search-loading" style="padding: 40px; display: none;">
+                            <div class="spinner"></div>
+                            <p style="margin-top: 12px;">Chargement de la galerie des jaquettes...</p>
+                        </div>
+
+                        <!-- État vide -->
+                        <div id="covers-gallery-empty" class="text-muted" style="text-align: center; padding: 40px; display: none;">
+                            Aucun album correspondant trouvé dans la collection.
+                        </div>
+
+                        <!-- Grille des cartes jaquettes -->
+                        <div id="covers-gallery-grid" class="covers-gallery-grid">
+                            <!-- Cartes d'albums générées dynamiquement en JS -->
+                        </div>
+                    </div><!-- /#editor-covers-gallery-view -->
                 </div>
             </section>
 
@@ -1956,7 +2006,7 @@
                                         Mise à Jour de l'Application SoundStash
                                     </h3>
                                     <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
-                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v3.2.6</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
+                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v3.3.0</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
                                     </p>
                                 </div>
                                 <button type="button" id="btn-check-app-update" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
@@ -1973,38 +2023,7 @@
                             <div id="app-update-result-alert" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;"></div>
                         </div>
 
-                        <!-- Restauration des Pochettes Plein Carré 1:1 -->
-                        <div class="settings-section-card" id="card-covers-restoration">
-                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
-                                <div>
-                                    <h3 class="settings-card-title" style="margin-bottom: 4px;">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
-                                        Restauration des Jaquettes (Hauteur 100% Intégrale)
-                                    </h3>
-                                    <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
-                                        Restaure les pochettes HD originales depuis YouTube avec <strong>hauteur 100% intégrale garantie</strong> (zéro rognage vertical) et les réinjecte dans les tags audio.
-                                    </p>
-                                </div>
-                                <button type="button" id="btn-restore-all-covers" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
-                                    <svg id="icon-restore-covers" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-                                    <span id="label-restore-covers">Restaurer toutes les jaquettes</span>
-                                </button>
-                            </div>
-                            <div id="covers-restore-progress-container" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-hover, #2a2a3e); border-radius: 8px; border: 1px solid var(--border, #333);">
-                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; margin-bottom: 8px;">
-                                    <span id="covers-restore-status-text" class="text-muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 75%;">Préparation...</span>
-                                    <span id="covers-restore-percent-text" style="font-weight: 700; color: var(--accent, #89b4fa);">0%</span>
-                                </div>
-                                <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden;">
-                                    <div id="covers-restore-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); transition: width 0.3s ease;"></div>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 0.78rem;">
-                                    <span id="covers-restore-counts" class="text-muted">0 restaurée(s)</span>
-                                    <button type="button" id="btn-cancel-restore-covers" class="btn btn-secondary" style="font-size: 0.75rem; padding: 2px 8px;">Annuler</button>
-                                </div>
-                            </div>
-                            <div id="covers-restore-alert" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;"></div>
-                        </div>
+
 
                         <div class="settings-section-card">
                             <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
@@ -2197,7 +2216,7 @@
                     <div>
                         <div style="font-size: 0.8rem; color: var(--text-muted);">Version actuelle / Nouvelle version</div>
                         <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; margin-top: 2px;">
-                            <span id="app-update-current-ver" style="color: var(--text-muted);">v3.2.6</span>
+                            <span id="app-update-current-ver" style="color: var(--text-muted);">v3.3.0</span>
                             <span style="color: var(--accent);">➔</span>
                             <span id="app-update-target-ver" style="color: #10b981;">v...</span>
                         </div>
@@ -2643,23 +2662,55 @@
         </div>
     </div>
 
-    <!-- Modale de Recherche & Choix de Pochette en Ligne -->
+    <!-- Modale de Recherche & Choix de Pochette Multi-Sources & Import Local -->
     <div id="cover-search-modal-backdrop" class="modal-backdrop" style="display: none;">
-        <div class="modal-dialog" style="max-width: 760px; width: 92%;">
+        <div class="modal-dialog" style="max-width: 800px; width: 94%;">
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <div class="logo-icon" style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                    <div class="logo-icon" style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #f59e0b, #d97706); display: flex; align-items: center; justify-content: center;">
                         <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
                     </div>
                     <div>
-                        <h3 class="modal-title" style="margin: 0; font-size: 1.15rem;">Rechercher une pochette officielle</h3>
-                        <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.82rem;">Sélectionnez une jaquette haute résolution dans la discographie</p>
+                        <h3 class="modal-title" style="margin: 0; font-size: 1.15rem;">Changer la jaquette de l'album</h3>
+                        <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.82rem;">Sources officielles HD (Apple Music, Deezer, YouTube Music) ou image personnalisée locale</p>
                     </div>
                 </div>
                 <button type="button" id="cover-search-modal-close-btn" class="modal-close-icon-btn" title="Fermer">&times;</button>
             </div>
             <div class="modal-body" style="padding: 20px; max-height: 70vh; overflow-y: auto;">
-                <form id="cover-search-form" style="display: flex; gap: 10px; margin-bottom: 16px;">
+                <!-- Zone Glisser-Déposer & Parcourir un fichier local / Presse-papier -->
+                <div id="cover-dropzone" class="cover-dropzone" style="border: 2px dashed rgba(255, 255, 255, 0.18); border-radius: 12px; padding: 14px 18px; text-align: center; margin-bottom: 16px; background: rgba(255, 255, 255, 0.02); transition: all 0.25s ease; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(59, 130, 246, 0.15); display: flex; align-items: center; justify-content: center; color: #3b82f6;">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+                        </div>
+                        <div style="text-align: left;">
+                            <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-main);">Importer ou coller une image</div>
+                            <div style="font-size: 0.78rem; color: var(--text-muted);">Glissez-déposez, parcourez un fichier ou collez directement avec <kbd style="background: rgba(255, 255, 255, 0.12); padding: 2px 6px; border-radius: 4px; font-weight: 700; color: var(--accent, #89b4fa); font-family: inherit;">Ctrl+V</kbd></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <button type="button" id="btn-paste-clipboard-cover" class="btn btn-sm btn-primary" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600;" title="Coller l'image présente dans votre presse-papier (Ctrl+V)">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 2h-4.18C14.4 0.84 13.3 0 12 0c-1.3 0-2.4 0.84-2.82 2H5c-1.1 0-2 0.9-2 2v16c0 1.1 0.9 2 2 2h14c1.1 0 2-0.9 2-2V4c0-1.1-0.9-2-2-2zm-7 0c0.55 0 1 0.45 1 1s-0.45 1-1 1-1-0.45-1-1 0.45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
+                            Coller l'image (Ctrl+V)
+                        </button>
+                        <button type="button" id="btn-browse-local-cover" class="btn btn-sm btn-outline-primary" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                            Parcourir...
+                        </button>
+                        <input type="file" id="cover-local-file-input" accept="image/jpeg,image/png,image/webp,image/jpg" style="display: none;">
+                    </div>
+                </div>
+
+                <!-- Séparateur visuel -->
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+                    <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+                    <span style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); letter-spacing: 0.05em;">Ou rechercher dans les discographies officielles</span>
+                    <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+                </div>
+
+                <!-- Formulaire de recherche en ligne -->
+                <form id="cover-search-form" style="display: flex; gap: 10px; margin-bottom: 12px;">
                     <input type="text" id="cover-search-query-input" class="form-control" style="flex: 1;" placeholder="Artiste et nom d'album...">
                     <button type="submit" id="cover-search-submit-btn" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
@@ -2667,13 +2718,22 @@
                     </button>
                 </form>
 
+                <!-- Filtres rapides par source -->
+                <div id="cover-search-sources-bar" style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+                    <button type="button" class="btn-cover-filter active" data-filter="all">Toutes les sources</button>
+                    <button type="button" class="btn-cover-filter" data-filter="Apple Music">🍎 Apple Music (1200×1200)</button>
+                    <button type="button" class="btn-cover-filter" data-filter="Deezer">🎵 Deezer HD (1000×1000)</button>
+                    <button type="button" class="btn-cover-filter" data-filter="YouTube Music">▶ YouTube Music</button>
+                    <button type="button" class="btn-cover-filter" data-filter="Fichier local" id="cover-filter-local" style="display: none;">📁 Fichier local</button>
+                </div>
+
                 <div id="cover-search-loading" class="search-loading" style="padding: 30px; display: none;">
                     <div class="spinner"></div>
-                    <p style="margin-top: 12px;">Recherche de jaquettes officielles...</p>
+                    <p style="margin-top: 12px;">Interrogation des sources officielles (Apple Music, Deezer, YouTube)...</p>
                 </div>
 
                 <div id="cover-search-empty" class="text-muted" style="text-align: center; padding: 30px; display: none;">
-                    Aucune jaquette trouvée pour cette recherche. Essayez d'ajuster les mots-clés ci-dessus.
+                    Aucune jaquette trouvée pour cette recherche. Essayez d'ajuster les mots-clés ci-dessus ou importez une image personnalisée.
                 </div>
 
                 <div id="cover-search-results-grid" class="cover-candidates-grid">
@@ -3946,45 +4006,45 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Socle JavaScript Modulaire Core -->
-    <script src="/static/js/core/icons.js?v=3.2.4"></script>
-    <script src="/static/js/core/utils.js?v=3.2.4"></script>
-    <script src="/static/js/core/modals.js?v=3.2.4"></script>
-    <script src="/static/js/core/websocket.js?v=3.2.4"></script>
-    <script src="/static/js/core/app_updater.js?v=3.2.4"></script>
+    <script src="/static/js/core/icons.js?v=3.3.0"></script>
+    <script src="/static/js/core/utils.js?v=3.3.0"></script>
+    <script src="/static/js/core/modals.js?v=3.3.0"></script>
+    <script src="/static/js/core/websocket.js?v=3.3.0"></script>
+    <script src="/static/js/core/app_updater.js?v=3.3.0"></script>
 
     <!-- Modules Autonomes : Mode Ambiance & Synthwave -->
-    <script src="/static/js/ambient/synthwave_canvas.js?v=3.2.4"></script>
-    <script src="/static/js/ambient/ambient_manager.js?v=3.2.4"></script>
+    <script src="/static/js/ambient/synthwave_canvas.js?v=3.3.0"></script>
+    <script src="/static/js/ambient/ambient_manager.js?v=3.3.0"></script>
 
     <!-- Modules Autonomes : Playlists Utilisateur -->
-    <script src="/static/js/playlists/user_playlists.js?v=3.2.4"></script>
+    <script src="/static/js/playlists/user_playlists.js?v=3.3.0"></script>
 
     <!-- Modules Autonomes : Configuration, Veille & Sécurité -->
-    <script src="/static/js/extras/settings.js?v=3.2.4"></script>
-    <script src="/static/js/extras/sleep_timer.js?v=3.2.4"></script>
-    <script src="/static/js/extras/party_lock.js?v=3.2.4"></script>
-    <script src="/static/js/extras/user_guide.js?v=3.2.4"></script>
+    <script src="/static/js/extras/settings.js?v=3.3.0"></script>
+    <script src="/static/js/extras/sleep_timer.js?v=3.3.0"></script>
+    <script src="/static/js/extras/party_lock.js?v=3.3.0"></script>
+    <script src="/static/js/extras/user_guide.js?v=3.3.0"></script>
 
     <!-- Modules Métier : Atelier de Recherche & Téléchargement -->
-    <script src="/static/js/workshop/workbench.js?v=3.2.4"></script>
-    <script src="/static/js/workshop/search.js?v=3.2.4"></script>
-    <script src="/static/js/workshop/download.js?v=3.2.4"></script>
+    <script src="/static/js/workshop/workbench.js?v=3.3.0"></script>
+    <script src="/static/js/workshop/search.js?v=3.3.0"></script>
+    <script src="/static/js/workshop/download.js?v=3.3.0"></script>
 
     <!-- Modules Métier : Éditeur de Tags & Reconstitution -->
-    <script src="/static/js/editor/reconstitute.js?v=3.2.4"></script>
-    <script src="/static/js/editor/tag_editor.js?v=3.2.4"></script>
+    <script src="/static/js/editor/reconstitute.js?v=3.3.0"></script>
+    <script src="/static/js/editor/tag_editor.js?v=3.3.0"></script>
 
     <!-- Modules Métier : Discothèque & Corbeille -->
-    <script src="/static/js/library/library_manager.js?v=3.2.4"></script>
+    <script src="/static/js/library/library_manager.js?v=3.3.0"></script>
 
     <!-- Modules Métier : Lecteur Audio, Égaliseur & Raccourcis -->
-    <script src="/static/js/player/audio_player.js?v=3.2.4"></script>
-    <script src="/static/js/player/shortcuts.js?v=3.2.4"></script>
+    <script src="/static/js/player/audio_player.js?v=3.3.0"></script>
+    <script src="/static/js/player/shortcuts.js?v=3.3.0"></script>
 
     <!-- Modules Métier : Lecteur Vidéo Clip & Moteur Audio Vidéo -->
-    <script src="/static/js/video/video_player.js?v=3.2.4"></script>
+    <script src="/static/js/video/video_player.js?v=3.3.0"></script>
 
     <!-- Orchestrateur Principal -->
-    <script src="/static/app.js?v=3.2.4"></script>
+    <script src="/static/app.js?v=3.3.0"></script>
 </body>
 </html>

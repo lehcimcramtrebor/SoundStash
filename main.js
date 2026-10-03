@@ -1092,12 +1092,26 @@ app.whenReady().then(async () => {
             callback(false);
         });
 
+        // Vider le cache HTTP résiduel à chaque démarrage pour garantir l'affichage immédiat des jaquettes à jour
+        session.defaultSession.clearCache().catch(() => {});
+
         session.defaultSession.webRequest.onBeforeSendHeaders(
             { urls: ['*://*.googleusercontent.com/*', '*://*.ytimg.com/*', '*://*.ggpht.com/*'] },
             (details, callback) => {
                 delete details.requestHeaders['Referer'];
                 delete details.requestHeaders['referer'];
                 callback({ requestHeaders: details.requestHeaders });
+            }
+        );
+
+        // Forcer la validation immédiate des jaquettes servies par le backend local (aucun cache périmé)
+        session.defaultSession.webRequest.onHeadersReceived(
+            { urls: ['http://127.0.0.1:*/api/audio/cover*', 'http://127.0.0.1:*/api/cover*'] },
+            (details, callback) => {
+                const responseHeaders = { ...details.responseHeaders };
+                responseHeaders['Cache-Control'] = ['no-cache, must-revalidate'];
+                responseHeaders['Pragma'] = ['no-cache'];
+                callback({ responseHeaders });
             }
         );
 

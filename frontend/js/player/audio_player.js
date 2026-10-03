@@ -2396,7 +2396,7 @@ const AudioPlayer = {
         // OPT: Array.push + join au lieu de html+= (évite O(n²) sur grandes bibliothèques)
         const htmlParts = [];
         list.forEach(alb => {
-            const coverUrl = `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
+            const coverUrl = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}${alb.mtime ? `&v=${Math.floor(alb.mtime)}` : ''}`;
             const yearStr = alb.year ? `<span>📅 ${escapeHtml(String(alb.year))}</span>` : "";
             const tracksStr = `${alb.tracks_count || 0} titre${alb.tracks_count > 1 ? "s" : ""}`;
             const albType = this.getAlbumType(alb);
@@ -2616,8 +2616,8 @@ const AudioPlayer = {
         const folderName = albumPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "Album";
         const albumTitle = info.album_name || folderName;
         const albumArtist = info.album_artist || "Artiste inconnu";
-        // OPT: pas de cache-bust si déjà en cache — évite un rechargement réseau systématique
-        const coverUrl = `/api/audio/cover?path=${encodeURIComponent(albumPath)}`;
+        const albMatch = this.libraryAlbums ? this.libraryAlbums.find(a => a.path === albumPath) : null;
+        const coverUrl = (albMatch && albMatch.cover_url) || (info && info.cover_url) || `/api/audio/cover?path=${encodeURIComponent(albumPath)}${albMatch && albMatch.mtime ? `&v=${Math.floor(albMatch.mtime)}` : ''}`;
         const rawTracks = (info.tracks || []).slice().sort((a, b) => {
             const na = parseInt(a.track_number, 10) || 0;
             const nb = parseInt(b.track_number, 10) || 0;
@@ -4716,7 +4716,8 @@ const AudioPlayer = {
             if (!res.ok) throw new Error("Album introuvable");
             const info = await res.json();
             const folderName = albumPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "Album";
-            const coverUrl = `/api/audio/cover?path=${encodeURIComponent(albumPath)}`;
+            const albMatch = this.libraryAlbums ? this.libraryAlbums.find(a => a.path === albumPath) : null;
+            const coverUrl = (albMatch && albMatch.cover_url) || (info && info.cover_url) || `/api/audio/cover?path=${encodeURIComponent(albumPath)}${albMatch && albMatch.mtime ? `&v=${Math.floor(albMatch.mtime)}` : ''}`;
             const rawTracks = (info.tracks || []).slice().sort((a, b) => (parseInt(a.track_number, 10) || 0) - (parseInt(b.track_number, 10) || 0));
 
             if (rawTracks.length === 0) {

@@ -75,6 +75,37 @@ function closeWorkshopDrawer() {
             backdrop.style.display = "none";
         }
     }, 350);
+
+    // Prompt de rafraîchissement si des jaquettes ont été modifiées pendant la session Atelier
+    if (window.coversModifiedInWorkshopCount && window.coversModifiedInWorkshopCount > 0) {
+        const count = window.coversModifiedInWorkshopCount;
+        window.coversModifiedInWorkshopCount = 0;
+        setTimeout(async () => {
+            const countLabel = count > 1 ? `${count} jaquettes d'albums` : "une jaquette d'album";
+            const confirmFn = window.showModalConfirm || (typeof showModalConfirm === "function" ? showModalConfirm : null);
+            let confirmed = true;
+            if (confirmFn) {
+                confirmed = await confirmFn(
+                    "🖼️ Jaquettes modifiées",
+                    `Vous venez de modifier ${countLabel} dans l'Atelier.\n\nSouhaitez-vous actualiser la bibliothèque du Lecteur dès maintenant pour afficher immédiatement tous les nouveaux visuels ?`,
+                    "Rafraîchir maintenant",
+                    false,
+                    "Plus tard"
+                );
+            }
+            if (confirmed) {
+                if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
+                    await window.AudioPlayer.loadLibraryData(true);
+                }
+                if (typeof loadLibrary === "function") {
+                    loadLibrary();
+                }
+                if (typeof showToast === "function") {
+                    showToast("✓ Bibliothèque actualisée avec succès !", "success");
+                }
+            }
+        }, 200);
+    }
 }
 
 function toggleWorkshopDrawer(targetTab = null) {

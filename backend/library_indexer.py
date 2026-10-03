@@ -93,7 +93,7 @@ def extract_audio_tags_fast(filepath: Path) -> dict:
                     (b'\xa9gen', 'genre')
                 ]
                 for atom_key, field in atom_map:
-                    if meta[field] and field != 'artist':
+                    if meta[field]:
                         continue
                     idx = data.find(atom_key)
                     if idx != -1:
@@ -263,7 +263,7 @@ def extract_album_tags_priority(folder: Path, audio_files: List[Path]) -> dict:
     """
     Extrait les métadonnées d'un album avec priorité absolue selon la demande utilisateur :
     1. .album_meta.json si présent avec tags valides
-    2. Tags audio réels extraits ultra-rapidement des 2 premières pistes audio
+    2. Tags audio réels extraits des premières pistes audio (avec consensus pour éviter les intros/guests)
     """
     result = {"artist": "", "album": "", "year": "", "genre": ""}
 
@@ -290,8 +290,13 @@ def extract_album_tags_priority(folder: Path, audio_files: List[Path]) -> dict:
         except Exception:
             pass
 
-    # 2. Inspecter les 2 premières pistes audio
-    for af in audio_files[:2]:
+    # 2. Inspecter les premières pistes audio pour consensus
+    artists_found = []
+    albums_found = []
+    years_found = []
+    genres_found = []
+
+    for af in audio_files[:4]:
         p = Path(af)
         if not p.is_file():
             continue
@@ -301,17 +306,40 @@ def extract_album_tags_priority(folder: Path, audio_files: List[Path]) -> dict:
         yr = (tags.get("year") or "").strip()
         gnr = (tags.get("genre") or "").strip()
 
-        if not result["artist"] and art and art.lower() not in {"inconnu", "unknown", "artiste inconnu"}:
-            result["artist"] = art
-        if not result["album"] and alb and alb.lower() not in {"inconnu", "unknown", "unknown album", "sans titre"}:
-            result["album"] = alb
-        if not result["year"] and yr:
-            result["year"] = yr
-        if not result["genre"] and gnr:
-            result["genre"] = gnr
+        if art and art.lower() not in {"inconnu", "unknown", "artiste inconnu"}:
+            artists_found.append(art)
+        if alb and alb.lower() not in {"inconnu", "unknown", "unknown album", "sans titre"}:
+            albums_found.append(alb)
+        if yr and not result["year"]:
+            years_found.append(yr)
+        if gnr and not result["genre"]:
+            genres_found.append(gnr)
 
-        if result["artist"] and result["album"]:
-            break
+    parent_artist = folder.parent.name if folder.parent and folder.parent.name else ""
+    folder_name = folder.name
+
+    if artists_found:
+        # Si un des artistes trouvés correspond au dossier parent (ex: Root / Metallica / Album) ou au dossier d'album
+        matched_art = None
+        for a in artists_found:
+            if parent_artist and (a.lower() == parent_artist.lower() or parent_artist.lower() in a.lower()):
+                matched_art = a
+                break
+            if folder_name and a.lower() in folder_name.lower():
+                matched_art = a
+                break
+        if matched_art:
+            result["artist"] = matched_art
+        else:
+            # Artiste majoritaire parmi les pistes inspectées
+            result["artist"] = max(set(artists_found), key=artists_found.count)
+
+    if albums_found:
+        result["album"] = max(set(albums_found), key=albums_found.count)
+    if years_found:
+        result["year"] = max(set(years_found), key=years_found.count)
+    if genres_found:
+        result["genre"] = max(set(genres_found), key=genres_found.count)
 
     return result
 

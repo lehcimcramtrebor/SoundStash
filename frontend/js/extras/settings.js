@@ -318,8 +318,6 @@ function setupSettings() {
         });
     }
 
-    setupCoversRestoration();
-
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const exportDir = document.getElementById("cfg-export-dir") ? document.getElementById("cfg-export-dir").value.trim() : "";
@@ -953,171 +951,6 @@ if (btnDlAllGap) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Restauration des Jaquettes Plein Carré 1:1 (Hauteur 100% Intégrale)
-// ═══════════════════════════════════════════════════════════════════════
-
-function setupCoversRestoration() {
-    const btnRestore = document.getElementById("btn-restore-all-covers");
-    const btnCancel = document.getElementById("btn-cancel-restore-covers");
-    const progressContainer = document.getElementById("covers-restore-progress-container");
-    const statusText = document.getElementById("covers-restore-status-text");
-    const percentText = document.getElementById("covers-restore-percent-text");
-    const progressBar = document.getElementById("covers-restore-progress-bar");
-    const countsText = document.getElementById("covers-restore-counts");
-    const alertBox = document.getElementById("covers-restore-alert");
-
-    let pollInterval = null;
-
-    function updateUI(state) {
-        if (!progressContainer) return;
-        if (state.running) {
-            progressContainer.style.display = "block";
-            if (btnRestore) {
-                btnRestore.disabled = true;
-                btnRestore.innerHTML = `<span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:4px;"></span> En cours...`;
-            }
-            if (statusText) statusText.textContent = state.album ? `Traitement : ${state.album}` : "Restauration en cours...";
-            if (percentText) percentText.textContent = `${state.percent || 0}%`;
-            if (progressBar) progressBar.style.width = `${state.percent || 0}%`;
-            if (countsText) countsText.textContent = `${state.current || 0} / ${state.total || 0} (${state.repaired || 0} restaurée(s), ${state.failed || 0} échec(s))`;
-            if (alertBox) alertBox.style.display = "none";
-        } else if (state.done) {
-            if (btnRestore) {
-                btnRestore.disabled = false;
-                btnRestore.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-                    <span>Restaurer toutes les jaquettes</span>
-                `;
-            }
-            if (progressBar) progressBar.style.width = "100%";
-            if (percentText) percentText.textContent = "100%";
-            if (statusText) statusText.textContent = "Restauration terminée !";
-            if (countsText) countsText.textContent = `Bilan : ${state.repaired || 0} restaurée(s), ${state.failed || 0} échec(s) sur ${state.total || 0} albums.`;
-            if (alertBox) {
-                alertBox.style.display = "block";
-                alertBox.className = "alert alert-success";
-                alertBox.style.background = "rgba(16, 185, 129, 0.15)";
-                alertBox.style.border = "1px solid rgba(16, 185, 129, 0.3)";
-                alertBox.style.color = "#34d399";
-                alertBox.textContent = `Restauration complétée avec succès ! ${state.repaired || 0} pochette(s) restaurée(s) en plein carré 1:1 avec hauteur intégrale.`;
-            }
-            if (pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-            }
-            // Rafraîchir l'affichage de la bibliothèque et du lecteur
-            if (typeof AudioPlayer !== "undefined" && AudioPlayer.loadLibraryData) {
-                AudioPlayer.loadLibraryData(true);
-            }
-            if (typeof loadLibrary === "function") loadLibrary();
-        } else {
-            if (btnRestore) {
-                btnRestore.disabled = false;
-                btnRestore.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-                    <span>Restaurer toutes les jaquettes</span>
-                `;
-            }
-        }
-    }
-
-    // Écouter les événements WebSocket
-    window.addEventListener("covers_restore_event", (e) => {
-        if (e.detail) updateUI(e.detail);
-    });
-
-    if (btnRestore) {
-        btnRestore.addEventListener("click", async () => {
-            const confirmed = await showModalConfirm(
-                "Restaurer les jaquettes (Hauteur intégrale 100%)",
-                "Cette opération va retélécharger les miniatures originales HD depuis YouTube pour l'ensemble des albums de votre collection et appliquer le recadrage 1:1 avec 100% de la hauteur intégrale préservée (zéro rognage vertical).\n\nLes tags audio seront automatiquement mis à jour via Kid3.\n\nSouhaitez-vous lancer la restauration maintenant ?",
-                "Lancer la restauration",
-                "Annuler"
-            );
-            if (!confirmed) return;
-
-            if (alertBox) alertBox.style.display = "none";
-            if (progressContainer) progressContainer.style.display = "block";
-            if (statusText) statusText.textContent = "Démarrage du processus...";
-            btnRestore.disabled = true;
-
-            try {
-                const res = await fetch("/api/library/restore-covers", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" }
-                });
-                const data = await res.json();
-                if (data.status === "already_running") {
-                    showToast("Une restauration est déjà en cours d'exécution.", "info");
-                } else if (data.status === "error") {
-                    showToast(data.message || "Erreur lors du démarrage.", "error");
-                    btnRestore.disabled = false;
-                    return;
-                } else {
-                    showToast("Restauration des jaquettes lancée en tâche de fond.", "info");
-                }
-
-                // Polling de sécurité toutes les 2 secondes
-                if (!pollInterval) {
-                    pollInterval = setInterval(async () => {
-                        try {
-                            const sRes = await fetch("/api/library/restore-covers/status");
-                            const sData = await sRes.json();
-                            updateUI(sData);
-                            if (sData.done || !sData.running) {
-                                clearInterval(pollInterval);
-                                pollInterval = null;
-                            }
-                        } catch (err) {
-                            console.warn("Polling restore covers status error:", err);
-                        }
-                    }, 2000);
-                }
-            } catch (err) {
-                console.error("Erreur restore covers:", err);
-                showToast("Erreur lors de la demande de restauration : " + err.message, "error");
-                btnRestore.disabled = false;
-            }
-        });
-    }
-
-    if (btnCancel) {
-        btnCancel.addEventListener("click", async () => {
-            try {
-                await fetch("/api/library/restore-covers/cancel", { method: "POST" });
-                showToast("Demande d'arrêt de la restauration envoyée.", "warning");
-                if (statusText) statusText.textContent = "Interruption en cours...";
-            } catch (err) {
-                console.error("Erreur annulation restauration:", err);
-            }
-        });
-    }
-
-    // Contrôle initial au chargement si une restauration est déjà en cours
-    fetch("/api/library/restore-covers/status")
-        .then(r => r.json())
-        .then(s => {
-            if (s && s.running) {
-                updateUI(s);
-                if (!pollInterval) {
-                    pollInterval = setInterval(async () => {
-                        try {
-                            const sRes = await fetch("/api/library/restore-covers/status");
-                            const sData = await sRes.json();
-                            updateUI(sData);
-                            if (sData.done || !sData.running) {
-                                clearInterval(pollInterval);
-                                pollInterval = null;
-                            }
-                        } catch (err) {}
-                    }, 2000);
-                }
-            }
-        })
-        .catch(() => {});
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 // Diagnostic Santé & Harmonisation de Collection
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -1260,13 +1093,14 @@ if (btnApplyAudit) {
         }
     });
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// Modale de Recherche & Choix de Pochette en Ligne
-// ═══════════════════════════════════════════════════════════════════════
+// =========================================================================
+// Modale de Recherche & Choix de Pochette Multi-Sources & Import Local
+// =========================================================================
 
 let selectedCandidateCoverUrl = null;
+let selectedCandidateCoverBase64 = null;
 let currentCoverCandidates = [];
+let activeCoverFilter = "all";
 
 const coverSearchModal = document.getElementById("cover-search-modal-backdrop");
 const btnOpenCoverSearch = document.getElementById("btn-search-cover-ytm");
@@ -1280,17 +1114,46 @@ const coverSearchEmpty = document.getElementById("cover-search-empty");
 const coverSearchGrid = document.getElementById("cover-search-results-grid");
 const coverSearchHint = document.getElementById("cover-search-selected-hint");
 const coverSearchApplyText = document.getElementById("cover-search-apply-text");
+const coverDropzone = document.getElementById("cover-dropzone");
+const btnBrowseLocalCover = document.getElementById("btn-browse-local-cover");
+const btnPasteClipboardCover = document.getElementById("btn-paste-clipboard-cover");
+const coverLocalFileInput = document.getElementById("cover-local-file-input");
 
-function openCoverSearchModal() {
-    if (!currentAlbumPath) {
+function getActiveEditorAlbumPath() {
+    if (window.currentAlbumPath) return window.currentAlbumPath;
+    if (typeof currentAlbumPath !== "undefined" && currentAlbumPath) return currentAlbumPath;
+    const colSelect = document.getElementById("editor-collection-select");
+    if (colSelect && colSelect.value) return colSelect.value;
+    const pathEl = document.getElementById("editor-album-path");
+    if (pathEl && pathEl.textContent && pathEl.textContent.trim() !== "Aucun dossier chargé") {
+        return pathEl.textContent.trim();
+    }
+    return null;
+}
+
+function openCoverSearchModal(preloadedLocalFile = null, overrideAlbum = null, preloadedSourceLabel = "Fichier local") {
+    let albumPath = (overrideAlbum && overrideAlbum.path) ? overrideAlbum.path : getActiveEditorAlbumPath();
+    if (!albumPath) {
         showToast("Veuillez d'abord sélectionner ou ouvrir un album dans l'Éditeur.", "warning");
         return;
     }
 
-    const artistInput = document.getElementById("edit-album-artist");
-    const albumInput = document.getElementById("edit-album-name");
-    const artist = artistInput ? artistInput.value.trim() : "";
-    const album = albumInput ? albumInput.value.trim() : "";
+    // Sauvegarder le chemin de l'album ciblé
+    window.currentAlbumPath = albumPath;
+    window._coverModalTargetAlbumPath = albumPath;
+    window._coverModalOverrideAlbum = overrideAlbum;
+
+    let artist = "";
+    let album = "";
+    if (overrideAlbum) {
+        artist = (overrideAlbum.artist || overrideAlbum.album_artist || "").trim();
+        album = (overrideAlbum.title || overrideAlbum.album_name || "").trim();
+    } else {
+        const artistInput = document.getElementById("edit-album-artist");
+        const albumInput = document.getElementById("edit-album-name");
+        artist = artistInput ? artistInput.value.trim() : "";
+        album = albumInput ? albumInput.value.trim() : "";
+    }
 
     const query = [artist, album].filter(Boolean).join(" ");
     if (coverSearchInput) {
@@ -1298,7 +1161,18 @@ function openCoverSearchModal() {
     }
 
     selectedCandidateCoverUrl = null;
+    selectedCandidateCoverBase64 = null;
     currentCoverCandidates = [];
+    activeCoverFilter = "all";
+
+    // Réinitialiser les filtres
+    document.querySelectorAll(".btn-cover-filter").forEach(btn => {
+        if (btn.getAttribute("data-filter") === "all") btn.classList.add("active");
+        else btn.classList.remove("active");
+    });
+    const localFilterBtn = document.getElementById("cover-filter-local");
+    if (localFilterBtn) localFilterBtn.style.display = "none";
+
     if (btnApplyCover) btnApplyCover.disabled = true;
     if (coverSearchHint) coverSearchHint.textContent = "Aucune jaquette sélectionnée.";
     if (coverSearchGrid) coverSearchGrid.innerHTML = "";
@@ -1306,12 +1180,26 @@ function openCoverSearchModal() {
 
     if (coverSearchModal) {
         coverSearchModal.style.display = "flex";
+        void coverSearchModal.offsetWidth;
+        coverSearchModal.classList.add("active");
     }
 
-    if (query) {
+    if (preloadedLocalFile) {
+        handleLocalCoverFile(preloadedLocalFile, preloadedSourceLabel);
+    } else if (query) {
         performCoverSearch(query);
     }
 }
+window.openCoverSearchModal = openCoverSearchModal;
+
+function closeCoverSearchModal() {
+    if (!coverSearchModal) return;
+    coverSearchModal.classList.remove("active");
+    setTimeout(() => {
+        coverSearchModal.style.display = "none";
+    }, 200);
+}
+window.closeCoverSearchModal = closeCoverSearchModal;
 
 async function performCoverSearch(query) {
     if (!query || !query.trim()) return;
@@ -1319,8 +1207,9 @@ async function performCoverSearch(query) {
     if (coverSearchEmpty) coverSearchEmpty.style.display = "none";
     if (coverSearchGrid) coverSearchGrid.innerHTML = "";
     selectedCandidateCoverUrl = null;
+    selectedCandidateCoverBase64 = null;
     if (btnApplyCover) btnApplyCover.disabled = true;
-    if (coverSearchHint) coverSearchHint.textContent = "Aucune jaquette sélectionnée.";
+    if (coverSearchHint) coverSearchHint.textContent = "Recherche en cours dans les discographies...";
 
     try {
         const res = await fetch(`/api/album/search-covers?query=${encodeURIComponent(query.trim())}`);
@@ -1329,25 +1218,84 @@ async function performCoverSearch(query) {
         if (coverSearchLoading) coverSearchLoading.style.display = "none";
 
         const candidates = data.candidates || [];
-        currentCoverCandidates = candidates;
+        // Conserver les fichiers locaux déjà présents
+        const locals = currentCoverCandidates.filter(c => c.isLocal);
+        currentCoverCandidates = [...locals, ...candidates];
 
-        if (candidates.length === 0) {
+        if (currentCoverCandidates.length === 0) {
             if (coverSearchEmpty) coverSearchEmpty.style.display = "block";
             return;
         }
 
-        renderCoverCandidates(candidates);
+        renderCoverCandidates(currentCoverCandidates);
+
+        // Sélectionner automatiquement la 1ère pochette haute résolution officielle
+        if (currentCoverCandidates.length > 0 && coverSearchGrid && coverSearchGrid.firstElementChild) {
+            selectCoverCandidate(currentCoverCandidates[0], coverSearchGrid.firstElementChild);
+        }
     } catch (err) {
         if (coverSearchLoading) coverSearchLoading.style.display = "none";
         showToast(`Erreur recherche de jaquettes : ${err.message}`, "danger");
     }
 }
 
+function handleLocalCoverFile(file, sourceLabel = "Fichier local") {
+    if (!file || (!file.type.startsWith("image/") && !file.type.includes("octet-stream"))) {
+        showToast("Veuillez sélectionner ou coller un format d'image valide (.jpg, .png, .webp).", "warning");
+        return;
+    }
+
+    const isClipboard = (sourceLabel === "Presse-papier");
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        const localCandidate = {
+            title: isClipboard ? "Pochette presse-papier" : (file.name || "Image personnalisée"),
+            artist: isClipboard ? "Copiée depuis votre presse-papier" : "Image locale de votre PC",
+            year: `${(file.size / 1024).toFixed(0)} Ko`,
+            track_count: null,
+            thumbnail: dataUrl,
+            source: isClipboard ? "Presse-papier" : "Fichier local",
+            badge: isClipboard ? "📋 Presse-papier" : "📁 Fichier local",
+            isLocal: true,
+            base64: dataUrl
+        };
+
+        const localFilterBtn = document.getElementById("cover-filter-local");
+        if (localFilterBtn) {
+            localFilterBtn.textContent = isClipboard ? "📋 Presse-papier" : "📁 Fichier local";
+            localFilterBtn.setAttribute("data-filter", isClipboard ? "Presse-papier" : "Fichier local");
+            localFilterBtn.style.display = "inline-block";
+        }
+
+        currentCoverCandidates = [localCandidate, ...currentCoverCandidates.filter(c => !c.isLocal)];
+        renderCoverCandidates(currentCoverCandidates);
+
+        if (coverSearchGrid && coverSearchGrid.firstElementChild) {
+            selectCoverCandidate(localCandidate, coverSearchGrid.firstElementChild);
+        }
+        showToast(isClipboard ? "Image collée depuis le presse-papier ! Cliquez sur 'Appliquer la pochette' pour valider." : "Image locale chargée ! Cliquez sur 'Appliquer la pochette' pour valider.", "info");
+    };
+    reader.readAsDataURL(file);
+}
+
 function renderCoverCandidates(candidates) {
     if (!coverSearchGrid) return;
     coverSearchGrid.innerHTML = "";
 
-    candidates.forEach((cand, idx) => {
+    const filtered = candidates.filter(c => {
+        if (activeCoverFilter === "all") return true;
+        return c.source && c.source.toLowerCase().includes(activeCoverFilter.toLowerCase());
+    });
+
+    if (filtered.length === 0) {
+        if (coverSearchEmpty) coverSearchEmpty.style.display = "block";
+        return;
+    } else {
+        if (coverSearchEmpty) coverSearchEmpty.style.display = "none";
+    }
+
+    filtered.forEach((cand, idx) => {
         const card = document.createElement("div");
         card.className = "cover-candidate-card";
         card.setAttribute("data-index", idx);
@@ -1355,12 +1303,40 @@ function renderCoverCandidates(candidates) {
         const thumb = cand.thumbnail || "/static/placeholder-cover.svg";
         const metaParts = [];
         if (cand.year) metaParts.push(cand.year);
-        if (cand.track_count) metaParts.push(cand.track_count);
+        if (cand.track_count) metaParts.push(`${cand.track_count} pistes`);
         const metaStr = metaParts.join(" • ");
+
+        // Classe de badge source
+        let tagClass = "apple";
+        let srcLabel = cand.badge || cand.source || "Officiel";
+        if (cand.source === "Presse-papier" || (cand.badge && cand.badge.includes("Presse-papier"))) {
+            tagClass = "clipboard";
+            srcLabel = "📋 Presse-papier";
+        } else if (cand.isLocal) {
+            tagClass = "local";
+            srcLabel = "📁 Fichier local";
+        } else if (cand.source === "Deezer") {
+            tagClass = "deezer";
+            srcLabel = "🎵 Deezer HD";
+        } else if (cand.source === "YouTube Music") {
+            tagClass = "youtube";
+            srcLabel = "▶ YouTube Music";
+        } else if (cand.source === "Apple Music") {
+            tagClass = "apple";
+            srcLabel = "🍎 Apple Music";
+        }
+
+        const isCurrentlySelected = (cand.isLocal && selectedCandidateCoverBase64 === cand.base64) ||
+            (!cand.isLocal && selectedCandidateCoverUrl === cand.thumbnail);
+
+        if (isCurrentlySelected) {
+            card.classList.add("selected");
+        }
 
         card.innerHTML = `
             <div class="cover-candidate-thumb-wrap">
-                <img class="cover-candidate-thumb" src="${escapeHtml(thumb)}" alt="Cover candidate" referrerpolicy="no-referrer" loading="lazy" onerror="window.handleCoverError(this);">
+                <span class="cover-source-tag ${tagClass}">${escapeHtml(srcLabel)}</span>
+                <img class="cover-candidate-thumb" src="${escapeHtml(thumb)}" alt="Pochette candidate" referrerpolicy="no-referrer" loading="lazy" onerror="window.handleCoverError(this);">
                 <span class="cover-candidate-badge">✓ Choisi</span>
             </div>
             <div class="cover-candidate-info">
@@ -1374,79 +1350,172 @@ function renderCoverCandidates(candidates) {
             selectCoverCandidate(cand, card);
         });
 
+        // Double-clic = validation immédiate
+        card.addEventListener("dblclick", () => {
+            selectCoverCandidate(cand, card);
+            applySelectedCover();
+        });
+
         coverSearchGrid.appendChild(card);
     });
 }
 
-function selectCoverCandidate(cand, cardEl) {
+function selectCoverCandidate(cand, cardEl = null) {
     document.querySelectorAll(".cover-candidate-card").forEach(c => c.classList.remove("selected"));
-    cardEl.classList.add("selected");
-    selectedCandidateCoverUrl = cand.thumbnail;
+    if (cardEl) {
+        cardEl.classList.add("selected");
+    } else {
+        const firstCard = document.querySelector(".cover-candidate-card");
+        if (firstCard) firstCard.classList.add("selected");
+    }
+
+    if (cand.isLocal) {
+        selectedCandidateCoverBase64 = cand.base64;
+        selectedCandidateCoverUrl = null;
+    } else {
+        selectedCandidateCoverUrl = cand.thumbnail;
+        selectedCandidateCoverBase64 = null;
+    }
 
     if (btnApplyCover) {
         btnApplyCover.disabled = false;
     }
     if (coverSearchHint) {
-        coverSearchHint.innerHTML = `Sélectionné : <strong>${escapeHtml(cand.title)}</strong> (${escapeHtml(cand.artist)})`;
+        const srcText = cand.badge || cand.source || "Source";
+        coverSearchHint.innerHTML = `Sélectionné : <strong>${escapeHtml(cand.title)}</strong> (${escapeHtml(srcText)})`;
     }
 }
 
 async function applySelectedCover() {
-    if (!selectedCandidateCoverUrl || !currentAlbumPath) return;
+    const albumPath = window._coverModalTargetAlbumPath || getActiveEditorAlbumPath();
+    if (!albumPath) {
+        showToast("Chemin de l'album introuvable.", "danger");
+        return;
+    }
+    if (!selectedCandidateCoverUrl && !selectedCandidateCoverBase64) {
+        showToast("Veuillez sélectionner une pochette à appliquer.", "warning");
+        return;
+    }
 
     if (btnApplyCover) {
         btnApplyCover.disabled = true;
     }
     if (coverSearchApplyText) {
-        coverSearchApplyText.textContent = "Téléchargement & injection...";
+        coverSearchApplyText.textContent = "Application de la pochette...";
     }
 
     try {
+        const payload = {
+            album_path: albumPath,
+            cover_url: selectedCandidateCoverUrl,
+            cover_base64: selectedCandidateCoverBase64,
+            embed_in_tags: true
+        };
+
         const res = await fetch("/api/album/apply-cover", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                album_path: currentAlbumPath,
-                cover_url: selectedCandidateCoverUrl,
-                embed_in_tags: true
-            })
+            body: JSON.stringify(payload)
         });
 
         const data = await res.json();
         if (data.success) {
+            const canonicalPath = data.album_path || albumPath;
             const cacheBuster = Date.now();
-            const newCoverSrc = `/api/audio/cover?path=${encodeURIComponent(currentAlbumPath)}&t=${cacheBuster}`;
+            const newCoverSrc = `/api/audio/cover?path=${encodeURIComponent(canonicalPath)}&t=${cacheBuster}`;
 
-            // 1. Mettre à jour la couverture dans l'Éditeur
+            function isSameAlbumPath(p1, p2) {
+                if (!p1 || !p2) return false;
+                const c1 = String(p1).replace(/[\\/]+/g, "/").toLowerCase().replace(/\/+$/, "").trim();
+                const c2 = String(p2).replace(/[\\/]+/g, "/").toLowerCase().replace(/\/+$/, "").trim();
+                return c1 === c2;
+            }
+
+            // 1. Mettre à jour l'image de couverture dans l'Éditeur
             const editorCover = document.getElementById("editor-cover");
             if (editorCover) {
                 editorCover.src = newCoverSrc;
             }
 
-            // 2. Mettre à jour l'album en cours dans le Lecteur Audio s'il correspond
+            // Si cet album est actuellement ouvert dans l'Éditeur
+            if (typeof currentAlbumInfo !== "undefined" && currentAlbumInfo && isSameAlbumPath(currentAlbumInfo.album_dir, canonicalPath)) {
+                currentAlbumInfo.cover_art = `${canonicalPath}/cover.jpg`;
+                currentAlbumInfo.cover_url = newCoverSrc;
+            }
+
+            // 2. Mettre à jour dans le lecteur audio s'il est en cours
             if (typeof AudioPlayer !== "undefined" && AudioPlayer) {
-                if (AudioPlayer.currentAlbum && AudioPlayer.currentAlbum.path === currentAlbumPath) {
+                if (AudioPlayer.currentAlbum && (isSameAlbumPath(AudioPlayer.currentAlbum.path, canonicalPath) || isSameAlbumPath(AudioPlayer.currentAlbum.album_path, canonicalPath))) {
                     AudioPlayer.currentAlbum.cover_url = newCoverSrc;
                     const npThumb = document.getElementById("player-cover-img");
                     if (npThumb) npThumb.src = newCoverSrc;
                     const miniThumb = document.getElementById("mini-player-thumb");
                     if (miniThumb) miniThumb.src = newCoverSrc;
                 }
-                // Actualiser dans la liste des albums
-                if (AudioPlayer.libraryAlbums) {
-                    const match = AudioPlayer.libraryAlbums.find(a => a.path === currentAlbumPath);
-                    if (match) {
-                        match.has_cover = true;
-                        match.cover_file = `${currentAlbumPath}/cover.jpg`;
-                    }
+                if (AudioPlayer.libraryAlbums && Array.isArray(AudioPlayer.libraryAlbums)) {
+                    AudioPlayer.libraryAlbums.forEach(alb => {
+                        if (isSameAlbumPath(alb.path, canonicalPath)) {
+                            alb.has_cover = true;
+                            alb.cover_file = `${canonicalPath}/cover.jpg`;
+                            alb.cover_url = newCoverSrc;
+                            alb.mtime = Math.floor(cacheBuster / 1000);
+                        }
+                    });
+                }
+                if (typeof AudioPlayer.renderCurrentView === "function") {
                     AudioPlayer.renderCurrentView();
                 }
             }
 
-            if (coverSearchModal) {
-                coverSearchModal.style.display = "none";
+            // 3. Mettre à jour dans la Galerie des Jaquettes (Onglet Jaquettes)
+            if (window.coversGalleryAlbums && Array.isArray(window.coversGalleryAlbums)) {
+                window.coversGalleryAlbums.forEach(alb => {
+                    if (isSameAlbumPath(alb.path, canonicalPath)) {
+                        alb.has_cover = true;
+                        alb.cover_url = newCoverSrc;
+                        alb.mtime = Math.floor(cacheBuster / 1000);
+                    }
+                });
             }
-            showToast("Jaquette officielle appliquée avec succès et injectée dans les morceaux !", "success");
+
+            // Mettre à jour immédiatement les éléments existants dans le DOM de la galerie
+            document.querySelectorAll(".cover-gallery-card").forEach(card => {
+                const cardPath = card.getAttribute("data-path");
+                if (isSameAlbumPath(cardPath, canonicalPath)) {
+                    const img = card.querySelector("img");
+                    if (img) {
+                        img.src = newCoverSrc;
+                    }
+                }
+            });
+
+            // Si la fonction de re-rendu de la galerie est disponible, rafraîchir la grille
+            if (typeof window.renderCoversGallery === "function") {
+                window.renderCoversGallery();
+            }
+
+            // 4. Mettre à jour toutes les images du DOM qui référencent cet album
+            document.querySelectorAll("img").forEach(img => {
+                const card = img.closest("[data-path]");
+                if (card && isSameAlbumPath(card.getAttribute("data-path"), canonicalPath)) {
+                    img.src = newCoverSrc;
+                    return;
+                }
+                const rawSrc = img.getAttribute("src") || img.src || "";
+                if (rawSrc && (rawSrc.includes("/api/audio/cover") || rawSrc.includes("/api/cover"))) {
+                    try {
+                        const urlObj = new URL(rawSrc, window.location.origin);
+                        const p = urlObj.searchParams.get("path");
+                        if (p && isSameAlbumPath(p, canonicalPath)) {
+                            img.src = newCoverSrc;
+                        }
+                    } catch (_) {}
+                }
+            });
+
+            window.coversModifiedInWorkshopCount = (window.coversModifiedInWorkshopCount || 0) + 1;
+            closeCoverSearchModal();
+            showToast("Jaquette officielle appliquée avec succès (Règle d'Or 100% hauteur) !", "success");
         } else {
             showToast(`Erreur : ${data.detail || data.message || "Échec de l'application"}`, "danger");
         }
@@ -1462,19 +1531,38 @@ async function applySelectedCover() {
     }
 }
 
+// Filtres par source (Toutes, Apple Music, Deezer, YouTube Music, Local)
+document.querySelectorAll(".btn-cover-filter").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.querySelectorAll(".btn-cover-filter").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeCoverFilter = btn.getAttribute("data-filter") || "all";
+        renderCoverCandidates(currentCoverCandidates);
+    });
+});
+
+// Événements d'ouverture et fermeture
 if (btnOpenCoverSearch) {
-    btnOpenCoverSearch.addEventListener("click", openCoverSearchModal);
+    btnOpenCoverSearch.addEventListener("click", () => openCoverSearchModal());
 }
 if (btnCloseCoverSearch) {
-    btnCloseCoverSearch.addEventListener("click", () => {
-        if (coverSearchModal) coverSearchModal.style.display = "none";
-    });
+    btnCloseCoverSearch.addEventListener("click", () => closeCoverSearchModal());
 }
 if (btnCancelCoverSearch) {
-    btnCancelCoverSearch.addEventListener("click", () => {
-        if (coverSearchModal) coverSearchModal.style.display = "none";
+    btnCancelCoverSearch.addEventListener("click", () => closeCoverSearchModal());
+}
+if (coverSearchModal) {
+    coverSearchModal.addEventListener("click", (e) => {
+        if (e.target === coverSearchModal) {
+            closeCoverSearchModal();
+        }
     });
 }
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && coverSearchModal && coverSearchModal.classList.contains("active")) {
+        closeCoverSearchModal();
+    }
+});
 if (btnApplyCover) {
     btnApplyCover.addEventListener("click", applySelectedCover);
 }
@@ -1485,6 +1573,143 @@ if (coverSearchForm) {
         if (q) performCoverSearch(q);
     });
 }
+
+// Parcourir un fichier local
+if (btnBrowseLocalCover && coverLocalFileInput) {
+    btnBrowseLocalCover.addEventListener("click", (e) => {
+        e.stopPropagation();
+        coverLocalFileInput.click();
+    });
+}
+if (coverLocalFileInput) {
+    coverLocalFileInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files[0]) {
+            handleLocalCoverFile(e.target.files[0]);
+        }
+    });
+}
+
+// Glisser-déposer sur la zone dédiée dans la modale
+if (coverDropzone) {
+    coverDropzone.addEventListener("click", () => {
+        if (coverLocalFileInput) coverLocalFileInput.click();
+    });
+
+    ["dragenter", "dragover"].forEach(evtName => {
+        coverDropzone.addEventListener(evtName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            coverDropzone.classList.add("dragover");
+        });
+    });
+
+    ["dragleave", "drop"].forEach(evtName => {
+        coverDropzone.addEventListener(evtName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            coverDropzone.classList.remove("dragover");
+        });
+    });
+
+    coverDropzone.addEventListener("drop", (e) => {
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            handleLocalCoverFile(files[0]);
+        }
+    });
+}
+
+// Glisser-déposer direct sur la pochette de l'éditeur
+const editorCoverBox = document.querySelector(".album-cover-box");
+if (editorCoverBox) {
+    ["dragenter", "dragover"].forEach(evtName => {
+        editorCoverBox.addEventListener(evtName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            editorCoverBox.classList.add("dragover");
+        });
+    });
+
+    ["dragleave", "drop"].forEach(evtName => {
+        editorCoverBox.addEventListener(evtName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            editorCoverBox.classList.remove("dragover");
+        });
+    });
+
+    editorCoverBox.addEventListener("drop", (e) => {
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            const f = files[0];
+            if (f.type.startsWith("image/")) {
+                openCoverSearchModal(f);
+            }
+        }
+    });
+}
+
+// Coller une image depuis le presse-papier via le bouton dédié
+async function pasteImageFromClipboard() {
+    try {
+        if (navigator.clipboard && navigator.clipboard.read) {
+            const clipboardItems = await navigator.clipboard.read();
+            for (const item of clipboardItems) {
+                for (const type of item.types) {
+                    if (type.startsWith("image/")) {
+                        const blob = await item.getType(type);
+                        if (blob) {
+                            handleLocalCoverFile(blob, "Presse-papier");
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        showToast("Aucune image trouvée dans le presse-papier. Copiez d'abord une image ou utilisez Ctrl+V.", "info");
+        return false;
+    } catch (err) {
+        console.warn("Clipboard read error:", err);
+        showToast("Accès direct au presse-papier restreint : utilisez directement le raccourci Ctrl+V !", "info");
+        return false;
+    }
+}
+window.pasteImageFromClipboard = pasteImageFromClipboard;
+
+if (btnPasteClipboardCover) {
+    btnPasteClipboardCover.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pasteImageFromClipboard();
+    });
+}
+
+// Raccourci global Ctrl+V : Détection du collage d'image presse-papier
+document.addEventListener("paste", (e) => {
+    const items = (e.clipboardData || window.clipboardData)?.items;
+    if (!items || items.length === 0) return;
+
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+            const file = items[i].getAsFile();
+            if (file) {
+                e.preventDefault();
+                // 1. Si la modale de jaquette est déjà ouverte :
+                if (coverSearchModal && coverSearchModal.classList.contains("active")) {
+                    handleLocalCoverFile(file, "Presse-papier");
+                } else {
+                    // 2. Si un album est chargé dans l'Éditeur :
+                    const albumPath = getActiveEditorAlbumPath();
+                    if (albumPath) {
+                        openCoverSearchModal(file, null, "Presse-papier");
+                    } else {
+                        showToast("Veuillez d'abord sélectionner ou ouvrir un album dans l'Éditeur pour lui coller cette pochette.", "warning");
+                    }
+                }
+                break;
+            }
+        }
+    }
+});
 
 // Configuration de la modale d'information lors de la première réduction dans le Systray (zone de notification)
 function setupTrayNoticeModal() {

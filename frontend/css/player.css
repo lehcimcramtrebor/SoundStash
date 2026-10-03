@@ -2066,6 +2066,182 @@ body.player-mode-active .nav-tabs {
     margin-top: 2px;
 }
 
+.cover-source-tag {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    font-size: 0.68rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    z-index: 2;
+}
+
+.cover-source-tag.apple {
+    background: linear-gradient(135deg, #fc3c44, #fa2d55);
+    color: white;
+}
+
+.cover-source-tag.deezer {
+    background: linear-gradient(135deg, #ff0055, #a238ff);
+    color: white;
+}
+
+.cover-source-tag.youtube {
+    background: #ff0000;
+    color: white;
+}
+
+.cover-source-tag.local {
+    background: #10b981;
+    color: white;
+}
+
+.cover-source-tag.clipboard {
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    color: white;
+}
+
+.btn-cover-filter {
+    background: var(--bg-surface-elevated, #1e1e2e);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    color: var(--text-muted, #a6adc8);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-cover-filter:hover {
+    border-color: var(--accent, #89b4fa);
+    color: var(--text-main, #cdd6f4);
+}
+
+.btn-cover-filter.active {
+    background: var(--accent, #89b4fa);
+    color: #11111b;
+    border-color: var(--accent, #89b4fa);
+}
+
+.cover-dropzone:hover, .cover-dropzone.dragover {
+    border-color: var(--accent, #89b4fa) !important;
+    background: rgba(137, 180, 250, 0.08) !important;
+}
+
+.album-cover-box.dragover {
+    outline: 3px dashed var(--accent, #89b4fa);
+    outline-offset: -3px;
+}
+
+/* =========================================================
+   Galerie des Jaquettes (Onglet Éditeur / Uniformiser)
+   ========================================================= */
+.covers-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 16px;
+    margin-top: 14px;
+}
+
+.cover-gallery-card {
+    background: var(--bg-surface-elevated, #1e1e2e);
+    border: 2px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.cover-gallery-card:hover {
+    border-color: var(--accent, #89b4fa);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.cover-gallery-thumb-wrap {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #0f111a;
+    position: relative;
+    overflow: hidden;
+}
+
+.cover-gallery-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.25s ease;
+}
+
+.cover-gallery-card:hover .cover-gallery-thumb {
+    transform: scale(1.04);
+}
+
+.cover-gallery-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.cover-gallery-card:hover .cover-gallery-overlay {
+    opacity: 1;
+}
+
+.cover-gallery-hover-action {
+    background: var(--accent, #89b4fa);
+    color: #11111b;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.cover-gallery-info {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--bg-surface-elevated, #1e1e2e);
+}
+
+.cover-gallery-title {
+    font-weight: 600;
+    font-size: 0.86rem;
+    color: var(--text-main, #cdd6f4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cover-gallery-artist {
+    color: var(--text-muted, #a6adc8);
+    font-size: 0.76rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cover-gallery-meta {
+    color: var(--text-muted, #a6adc8);
+    font-size: 0.7rem;
+    margin-top: 2px;
+}
+
 /* =========================================================
    Système de File d'Attente Avancée & Volet Tiroir (Queue Drawer)
    ========================================================= */

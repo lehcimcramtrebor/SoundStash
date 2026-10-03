@@ -63,130 +63,146 @@ def _clean_for_match(text: Optional[str]) -> str:
         return ""
     # Supprimer les mentions de réédition, version, etc.
     s = re.sub(r'[\(\[][^\)\]]*(?:deluxe|remaster|anniversary|expanded|edition|version|reissue|bonus|live|ost|soundtrack)[^\)\]]*[\)\]]', '', text, flags=re.IGNORECASE)
-    # Remplacer les séparateurs et caractères spéciaux
+    # Remplacer les séparateurs et caractères spéciaux (y compris pleines largeurs comme \uff1a)
     s = re.sub(r'[^\w\s]', ' ', s)
     return ' '.join(s.lower().split())
 
 def fetch_official_album_cover(artist_name: str, album_name: str) -> Optional[str]:
     """
-    Interroge l'API iTunes / Apple Music pour obtenir l'authentique pochette CD studio
-    officielle en haute résolution native 1:1 (1200x1200px ou 1400x1400px).
+    Interroge l'API iTunes (Apple Music) puis l'API Deezer pour obtenir l'authentique pochette CD studio
+    officielle en haute résolution native 1:1 (1000x1000px à 1400x1400px).
     Garantit zéro capture d'écran de clip vidéo ou de concert live.
+    Ultra-optimisé : 1 à 2 requêtes ciblées max, avec cadence respectueuse pour éliminer tout risque de rate-limit.
     """
     clean_alb = _clean_for_match(album_name)
     clean_art = _clean_for_match(artist_name)
     if not clean_alb and not clean_art:
         return None
 
-    queries = []
-    if artist_name and album_name:
-        queries.append(f"{artist_name} {album_name}".strip())
-    if clean_art and clean_alb:
-        queries.append(f"{clean_art} {clean_alb}".strip())
-    if album_name:
-        queries.append(album_name.strip())
-    if clean_alb:
-        queries.append(clean_alb)
+    art_norm = re.sub(r'[^\w\s\-\'\&]', ' ', artist_name).strip() if artist_name else ""
+    alb_norm = re.sub(r'[\uff1a\:]', ' ', album_name).strip() if album_name else ""
+    query_primary = f"{art_norm} {alb_norm}".strip()
+    if not query_primary:
+        query_primary = clean_alb
 
-    countries = ["FR", "US", "GB"]
-
-    for q in queries:
-        if not q:
-            continue
-        for country in countries:
-            try:
-                url = f"https://itunes.apple.com/search?term={urllib.parse.quote(q)}&entity=album&country={country}&limit=6"
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    if resp.status != 200:
-                        continue
+    # 1. ITUNES / APPLE MUSIC (FR d'abord, puis US en cas de titre international introuvable en France)
+    for country in ["FR", "US"]:
+        try:
+            url = f"https://itunes.apple.com/search?term={urllib.parse.quote(query_primary)}&entity=album&country={country}&limit=5"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-                    results = data.get("results", [])
-                    for r in results:
-                        col_name = r.get("collectionName", "")
-                        art_name = r.get("artistName", "")
-                        c_col = _clean_for_match(col_name)
-                        c_art = _clean_for_match(art_name)
-
-                        # Calculer la pertinence
+                    for r in data.get("results", []):
+                        col = r.get("collectionName", "")
+                        art = r.get("artistName", "")
+                        c_col = _clean_for_match(col)
+                        c_art = _clean_for_match(art)
                         score_alb = SequenceMatcher(None, clean_alb, c_col).ratio() if clean_alb else 0.0
                         score_art = SequenceMatcher(None, clean_art, c_art).ratio() if clean_art else 0.0
 
-                        match_alb = (score_alb >= 0.45 or clean_alb in c_col or c_col in clean_alb)
+                        match_alb = (score_alb >= 0.40 or clean_alb in c_col or c_col in clean_alb)
                         match_art = (not clean_art or score_art >= 0.35 or clean_art in c_art or c_art in clean_art)
 
                         if match_alb and match_art:
                             art_url = r.get("artworkUrl100", "")
                             if art_url:
-                                # Remplacer 100x100bb par 1200x1200bb pour obtenir l'image originale HD non compressée
                                 return art_url.replace("100x100bb", "1200x1200bb")
-            except Exception:
-                continue
+        except Exception:
+            pass
+        time.sleep(0.08)
+
+    # 2. DEEZER API (Secours officiel haute qualité 1000x1000px sans rate-limiting)
+    try:
+        url = f"https://api.deezer.com/search/album?q={urllib.parse.quote(query_primary)}&limit=5"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                for r in data.get("data", []):
+                    col = r.get("title", "")
+                    art = r.get("artist", {}).get("name", "")
+                    c_col = _clean_for_match(col)
+                    c_art = _clean_for_match(art)
+                    score_alb = SequenceMatcher(None, clean_alb, c_col).ratio() if clean_alb else 0.0
+                    score_art = SequenceMatcher(None, clean_art, c_art).ratio() if clean_art else 0.0
+
+                    match_alb = (score_alb >= 0.40 or clean_alb in c_col or c_col in clean_alb)
+                    match_art = (not clean_art or score_art >= 0.35 or clean_art in c_art or c_art in clean_art)
+
+                    if match_alb and match_art:
+                        cov_url = r.get("cover_xl") or r.get("cover_big")
+                        if cov_url:
+                            return cov_url
+    except Exception:
+        pass
 
     return None
 
 def fetch_youtube_thumbnail(query: str, album_path: Path) -> Optional[Path]:
     """
-    Repli YouTube : télécharge la miniature originale YouTube avec cascade anti-404
-    (priorité aux flux JPEG officiels avant les WebP).
+    Repli YouTube : télécharge la miniature originale avec priorité aux vidéos 'Topic' officielles
+    (contenant la pochette statique carrée de l'album) avant les vidéos génériques.
     """
     yt_dlp_bin = str(YT_DLP_PATH)
     if not Path(yt_dlp_bin).exists():
         yt_dlp_bin = "yt-dlp"
 
-    try:
-        cmd = [yt_dlp_bin, f"ytsearch1:{query}", "--dump-json", "--no-warnings", "--skip-download"]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
-        if res.returncode != 0 or not res.stdout.strip():
-            logger.warning(f"Aucun résultat YouTube pour {query}")
-            return None
+    temp_thumb = album_path / "_temp_restore_thumb.jpg"
+    search_queries = [f"{query} Topic", query]
 
-        data = json.loads(res.stdout.splitlines()[0])
-        thumbnails = data.get("thumbnails", [])
-
-        # Liste intelligente ordonnée (priorité absolue au JPEG pour éviter les 404 WebP)
-        candidate_urls = []
-        for t in reversed(thumbnails):
-            u = t.get("url", "")
-            if u and (".jpg" in u or ".jpeg" in u) and u not in candidate_urls:
-                candidate_urls.append(u)
-
-        main_thumb = data.get("thumbnail")
-        if main_thumb and main_thumb not in candidate_urls:
-            candidate_urls.append(main_thumb)
-
-        for t in reversed(thumbnails):
-            u = t.get("url", "")
-            if u and u not in candidate_urls:
-                candidate_urls.append(u)
-
-        if not candidate_urls:
-            return None
-
-        temp_thumb = album_path / "_temp_restore_thumb.jpg"
-        for u in candidate_urls:
-            try:
-                req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-                with urllib.request.urlopen(req, timeout=12) as response:
-                    if response.status == 200:
-                        content = response.read()
-                        if len(content) > 1000:
-                            with open(temp_thumb, "wb") as out_file:
-                                out_file.write(content)
-                            return temp_thumb
-            except Exception:
+    for sq in search_queries:
+        try:
+            cmd = [yt_dlp_bin, f"ytsearch1:{sq}", "--dump-json", "--no-warnings", "--skip-download"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+            if res.returncode != 0 or not res.stdout.strip():
                 continue
 
-    except Exception as e:
-        logger.debug(f"Erreur recherche YouTube pour {query}: {e}")
+            data = json.loads(res.stdout.splitlines()[0])
+            thumbnails = data.get("thumbnails", [])
+
+            # Liste intelligente ordonnée (priorité absolue au JPEG pour éviter les 404 WebP)
+            candidate_urls = []
+            for t in reversed(thumbnails):
+                u = t.get("url", "")
+                if u and (".jpg" in u or ".jpeg" in u) and u not in candidate_urls:
+                    candidate_urls.append(u)
+
+            main_thumb = data.get("thumbnail")
+            if main_thumb and main_thumb not in candidate_urls:
+                candidate_urls.append(main_thumb)
+
+            for t in reversed(thumbnails):
+                u = t.get("url", "")
+                if u and u not in candidate_urls:
+                    candidate_urls.append(u)
+
+            if not candidate_urls:
+                continue
+
+            for u in candidate_urls:
+                try:
+                    req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                    with urllib.request.urlopen(req, timeout=12) as response:
+                        if response.status == 200:
+                            content = response.read()
+                            if len(content) > 1000:
+                                with open(temp_thumb, "wb") as out_file:
+                                    out_file.write(content)
+                                return temp_thumb
+                except Exception:
+                    continue
+
+        except Exception as e:
+            logger.debug(f"Erreur recherche YouTube pour {sq}: {e}")
 
     return None
 
 def repair_album_cover(album_path: Path | str) -> bool:
     """
     Restaure la pochette officielle de l'album :
-    1. Tente d'abord l'authentique pochette CD studio 1:1 HD officielle via iTunes (zéro clip vidéo).
-    2. En cas d'album obscur / introuvable, repli sur la miniature YouTube avec la règle d'or 100% hauteur.
+    1. Tente d'abord l'authentique pochette CD studio 1:1 HD officielle via iTunes ou Deezer (zéro clip vidéo).
+    2. En cas d'album obscur / introuvable, repli sur YouTube (Topic puis vidéo) avec la règle d'or 100% hauteur.
     3. Réinjecte la jaquette dans toutes les pistes de l'album via kid3-cli.
     """
     p = Path(album_path)
@@ -228,11 +244,11 @@ def repair_album_cover(album_path: Path | str) -> bool:
     temp_thumb = p / "_temp_restore_thumb.jpg"
     is_official_studio = False
 
-    # 1. ÉTAPE PRIORITAIRE : Pochette Officielle Studio CD (iTunes HD 1200x1200)
-    itunes_url = fetch_official_album_cover(artist_name, album_name)
-    if itunes_url:
+    # 1. ÉTAPE PRIORITAIRE : Pochette Officielle Studio CD (iTunes HD 1200x1200 ou Deezer 1000x1000)
+    official_url = fetch_official_album_cover(artist_name, album_name)
+    if official_url:
         try:
-            req = urllib.request.Request(itunes_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            req = urllib.request.Request(official_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             with urllib.request.urlopen(req, timeout=12) as response:
                 if response.status == 200:
                     content = response.read()
@@ -240,9 +256,9 @@ def repair_album_cover(album_path: Path | str) -> bool:
                         with open(temp_thumb, "wb") as out_file:
                             out_file.write(content)
                         is_official_studio = True
-                        logger.info(f"Pochette officielle studio trouvée (iTunes HD) pour : {artist_name} - {album_name}")
+                        logger.info(f"Pochette officielle studio trouvée pour : {artist_name} - {album_name}")
         except Exception as e:
-            logger.debug(f"Erreur téléchargement iTunes pour {query}: {e}")
+            logger.debug(f"Erreur téléchargement pochette officielle pour {query}: {e}")
 
     # 2. ÉTAPE SECONDAIRE : Repli sur YouTube si la pochette officielle n'existe pas
     if not is_official_studio or not temp_thumb.exists():
@@ -308,7 +324,7 @@ def _run_restore_all(target_dir: Path, broadcast_fn=None):
         if _restore_stop_event.is_set():
             break
         p_root = Path(root)
-        if p_root.name.startswith(".") or p_root.name.lower() in {"_imports", ".cache", "cache"}:
+        if (p_root.name.startswith(".") and not p_root.name.startswith("..")) or p_root.name.lower() in {"_imports", ".cache", "cache"}:
             dirs.clear()
             continue
         has_audio = any(Path(f).suffix.lower() in AUDIO_EXTENSIONS for f in files)
