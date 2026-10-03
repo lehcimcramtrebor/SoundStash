@@ -877,14 +877,16 @@ function setupEditorActions() {
                     await loadCollectionAlbumsForEditor();
                     await loadAlbumInEditor(currentAlbumPath, true);
                     if (window.AudioPlayer) {
-                        window.AudioPlayer.loadLibrary();
+                        if (typeof window.AudioPlayer.loadLibrary === "function") window.AudioPlayer.loadLibrary();
+                        if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") window.AudioPlayer.loadAndRenderVideosCatalog(true);
                     }
                 } else {
                     await loadAlbumInEditor(currentAlbumPath, false);
                     await refreshAlbumNavList();
                     loadLibrary();
                     if (window.AudioPlayer) {
-                        window.AudioPlayer.loadLibrary();
+                        if (typeof window.AudioPlayer.loadLibrary === "function") window.AudioPlayer.loadLibrary();
+                        if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") window.AudioPlayer.loadAndRenderVideosCatalog(true);
                     }
                 }
             } else {
@@ -1695,6 +1697,27 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
         const res = await fetch(`/api/album/info?path=${encodeURIComponent(albumPath)}`);
         if (!res.ok) throw new Error("Album non trouvé");
         const info = await res.json();
+
+        if (isCollectionEditorMode) {
+            const select = document.getElementById("editor-collection-select");
+            if (select && albumPath) {
+                let found = false;
+                for (let i = 0; i < select.options.length; i++) {
+                    if (select.options[i].value === albumPath) {
+                        select.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && info.is_single_file) {
+                    const opt = document.createElement("option");
+                    opt.value = albumPath;
+                    opt.textContent = `🎬 ${info.album_artist || "Artiste inconnu"} - ${info.album_name || "Média"}`;
+                    select.appendChild(opt);
+                    select.value = albumPath;
+                }
+            }
+        }
 
         // Récupérer un éventuel brouillon (en mémoire, localStorage ou backend)
         let activeDraft = editorDraftsByAlbum[albumPath] || null;

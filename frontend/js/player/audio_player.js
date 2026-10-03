@@ -4019,9 +4019,9 @@ const AudioPlayer = {
             switchTab("tab-editor");
         }
 
-        // Charger l'élément dans l'éditeur de tags
+        // Charger l'élément dans l'éditeur de tags (mode collection / vidéothèque)
         if (typeof window.loadAlbumInEditor === "function") {
-            await window.loadAlbumInEditor(targetPath, false);
+            await window.loadAlbumInEditor(targetPath, true);
         }
 
         // Donner le focus immédiat au champ de saisie de l'artiste

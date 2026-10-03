@@ -1035,6 +1035,19 @@ def get_album_info(album_dir: Path | str) -> dict:
     else:
         album_dir = p
         audio_files = [f for f in album_dir.iterdir() if f.is_file() and f.suffix.lower() in (AUDIO_EXTENSIONS | {".avi", ".mov", ".m4v"})]
+
+    p_key = str(p.resolve()).lower()
+    try:
+        dir_mtime = p.stat().st_mtime
+    except Exception:
+        dir_mtime = 0.0
+
+    target_dir = p.parent if is_single_file_mode else p
+    draft_file = target_dir / ".editor_draft.json"
+    draft_mtime = draft_file.stat().st_mtime if draft_file.exists() else 0.0
+
+    meta_file = target_dir / ".playlist_meta.json"
+    meta_mtime = meta_file.stat().st_mtime if meta_file.exists() else 0.0
     
     def sort_key(f: Path):
         num, _ = parse_track_filename(f.name)
@@ -1225,8 +1238,6 @@ def get_album_info(album_dir: Path | str) -> dict:
         "is_concert": is_concert,
         "editor_draft": editor_draft
     }
-    p_key = str(p.resolve()).lower()
-    dir_mtime = p.stat().st_mtime if p.exists() else 0.0
     _ALBUM_INFO_CACHE[p_key] = (dir_mtime, len(audio_files), draft_mtime, meta_mtime, result_info)
     return result_info
 
@@ -2036,6 +2047,58 @@ def uniformize_album(
             folder_label = f"{final_artist} - {final_album}"
         else:
             folder_label = final_album
+
+    if is_single_file_mode:
+        # En mode fichier unique (ex: vidéo ou clip individuel), on ne renomme JAMAIS le dossier parent !
+        # Si l'artiste a changé et qu'on est dans la vidéothèque :
+        final_file = new_path
+        if final_artist and final_artist not in {"Artiste inconnu", "Various Artists"}:
+            from backend.library_sync import sanitize_name
+            from backend.video_indexer import video_indexer
+            v_dir = video_indexer.get_video_dir()
+            try:
+                if v_dir and v_dir.exists() and final_file.resolve().is_relative_to(v_dir.resolve()):
+                    is_concert_dest = "concert" in str(final_file.parent).lower() or "[concert]" in str(final_file).lower() or is_concert
+                    dest_parent = v_dir / sanitize_name(final_artist) / ("Concerts" if is_concert_dest else "")
+                    dest_parent.mkdir(parents=True, exist_ok=True)
+                    target_file = dest_parent / final_file.name
+                    if target_file.resolve() != final_file.resolve():
+                        if target_file.exists():
+                            target_file.unlink()
+                        shutil.move(str(final_file), str(target_file))
+                        # Déplacer aussi les miniatures compagnes si présentes
+                        for ext_t in [".jpg", ".png", ".webp"]:
+                            old_thumb = final_file.with_suffix(ext_t)
+                            if old_thumb.exists():
+                                new_thumb = target_file.with_suffix(ext_t)
+                                shutil.move(str(old_thumb), str(new_thumb))
+                        # Nettoyer l'ancien dossier s'il est vide
+                        old_p = final_file.parent
+                        if old_p.exists() and not any(old_p.iterdir()):
+                            try: old_p.rmdir()
+                            except Exception: pass
+                        final_file = target_file
+            except Exception as e:
+                logger.warning(f"Routage fichier unique post-retag: {e}")
+        
+        # Invalider le cache vidéo
+        try:
+            from backend.video_indexer import video_indexer
+            video_indexer.invalidate_cache()
+        except Exception:
+            pass
+
+        invalidate_album_cache(p)
+        invalidate_album_cache(final_file)
+
+        return {
+            "success": True,
+            "album_dir": str(final_file.resolve()),
+            "tracks": updated_tracks,
+            "is_single_file": True,
+            "is_playlist": is_playlist,
+            "dedup_warning": None
+        }
 
     if is_inside_artist_folder:
         safe_album_name = sanitize_folder_name(folder_label)

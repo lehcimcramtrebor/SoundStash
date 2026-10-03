@@ -1812,6 +1812,16 @@ async def get_album_details(path: str = Query(...)):
         raise HTTPException(status_code=400, detail="Chemin d'album requis")
     album_p = Path(path)
     if not album_p.exists():
+        from backend.video_indexer import video_indexer
+        v_dir = video_indexer.get_video_dir()
+        if (v_dir / path).exists():
+            album_p = v_dir / path
+        elif config.library_dir and (Path(config.library_dir) / path).exists():
+            album_p = Path(config.library_dir) / path
+        elif config.temp_dir and (Path(config.temp_dir) / path).exists():
+            album_p = Path(config.temp_dir) / path
+
+    if not album_p.exists():
         # Repli intelligent : chercher si le dossier a été renommé ou existe sous une variante dans le même dossier parent
         parent_p = album_p.parent
         if parent_p.exists() and parent_p.is_dir():
@@ -1829,6 +1839,15 @@ async def retag_album(req: RetagRequest):
     if not req.album_dir.strip():
         raise HTTPException(status_code=400, detail="Chemin d'album requis")
     album_p = Path(req.album_dir)
+    if not album_p.exists():
+        from backend.video_indexer import video_indexer
+        v_dir = video_indexer.get_video_dir()
+        if (v_dir / req.album_dir).exists():
+            album_p = v_dir / req.album_dir
+        elif config.library_dir and (Path(config.library_dir) / req.album_dir).exists():
+            album_p = Path(config.library_dir) / req.album_dir
+        elif config.temp_dir and (Path(config.temp_dir) / req.album_dir).exists():
+            album_p = Path(config.temp_dir) / req.album_dir
     if not album_p.exists():
         raise HTTPException(status_code=404, detail="Dossier ou fichier introuvable")
     
