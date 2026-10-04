@@ -832,7 +832,7 @@ function setupSearch() {
                 if (item.type === "album" || item.type === "playlist") {
                     await playOnlineAlbumFromItem(item, btnSendPlayer);
                 } else {
-                    playTrack(item.title, item.artist, thumbSrc, item.id, item.album, item.url);
+                    playTrack(item.title, item.artist, thumbSrc, item.id, item.album, item.url, item);
                     if (typeof enterPlayerMode === "function") {
                         enterPlayerMode();
                     }
@@ -852,7 +852,7 @@ function setupSearch() {
         const playBtn = card.querySelector(".search-card-play-btn");
         if (playBtn) {
             playBtn.addEventListener("click", () => {
-                playTrack(item.title, item.artist, thumbSrc, item.id, item.album, item.url);
+                playTrack(item.title, item.artist, thumbSrc, item.id, item.album, item.url, item);
             });
         }
 
@@ -1422,7 +1422,7 @@ function setupAlbumPreview() {
 
         try {
             const defaultFormat = currentConfig.default_format || "m4a";
-            const defaultQuality = currentConfig.default_quality || "128K";
+            const defaultQuality = currentConfig.default_quality || "auto";
             const autoRetag = currentConfig.auto_retag !== false;
             const namingPattern = currentConfig.naming_pattern || "{track:02d} {title}";
             const cleanTitles = currentConfig.clean_titles !== false;
@@ -1688,7 +1688,7 @@ async function openAlbumPreview(album) {
 
                 let addedCount = 0;
                 const defaultFormat = currentConfig.default_format || "m4a";
-                const defaultQuality = currentConfig.default_quality || "128K";
+                const defaultQuality = currentConfig.default_quality || "auto";
 
                 for (const mt of missingTracks) {
                     try {
@@ -1884,7 +1884,7 @@ async function openAlbumPreview(album) {
 
                         try {
                             const defaultFormat = currentConfig.default_format || "m4a";
-                            const defaultQuality = currentConfig.default_quality || "128K";
+                            const defaultQuality = currentConfig.default_quality || "auto";
                             const trackUrl = `https://www.youtube.com/watch?v=${t.video_id}`;
 
                             const res = await fetch("/api/download", {

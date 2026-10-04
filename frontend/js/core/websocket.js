@@ -69,6 +69,13 @@ function setupWebSocket() {
         fetch(queueUrl)
             .then(r => r.json())
             .then(data => {
+                if (data) {
+                    window.currentDownloadQueue = data.queue || [];
+                    window.currentDownloadingItem = data.current || null;
+                    if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+                        AudioPlayer.updateOnlineDownloadButtons();
+                    }
+                }
                 if (data && !data.is_downloading) {
                     const startBtn = document.getElementById("start-download-btn");
                     const cancelBtn = document.getElementById("cancel-download-btn");
@@ -160,6 +167,14 @@ function handleWsEvent(data) {
         if (typeof window.refreshSearchBadges === "function") {
             window.refreshSearchBadges();
         }
+        if (typeof UserPlaylists !== "undefined") {
+            UserPlaylists.playlistCache.clear();
+            if (UserPlaylists.isDetailOpen && UserPlaylists.currentDetailPlaylist) {
+                UserPlaylists.openDetail(UserPlaylists.currentDetailPlaylist.id);
+            } else {
+                UserPlaylists.loadAndRenderPlaylists(true);
+            }
+        }
         return;
     }
 
@@ -168,10 +183,15 @@ function handleWsEvent(data) {
     const cancelBtn = document.getElementById("cancel-download-btn");
 
     if (data.type === "queue_update") {
+        window.currentDownloadQueue = data.queue || [];
+        window.currentDownloadingItem = data.current || null;
         renderQueue(data.queue, data.current, data.is_downloading);
         const isWorking = Boolean(data.is_downloading || (data.queue && data.queue.length > 0));
         setDownloadTabWorking(isWorking);
         if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
+        if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+            AudioPlayer.updateOnlineDownloadButtons();
+        }
 
         if (data.is_downloading || (data.queue && data.queue.length > 0)) {
             if (badgeResetTimer) {
@@ -302,6 +322,9 @@ function handleWsEvent(data) {
             if (typeof loadLibrary === "function") loadLibrary();
             if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
             if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
+            if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+                AudioPlayer.updateOnlineDownloadButtons();
+            }
             badge.className = "badge badge-finished";
             badge.textContent = "File Terminée";
             document.getElementById("progress-title").textContent = "Tous les téléchargements sont terminés !";

@@ -12,7 +12,7 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
         btnEl.innerHTML = `⏳ Ajout...`;
     }
     try {
-        const defaultQuality = currentConfig.default_quality || (document.getElementById("quality-select") ? document.getElementById("quality-select").value : "128K");
+        const defaultQuality = currentConfig.default_quality || (document.getElementById("quality-select") ? document.getElementById("quality-select").value : "auto");
         const autoRetag = currentConfig.auto_retag !== false;
         const namingPattern = currentConfig.naming_pattern || "{track:02d} {title}";
         const cleanTitles = currentConfig.clean_titles !== false;
@@ -42,7 +42,10 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
 
         const dlData = await dlRes.json();
         if (dlData.success) {
-            if (btnEl) btnEl.innerHTML = `✓ Ajouté`;
+            const isPlayerBtn = btnEl && (btnEl.id === "player-btn-download-online" || btnEl.id === "player-btn-download-album" || btnEl.id === "mini-player-download-btn");
+            if (btnEl && !isPlayerBtn) {
+                btnEl.innerHTML = `✓ Ajouté`;
+            }
             const successLabel = formatParam === "mp4" ? `Clip vidéo "${title}" ajouté à la file d'attente (MP4) !` : `"${title}" ajouté à la file d'attente !`;
             showToast(successLabel, "Voir la file", () => {
                 switchTab("tab-download");
@@ -55,16 +58,23 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
                 if (typeof window.updateCardStatusBadge === "function") {
                     window.updateCardStatusBadge(item);
                 }
-            } else if (btnEl && originalHtml) {
+            }
+            if (btnEl && originalHtml && !isPlayerBtn) {
                 setTimeout(() => {
                     btnEl.disabled = false;
                     btnEl.innerHTML = originalHtml;
                 }, 2500);
             }
+            if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+                AudioPlayer.updateOnlineDownloadButtons();
+            }
         } else {
             if (btnEl && originalHtml) {
                 btnEl.disabled = false;
                 btnEl.innerHTML = originalHtml;
+            }
+            if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+                AudioPlayer.updateOnlineDownloadButtons();
             }
             await showModalAlert("Erreur", dlData.detail || "Impossible d'ajouter à la file d'attente.", "danger");
         }
@@ -72,6 +82,9 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
         if (btnEl && originalHtml) {
             btnEl.disabled = false;
             btnEl.innerHTML = originalHtml;
+        }
+        if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+            AudioPlayer.updateOnlineDownloadButtons();
         }
         await showModalAlert("Erreur réseau", err.message, "danger");
     }

@@ -9,7 +9,7 @@ import tempfile
 import atexit
 from pathlib import Path
 from typing import Callable, Optional
-from backend.config import YTM_BAT_PATH, YTM_OGG_BAT_PATH, YT_DLP_PATH, FFMPEG_PATH, TEMP_DOWNLOAD_DIR, config
+from backend.config import YTM_BAT_PATH, YTM_OGG_BAT_PATH, YT_DLP_PATH, FFMPEG_PATH, TEMP_DOWNLOAD_DIR, config, get_effective_cookies_file
 from backend.tagger import (
     uniformize_album, get_album_info, consolidate_album_cover,
     AUDIO_EXTENSIONS, safe_rmtree, is_empty_or_na, is_playlist_url, sanitize_folder_name,
@@ -306,15 +306,32 @@ class DownloadManager:
                 script_name = "yt-dlp (Audio AAC)"
                 a_format = "aac"
 
+            # Pour le format AAC, prioriser le flux natif Premium 141 (256k AAC m4a sans réencodage)
+            audio_format_selector = '141/ba[ext=m4a]/ba/b' if a_format == "aac" else 'ba/b'
             cmd_args = [
-                YT_DLP_PATH, '-x', '-f', 'ba/b', '--ignore-errors', '--newline', '--windows-filenames',
+                YT_DLP_PATH, '-x', '-f', audio_format_selector, '--ignore-errors', '--newline', '--windows-filenames',
                 '--socket-timeout', '30',
                 '--extractor-args', 'youtube:player_client=android,web'
             ]
             if Path(FFMPEG_PATH).exists():
                 cmd_args += ['--ffmpeg-location', FFMPEG_PATH]
             
-            cmd_args += ['--audio-format', a_format, '--audio-quality', audio_quality or '128K']
+            # Détection de session connectée (cookies) : bascule automatique en haute fidélité (256K max)
+            effective_cookies = get_effective_cookies_file()
+            raw_quality = (audio_quality or getattr(config, "default_quality", "auto")).lower()
+            if raw_quality in ["auto", "max", "best", ""]:
+                if effective_cookies and getattr(config, "max_audio_quality_when_signed", True):
+                    eff_quality = "256K"
+                    logger.info("Qualité Auto + Session YouTube active : sélection maximale sans perte (256K AAC).")
+                else:
+                    eff_quality = "0"  # Meilleure qualité de la source yt-dlp
+            else:
+                eff_quality = audio_quality
+
+            if eff_quality != "0":
+                cmd_args += ['--audio-format', a_format, '--audio-quality', eff_quality]
+            else:
+                cmd_args += ['--audio-format', a_format, '--audio-quality', '0']
             cmd_args += ['--embed-metadata', '--embed-thumbnail', '--write-thumbnail', '--convert-thumbnails', 'jpg']
             cmd_args += ['--parse-metadata', 'playlist_index:%(track_number)s']
             cmd_args += ['--parse-metadata', '%(title)s:%(artist)s - %(title)s']
@@ -368,6 +385,12 @@ class DownloadManager:
             if task.get('custom_artist') and not is_empty_or_na(task['custom_artist']):
                 safe_artist = sanitize_folder_name(clean_artist_name(task['custom_artist']))
                 cmd_args += ['--parse-metadata', f'{safe_artist}:%(album_artist)s']
+
+        # Injection automatique des cookies de session YouTube si configurés
+        effective_cookies = get_effective_cookies_file()
+        if effective_cookies:
+            cmd_args += ['--cookies', str(effective_cookies)]
+            logger.info(f"Authentification YouTube active via cookies : '{effective_cookies.name}'")
 
         # Snapshot des dossiers contenant des fichiers média avant téléchargement
         def get_media_subdirs():

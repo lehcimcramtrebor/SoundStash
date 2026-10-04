@@ -16,33 +16,13 @@ from typing import Dict, Any, Optional
 
 import httpx
 
-from backend.config import config, CONFIG_DIR, TEMP_DOWNLOAD_DIR
+from backend.config import config, CONFIG_DIR, TEMP_DOWNLOAD_DIR, APP_VERSION
 
 logger = logging.getLogger("soundstash_updater")
 
 def get_current_app_version() -> str:
-    """Récupère la version actuelle depuis backend/version.json ou package.json."""
-    try:
-        ver_file = Path(__file__).resolve().parent / "version.json"
-        if ver_file.exists():
-            with open(ver_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if "version" in data and data["version"]:
-                    return str(data["version"]).strip()
-    except Exception:
-        pass
-
-    try:
-        pkg_file = Path(__file__).resolve().parent.parent / "package.json"
-        if pkg_file.exists():
-            with open(pkg_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if "version" in data and data["version"]:
-                    return str(data["version"]).strip()
-    except Exception:
-        pass
-
-    return "3.2.6"
+    """Récupère la version actuelle depuis APP_VERSION."""
+    return APP_VERSION
 
 CURRENT_APP_VERSION = get_current_app_version()
 GITHUB_REPO = "lehcimcramtrebor/SoundStash"

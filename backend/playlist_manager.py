@@ -59,6 +59,27 @@ def _parse_duration_to_sec(val: Any) -> float:
     except (ValueError, TypeError):
         return 0.0
 
+def item_file_exists(item: Dict[str, Any]) -> bool:
+    """Vérifie si le fichier associé à une piste (audio ou vidéo) existe réellement sur le disque."""
+    if not isinstance(item, dict):
+        return False
+    path = item.get("path") or item.get("filepath") or item.get("rel_path")
+    if not path and (item.get("thumbnail_url") or item.get("cover_url")):
+        target = item.get("thumbnail_url") or item.get("cover_url") or ""
+        if "path=" in target:
+            try:
+                path = urllib.parse.unquote(target.split("path=")[1].split("&")[0])
+            except Exception:
+                pass
+    if not path and item.get("album_path") and item.get("filename"):
+        path = str(Path(item.get("album_path")) / item.get("filename"))
+    if not path:
+        return False
+    try:
+        return Path(path).is_file()
+    except Exception:
+        return False
+
 class PlaylistManager:
     """Gestionnaire central des playlists utilisateur."""
 
@@ -76,12 +97,20 @@ class PlaylistManager:
         safe_id = re.sub(r'[^a-zA-Z0-9_\-]', '', playlist_id)
         return self.playlists_dir / f"{safe_id}.json"
 
-    def list_playlists(self) -> List[Dict[str, Any]]:
+    def list_playlists(self, library_albums: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         """Retourne la liste résumée de toutes les playlists existantes."""
         self._ensure_dir()
         results = []
         if not self.playlists_dir.exists():
             return results
+
+        if library_albums is None:
+            try:
+                from backend.library_indexer import library_indexer as app_lib_indexer
+                if hasattr(app_lib_indexer, "get_all_albums"):
+                    library_albums = app_lib_indexer.get_all_albums()
+            except Exception:
+                pass
 
         for p_file in self.playlists_dir.glob("*.json"):
             try:
@@ -89,6 +118,29 @@ class PlaylistManager:
                     data = json.load(f)
                 
                 items = data.get("items", [])
+
+                # Épuration et auto-guérison dynamique pour les Smart Playlists
+                if data.get("is_smart"):
+                    valid_items = [it for it in items if item_file_exists(it)]
+                    criteria = data.get("smart_criteria") or {}
+                    target_limit = int(criteria.get("limit") or 25)
+                    need_refresh = (len(valid_items) < len(items)) or (len(valid_items) < target_limit)
+
+                    if need_refresh and library_albums and len(library_albums) > 0:
+                        refreshed = self.refresh_smart_playlist(data.get("id", p_file.stem), library_albums)
+                        if refreshed:
+                            data = refreshed
+                            items = data.get("items", [])
+                    elif len(valid_items) < len(items):
+                        items = valid_items
+                        data["items"] = items
+                        data["updated_at"] = int(time.time())
+                        try:
+                            with open(p_file, "w", encoding="utf-8") as f_out:
+                                json.dump(data, f_out, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
+
                 audio_count = sum(1 for it in items if it.get("type") == "audio")
                 video_count = sum(1 for it in items if it.get("type") == "video")
                 total_duration = sum(_parse_duration_to_sec(it.get("duration") or it.get("duration_seconds")) for it in items)
@@ -125,8 +177,8 @@ class PlaylistManager:
         results.sort(key=lambda p: p.get("updated_at", 0), reverse=True)
         return results
 
-    def get_playlist(self, playlist_id: str) -> Optional[Dict[str, Any]]:
-        """Retourne le contenu exhaustif d'une playlist avec ses pistes."""
+    def get_playlist(self, playlist_id: str, library_albums: Optional[List[Dict[str, Any]]] = None, video_indexer: Any = None) -> Optional[Dict[str, Any]]:
+        """Retourne le contenu exhaustif d'une playlist avec ses pistes. Pour les Smart Playlists, filtre dynamiquement les pistes dont les fichiers ont été supprimés du disque."""
         p_file = self._get_playlist_path(playlist_id)
         if not p_file.exists():
             return None
@@ -146,12 +198,49 @@ class PlaylistManager:
                                 cand = urllib.parse.unquote(target.split("path=")[1].split("&")[0])
                             except Exception:
                                 pass
+                    if not cand and it.get("album_path") and it.get("filename"):
+                        cand = str(Path(it.get("album_path")) / it.get("filename"))
                     if cand:
                         it["path"] = cand
 
                 dur = _parse_duration_to_sec(it.get("duration") or it.get("duration_seconds"))
                 if not it.get("duration_str"):
                     it["duration_str"] = _format_sec_to_time(dur)
+
+            # Filtrage dynamique strict pour TOUTE Smart Playlist (playlist automatique)
+            if data.get("is_smart"):
+                valid_items = [it for it in items if item_file_exists(it)]
+                has_deleted = len(valid_items) < len(items)
+                criteria = data.get("smart_criteria") or {}
+                target_limit = int(criteria.get("limit") or 25)
+                need_refill = has_deleted or (len(valid_items) < target_limit)
+
+                if need_refill:
+                    if has_deleted:
+                        logger.info(f"Smart Playlist '{data.get('name')}' ({playlist_id}) : {len(items) - len(valid_items)} piste(s) supprimée(s) du disque retirée(s).")
+                    
+                    # Récupération dynamique des albums si non fournis
+                    if library_albums is None or len(library_albums) == 0:
+                        try:
+                            from backend.library_indexer import library_indexer as app_lib_indexer
+                            if hasattr(app_lib_indexer, "get_all_albums"):
+                                library_albums = app_lib_indexer.get_all_albums()
+                        except Exception:
+                            pass
+
+                    # Si des albums sont disponibles, tenter une réactualisation automatique complète pour combler les manques
+                    if library_albums is not None and len(library_albums) > 0:
+                        refreshed = self.refresh_smart_playlist(playlist_id, library_albums, video_indexer=video_indexer)
+                        if refreshed:
+                            return refreshed
+
+                    # Sinon, sauvegarder directement la liste épurée
+                    if has_deleted:
+                        items = valid_items
+                        data["items"] = items
+                        data["updated_at"] = int(time.time())
+                        with open(p_file, "w", encoding="utf-8") as f:
+                            json.dump(data, f, ensure_ascii=False, indent=2)
 
             audio_count = sum(1 for it in items if it.get("type") == "audio")
             video_count = sum(1 for it in items if it.get("type") == "video")
@@ -163,7 +252,6 @@ class PlaylistManager:
             data["video_count"] = video_count
             data["total_duration"] = total_duration
             data["total_duration_str"] = _format_sec_to_time(total_duration)
-
 
             cov = data.get("cover_url")
             if not cov and items:
@@ -500,12 +588,30 @@ class PlaylistManager:
                         alb_tracks = []
 
                 for trk in (alb_tracks or []):
-                    t_copy = dict(trk)
+                    filename = trk.get("filename") if isinstance(trk, dict) else getattr(trk, "filename", None)
+                    trk_path = trk.get("path") if isinstance(trk, dict) else getattr(trk, "path", None)
+                    if not trk_path and alb_path and filename:
+                        trk_path = str(Path(alb_path) / filename)
+
+                    if not trk_path:
+                        continue
+                    try:
+                        if not Path(trk_path).is_file():
+                            continue
+                    except Exception:
+                        continue
+
+                    t_copy = trk.model_dump() if hasattr(trk, "model_dump") else (dict(trk) if isinstance(trk, dict) else {})
+                    t_copy["path"] = trk_path
+                    t_copy["filepath"] = trk_path
                     t_copy["type"] = "audio"
                     t_copy["album_title"] = alb_title
                     t_copy["album_path"] = alb_path
                     t_copy["album_genre"] = alb_genre
                     t_copy["album_year"] = alb_year
+                    t_copy["duration_seconds"] = t_copy.get("duration_sec") or t_copy.get("duration_seconds") or 0
+                    if not t_copy.get("duration_str") and t_copy.get("duration_seconds"):
+                        t_copy["duration_str"] = _format_sec_to_time(t_copy["duration_seconds"])
                     if not t_copy.get("cover_url"):
                         t_copy["cover_url"] = cov
                     if not t_copy.get("artist"):
@@ -516,10 +622,18 @@ class PlaylistManager:
 
         # 2. Application de la logique intelligente par type
         if smart_type == "top_played":
-            top_stats = playback_stats.get_top_played(limit=limit, genre=criteria.get("genre"))
+            top_stats = playback_stats.get_top_played(limit=limit, genre=criteria.get("genre"), existing_only=True)
             for s in top_stats:
                 is_vid = s.get("type") == "video"
                 p = s.get("path", "")
+                if not p:
+                    continue
+                try:
+                    if not Path(p).is_file():
+                        continue
+                except Exception:
+                    continue
+
                 if is_vid:
                     if "/concerts/" in p.lower() or "\\concerts\\" in p.lower() or s.get("duration", 0) >= 1200:
                         continue
@@ -573,16 +687,24 @@ class PlaylistManager:
 
         elif smart_type == "top_genres":
             target_genres = [g.strip().lower() for g in criteria.get("genres", []) if g and g.strip()]
-            top_stats = playback_stats.get_top_played(limit=limit * 2)
+            top_stats = playback_stats.get_top_played(limit=limit * 2, existing_only=True)
             for s in top_stats:
+                p = s.get("path", "")
+                if not p:
+                    continue
+                try:
+                    if not Path(p).is_file():
+                        continue
+                except Exception:
+                    continue
                 if any(tg in (s.get("genre") or "").lower() for tg in target_genres):
-                    cov = f"/api/audio/cover?path={urllib.parse.quote(s.get('path'))}" if s.get("path") else "/static/placeholder-cover.svg"
+                    cov = f"/api/audio/cover?path={urllib.parse.quote(p)}" if p else "/static/placeholder-cover.svg"
                     selected_items.append({
                         "type": "audio",
                         "title": s.get("title", "Titre"),
                         "artist": s.get("artist", "Artiste"),
                         "album_title": s.get("album", ""),
-                        "path": s.get("path", ""),
+                        "path": p,
                         "duration_seconds": s.get("duration", 0),
                         "cover_url": cov
                     })
@@ -641,6 +763,14 @@ class PlaylistManager:
             for v in all_videos:
                 if v.get("video_type") == "concert" or v.get("is_concert"):
                     continue
+                vp = v.get("path", "")
+                if not vp:
+                    continue
+                try:
+                    if not Path(vp).is_file():
+                        continue
+                except Exception:
+                    continue
                 v_items.append({
                     "id": f"vid_{int(time.time())}_{len(v_items)}",
                     "type": "video",
@@ -649,11 +779,14 @@ class PlaylistManager:
                     "album_title": "Clip Vidéo 16:9",
                     "duration": v.get("duration", 0),
                     "duration_str": v.get("duration_str", "0:00"),
-                    "path": v.get("path", ""),
+                    "path": vp,
                     "cover_url": v.get("thumbnail_url") or "/static/placeholder-cover.svg"
                 })
             random.shuffle(v_items)
             selected_items = v_items[:limit]
+
+        # Filtrage strict de sécurité : ne conserver aucun fichier inexistant
+        selected_items = [it for it in selected_items if item_file_exists(it)]
 
         desc = criteria.get("description") or f"Playlist intelligente générée ({smart_type}) • {len(selected_items)} titres"
 
@@ -735,11 +868,19 @@ class PlaylistManager:
 
     def refresh_smart_playlist(self, playlist_id: str, library_albums: List[Dict[str, Any]], video_indexer: Any = None) -> Optional[Dict[str, Any]]:
         """Recalcule et met à jour le contenu d'une playlist intelligente existante selon les dernières écoutes et critères sans créer de doublon."""
-        data = self.get_playlist(playlist_id)
-        if not data:
+        p_file = self._get_playlist_path(playlist_id)
+        if not p_file.exists():
             return None
+
+        try:
+            with open(p_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.error(f"Erreur lecture {playlist_id} pour refresh: {e}")
+            return None
+
         if not data.get("is_smart"):
-            return data
+            return self.get_playlist(playlist_id, library_albums=library_albums, video_indexer=video_indexer)
 
         smart_type = data.get("smart_type") or "top_played"
         smart_criteria = data.get("smart_criteria", {})
@@ -753,12 +894,11 @@ class PlaylistManager:
         data["items"] = new_items
         data["updated_at"] = int(time.time())
 
-        p_file = self._get_playlist_path(playlist_id)
         with open(p_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
         logger.info(f"Smart Playlist actualisée sur place (sans doublon) : '{data['name']}' ({playlist_id}) avec {len(new_items)} pistes")
-        return self.get_playlist(playlist_id)
+        return self.get_playlist(playlist_id, library_albums=library_albums, video_indexer=video_indexer)
 
 
 playlist_manager = PlaylistManager()

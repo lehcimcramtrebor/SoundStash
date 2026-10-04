@@ -235,6 +235,16 @@ const AudioPlayer = {
     endOfAlbumBehavior: "stop", // "stop" | "repeat" | "random"
     isQueueDrawerOpen: false,
 
+    formatTrackBadge(trk) {
+        if (!trk) return "M4A";
+        const fmt = (trk.format || (trk.filepath ? trk.filepath.split('.').pop() : "M4A")).toUpperCase();
+        const br = trk.bitrate || trk.bitrate_kbps;
+        if (br && typeof br === "number" && br > 0) {
+            return `${fmt} • ${br}k`;
+        }
+        return fmt;
+    },
+
     // Égaliseur Audio Haute Fidélité (10 Bandes & Web Audio API)
     eqAudioCtx: null,
     eqSourceNode: null,
@@ -1017,11 +1027,19 @@ const AudioPlayer = {
 
         const applyDensity = (cols) => {
             const grid = document.getElementById("player-artists-grid");
+            const genresGrid = document.getElementById("player-genres-grid");
             if (grid) {
                 if (cols === "3") {
                     grid.classList.add("cols-3");
                 } else {
                     grid.classList.remove("cols-3");
+                }
+            }
+            if (genresGrid) {
+                if (cols === "3") {
+                    genresGrid.classList.add("cols-3");
+                } else {
+                    genresGrid.classList.remove("cols-3");
                 }
             }
             if (btn4) btn4.classList.toggle("active", cols === "4");
@@ -1703,7 +1721,7 @@ const AudioPlayer = {
             typeFilters.style.display = (view === "albums") ? "flex" : "none";
         }
         if (artistsDensityToggle) {
-            artistsDensityToggle.style.display = (view === "artists") ? "inline-flex" : "none";
+            artistsDensityToggle.style.display = (view === "artists" || view === "genres") ? "inline-flex" : "none";
         }
         if (allShuffleBtn) {
             allShuffleBtn.style.display = (view === "all" || view === "albums") ? "inline-flex" : "none";
@@ -1734,6 +1752,8 @@ const AudioPlayer = {
                     <option value="artist-desc">🔤 Artiste (Z ➔ A)</option>
                     <option value="album-asc">💿 Album (A ➔ Z)</option>
                     <option value="album-desc">💿 Album (Z ➔ A)</option>
+                    <option value="genre-asc">🏷️ Genre (A ➔ Z)</option>
+                    <option value="genre-desc">🏷️ Genre (Z ➔ A)</option>
                     <option value="dur-desc">⏱️ Durée (Plus long)</option>
                     <option value="dur-asc">⏱️ Durée (Plus court)</option>
                 `;
@@ -1744,6 +1764,8 @@ const AudioPlayer = {
                     <option value="artist-desc">🔤 Artiste (Z ➔ A)</option>
                     <option value="title-asc">💿 Album (A ➔ Z)</option>
                     <option value="title-desc">💿 Album (Z ➔ A)</option>
+                    <option value="genre-asc">🏷️ Genre (A ➔ Z)</option>
+                    <option value="genre-desc">🏷️ Genre (Z ➔ A)</option>
                     <option value="tracks-desc">🎵 Nb de pistes (Décroissant)</option>
                     <option value="year-desc">📅 Année (Plus récent)</option>
                     <option value="year-asc">⏳ Année (Plus ancien)</option>
@@ -1776,6 +1798,8 @@ const AudioPlayer = {
                 <option value="artist-desc">🔤 Artiste (Z ➔ A)</option>
                 <option value="title-asc">💿 Album (A ➔ Z)</option>
                 <option value="title-desc">💿 Album (Z ➔ A)</option>
+                <option value="genre-asc">🏷️ Genre (A ➔ Z)</option>
+                <option value="genre-desc">🏷️ Genre (Z ➔ A)</option>
                 <option value="tracks-desc">🎵 Nb de pistes (Décroissant)</option>
                 <option value="year-desc">📅 Année (Plus récent)</option>
                 <option value="year-asc">⏳ Année (Plus ancien)</option>
@@ -2263,6 +2287,8 @@ const AudioPlayer = {
             const trkB = parseInt(b.tracks_count, 10) || 0;
             const yrA = parseInt(a.year, 10) || 0;
             const yrB = parseInt(b.year, 10) || 0;
+            const genA = (a.genre || "").toLowerCase();
+            const genB = (b.genre || "").toLowerCase();
 
             const sortMode = this.sortModeAlbums || this.sortMode || "artist-asc";
             switch (sortMode) {
@@ -2274,6 +2300,14 @@ const AudioPlayer = {
                     return titA.localeCompare(titB) || artA.localeCompare(artB);
                 case "title-desc":
                     return titB.localeCompare(titA) || artA.localeCompare(artB);
+                case "genre-asc":
+                    if (!genA && genB) return 1;
+                    if (genA && !genB) return -1;
+                    return genA.localeCompare(genB) || artA.localeCompare(artB) || titA.localeCompare(titB);
+                case "genre-desc":
+                    if (!genA && genB) return 1;
+                    if (genA && !genB) return -1;
+                    return genB.localeCompare(genA) || artA.localeCompare(artB) || titA.localeCompare(titB);
                 case "tracks-desc":
                     return trkB - trkA || artA.localeCompare(artB);
                 case "year-desc":
@@ -2507,6 +2541,10 @@ const AudioPlayer = {
             const tracksStr = `${alb.tracks_count || 0} titre${alb.tracks_count > 1 ? "s" : ""}`;
             const albType = this.getAlbumType(alb);
             const badgeInfo = this.getAlbumTypeBadgeInfo(albType);
+            const genreStr = (alb.genre || "").trim();
+            const genreTagHtml = genreStr
+                ? `<span class="player-card-genre-tag" title="Filtrer par le genre : ${escapeHtml(genreStr)}" data-genre="${escapeHtml(genreStr)}"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="genre-tag-icon"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg><span>${escapeHtml(genreStr)}</span></span>`
+                : `<span class="player-card-genre-tag is-empty" title="Genre non renseigné"><span>Non classé</span></span>`;
 
             htmlParts.push(`
                 <div class="player-album-card" data-path="${escapeHtml(alb.path)}" title="${escapeHtml(alb.artist)} — ${escapeHtml(alb.title)}">
@@ -2533,6 +2571,9 @@ const AudioPlayer = {
                     </div>
                     <div class="player-card-info">
                         <div class="player-card-title">${escapeHtml(alb.title)}</div>
+                        <div class="player-card-genre">
+                            ${genreTagHtml}
+                        </div>
                         <div class="player-card-artist">${escapeHtml(alb.artist)}</div>
                         <div class="player-card-meta">
                             <span>${tracksStr}</span>
@@ -2593,6 +2634,18 @@ const AudioPlayer = {
                         tracks_count: albData?.tracks_count || 0,
                         cover_url: `/api/audio/cover?path=${encodeURIComponent(p)}`
                     });
+                    return;
+                }
+
+                const genreTag = e.target.closest(".player-card-genre-tag:not(.is-empty)");
+                if (genreTag) {
+                    e.stopPropagation();
+                    const gName = genreTag.getAttribute("data-genre");
+                    if (gName) {
+                        this.selectedGenreFilter = gName;
+                        this.selectedArtistFilter = null;
+                        this.renderAlbumsGrid();
+                    }
                     return;
                 }
 
@@ -2662,6 +2715,8 @@ const AudioPlayer = {
                         artist: t.artist || foundAlb.artist,
                         track_number: t.track_number,
                         duration: t.duration,
+                        bitrate: t.bitrate || t.bitrate_kbps,
+                        format: t.format,
                         filepath: t.filepath,
                         filename: t.filename
                     }))
@@ -2757,7 +2812,6 @@ const AudioPlayer = {
                         </span>
                         <span class="player-track-item-num">${numStr}</span>
                         <span class="player-track-item-title" title="${escapeHtml(trk.title || trk.filename || 'Piste')}">${escapeHtml(trk.title || trk.filename || 'Piste')}</span>
-                        <span class="dense-track-format">${escapeHtml(ext)}</span>
                     </div>
                     <div class="player-track-actions">
                         <button type="button" class="btn-track-action btn-detail-trk-play" title="Lire immédiatement ce morceau">
@@ -2773,6 +2827,7 @@ const AudioPlayer = {
                             <span>+ File</span>
                         </button>
                     </div>
+                    <span class="dense-track-format">${escapeHtml(this.formatTrackBadge(trk))}</span>
                     <span class="player-track-item-dur">${escapeHtml(trk.duration || "--:--")}</span>
                 </div>
             `);
@@ -3082,15 +3137,28 @@ const AudioPlayer = {
         const counter = document.getElementById("player-count-indicator");
         if (!grid) return;
 
+        // Appliquer la densité sauvegardée (colonnes)
+        let savedCols = "4";
+        try {
+            savedCols = localStorage.getItem("ytm_artists_cols") || "4";
+        } catch (_) {}
+        if (savedCols === "3") {
+            grid.classList.add("cols-3");
+        } else {
+            grid.classList.remove("cols-3");
+        }
+
         // Regrouper par genre
         const genreMap = new Map();
         this.libraryAlbums.forEach(alb => {
             let g = (alb.genre || "").trim();
             if (!g) g = "Non classé";
             if (!genreMap.has(g)) {
-                genreMap.set(g, { name: g, albumCount: 0 });
+                genreMap.set(g, { name: g, albumCount: 0, trackCount: 0 });
             }
-            genreMap.get(g).albumCount += 1;
+            const gData = genreMap.get(g);
+            gData.albumCount += 1;
+            gData.trackCount += (alb.tracks_count || (alb.tracks ? alb.tracks.length : 0));
         });
 
         let genres = Array.from(genreMap.values());
@@ -3111,6 +3179,8 @@ const AudioPlayer = {
                     return (b.albumCount - a.albumCount) || nameA.localeCompare(nameB);
                 case "albums-asc":
                     return (a.albumCount - b.albumCount) || nameA.localeCompare(nameB);
+                case "tracks-desc":
+                    return (b.trackCount - a.trackCount) || nameA.localeCompare(nameB);
                 case "name-asc":
                     return nameA.localeCompare(nameB);
                 case "name-desc":
@@ -3139,11 +3209,18 @@ const AudioPlayer = {
         genres.forEach(g => {
             html += `
                 <div class="player-genre-card" data-genre="${escapeHtml(g.name)}">
-                    <div class="player-genre-name">${escapeHtml(g.name)}</div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="player-genre-badge">${g.albumCount} album${g.albumCount > 1 ? "s" : ""}</span>
+                    <div class="player-genre-avatar">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
+                        </svg>
+                    </div>
+                    <div class="player-genre-info">
+                        <div class="player-genre-name" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</div>
+                        <div class="player-genre-count">${g.albumCount} album${g.albumCount > 1 ? "s" : ""}${g.trackCount ? ` • ${g.trackCount} titre${g.trackCount > 1 ? "s" : ""}` : ""}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px; margin-left: 4px;">
                         <button type="button" class="btn-genre-shuffle" title="Lire le genre « ${escapeHtml(g.name)} » en aléatoire" data-genre="${escapeHtml(g.name)}">
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
                                 <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
                             </svg>
                         </button>
@@ -3469,7 +3546,6 @@ const AudioPlayer = {
                         </span>
                         <span class="player-track-item-num">${numStr}</span>
                         <span class="player-track-item-title" title="${escapeHtml(trk.title)}">${escapeHtml(trk.title)}</span>
-                        <span class="dense-track-format">${escapeHtml(trk.format || "M4A")}</span>
                     </div>
                     <div class="player-track-actions">
                         <button type="button" class="btn-track-action btn-cat-track-play" title="Lire immédiatement ce morceau">
@@ -3485,6 +3561,7 @@ const AudioPlayer = {
                             <span>+ File</span>
                         </button>
                     </div>
+                    <span class="dense-track-format">${escapeHtml(this.formatTrackBadge(trk))}</span>
                     <span class="player-track-item-dur">${escapeHtml(trk.duration || "--:--")}</span>
                 </div>
             `;
@@ -3572,7 +3649,6 @@ const AudioPlayer = {
                         </span>
                         <span class="dense-track-num">${numStr}</span>
                         <span class="dense-track-title" title="${escapeHtml(trk.title)}">${highlightedTitle}</span>
-                        <span class="dense-track-format">${escapeHtml(trk.format || "M4A")}</span>
                     </div>
                     <div class="dense-track-actions">
                         <button type="button" class="btn-track-action btn-dense-play" title="Lire ce morceau immédiatement">
@@ -3588,6 +3664,7 @@ const AudioPlayer = {
                             <span>+ File</span>
                         </button>
                     </div>
+                    <span class="dense-track-format">${escapeHtml(this.formatTrackBadge(trk))}</span>
                     <span class="dense-track-dur">${escapeHtml(trk.duration || "--:--")}</span>
                 </div>
             </div>
@@ -3754,6 +3831,8 @@ const AudioPlayer = {
             const artB = (b.artist || "").toLowerCase();
             const titA = (a.title || "").toLowerCase();
             const titB = (b.title || "").toLowerCase();
+            const genA = (a.genre || "").toLowerCase();
+            const genB = (b.genre || "").toLowerCase();
             const yrA = parseInt(a.year, 10) || 0;
             const yrB = parseInt(b.year, 10) || 0;
             const trkA = parseInt(a.tracks_count || (a.tracks ? a.tracks.length : 0), 10) || 0;
@@ -3768,6 +3847,14 @@ const AudioPlayer = {
                     return titA.localeCompare(titB) || artA.localeCompare(artB);
                 case "title-desc":
                     return titB.localeCompare(titA) || artA.localeCompare(artB);
+                case "genre-asc":
+                    if (!genA && genB) return 1;
+                    if (genA && !genB) return -1;
+                    return genA.localeCompare(genB) || artA.localeCompare(artB) || titA.localeCompare(titB);
+                case "genre-desc":
+                    if (!genA && genB) return 1;
+                    if (genA && !genB) return -1;
+                    return genB.localeCompare(genA) || artA.localeCompare(artB) || titA.localeCompare(titB);
                 case "year-desc":
                     return yrB - yrA || artA.localeCompare(artB);
                 case "year-asc":
@@ -3926,6 +4013,20 @@ const AudioPlayer = {
                         return albA.localeCompare(albB) || trkA.localeCompare(trkB);
                     case "album-desc":
                         return albB.localeCompare(albA) || trkA.localeCompare(trkB);
+                    case "genre-asc": {
+                        const genA = (a.track.genre || a.album.genre || "").toLowerCase();
+                        const genB = (b.track.genre || b.album.genre || "").toLowerCase();
+                        if (!genA && genB) return 1;
+                        if (genA && !genB) return -1;
+                        return genA.localeCompare(genB) || artA.localeCompare(artB) || trkA.localeCompare(trkB);
+                    }
+                    case "genre-desc": {
+                        const genA = (a.track.genre || a.album.genre || "").toLowerCase();
+                        const genB = (b.track.genre || b.album.genre || "").toLowerCase();
+                        if (!genA && genB) return 1;
+                        if (genA && !genB) return -1;
+                        return genB.localeCompare(genA) || artA.localeCompare(artB) || trkA.localeCompare(trkB);
+                    }
                     case "dur-desc":
                         return durB - durA || trkA.localeCompare(trkB);
                     case "dur-asc":
@@ -6099,6 +6200,8 @@ const AudioPlayer = {
                         artist: t.artist || foundAlb.artist,
                         track_number: t.track_number,
                         duration: t.duration,
+                        bitrate: t.bitrate || t.bitrate_kbps,
+                        format: t.format,
                         filepath: t.filepath,
                         filename: t.filename
                     }))
@@ -6417,7 +6520,7 @@ const AudioPlayer = {
         const pAlbum = document.getElementById("player-track-album");
 
         if (pCover) pCover.src = coverUrl;
-        if (pFmt) pFmt.textContent = isConc ? "CONCERT" : (isVid ? "VIDÉO" : ((firstTrk && firstTrk.format) ? firstTrk.format : "M4A"));
+        if (pFmt) pFmt.textContent = isConc ? "CONCERT" : (isVid ? "VIDÉO" : this.formatTrackBadge(curTrk || firstTrk));
 
         const pCoverWatchBtn = document.getElementById("player-cover-watch-btn");
         const pCoverBox = document.getElementById("player-cover-box");
@@ -6481,7 +6584,7 @@ const AudioPlayer = {
         const pAlbum = document.getElementById("player-track-album");
 
         if (pCover) pCover.src = coverUrl;
-        if (pFmt) pFmt.textContent = isConc ? "CONCERT" : (isVid ? "VIDÉO" : (trk.format || "M4A"));
+        if (pFmt) pFmt.textContent = isConc ? "CONCERT" : (isVid ? "VIDÉO" : this.formatTrackBadge(trk));
 
         const pCoverWatchBtn = document.getElementById("player-cover-watch-btn");
         const pCoverBox = document.getElementById("player-cover-box");
@@ -6581,7 +6684,6 @@ const AudioPlayer = {
                     </span>
                     <span class="player-track-item-num">${numStr}</span>
                     <span class="player-track-item-title" title="${escapeHtml(trk.title)}">${escapeHtml(trk.title)}</span>
-                    <span class="dense-track-format">${escapeHtml(trk.format || "M4A")}</span>
                 </div>
                 <div class="player-track-actions">
                     <button type="button" class="btn-track-action btn-track-play" title="Lire immédiatement ce morceau">
@@ -6613,6 +6715,7 @@ const AudioPlayer = {
                     </button>
                     ` : ""}
                 </div>
+                <span class="dense-track-format">${escapeHtml(this.formatTrackBadge(trk))}</span>
                 <span class="player-track-item-dur">${escapeHtml(trk.duration || "--:--")}</span>
             `;
 
@@ -6701,27 +6804,105 @@ const AudioPlayer = {
             !this.currentAlbum.is_collection && 
             (this.currentAlbum.is_online || this.currentAlbum.online_url || (this.playlist && this.playlist.some(t => t.is_online)))
         );
-        const isSingle = Boolean(this.currentAlbum && this.currentAlbum.is_single_track);
-        const labelText = isSingle ? "Télécharger ce titre" : "Télécharger tout l'album";
 
         // Volet gauche (Panneau d'écoute)
         const onlineBox = document.getElementById("player-online-download-container");
         const onlineBtn = document.getElementById("player-btn-download-online");
-        const onlineLabel = document.getElementById("player-btn-download-online-label");
-        if (onlineBox) onlineBox.style.display = isOnline ? "block" : "none";
-        if (onlineLabel) onlineLabel.textContent = labelText;
 
         // En-tête volet droit (Tracklist)
         const headerBtn = document.getElementById("player-btn-download-album");
-        const headerLabel = document.getElementById("player-download-header-label");
-        if (headerBtn) headerBtn.style.display = isOnline ? "inline-flex" : "none";
-        if (headerLabel) headerLabel.textContent = isSingle ? "Télécharger le titre" : "Télécharger l'album";
 
         // Mini barre flottante en bas
         const miniBtn = document.getElementById("mini-player-download-btn");
-        if (miniBtn) {
-            miniBtn.style.display = isOnline ? "inline-flex" : "none";
-            miniBtn.title = labelText;
+
+        if (!isOnline) {
+            if (onlineBox) onlineBox.style.display = "none";
+            if (headerBtn) headerBtn.style.display = "none";
+            if (miniBtn) miniBtn.style.display = "none";
+            return;
+        }
+
+        const isSingle = Boolean(this.currentAlbum && this.currentAlbum.is_single_track);
+        const isPlaylist = Boolean(this.currentAlbum && ((this.currentAlbum.online_item && this.currentAlbum.online_item.is_playlist) || (this.currentAlbum.genre && String(this.currentAlbum.genre).toLowerCase() === "playlist")));
+        
+        const labelLeft = isSingle ? "Télécharger ce titre" : (isPlaylist ? "Télécharger la playlist" : "Télécharger tout l'album");
+        const labelHeader = isSingle ? "Télécharger le titre" : (isPlaylist ? "Télécharger la playlist" : "Télécharger l'album");
+
+        // Vérification de l'état dans la file d'attente
+        const onlineItem = this.currentAlbum.online_item;
+        const currentUrl = (this.currentAlbum.online_url || (onlineItem && onlineItem.url) || "").trim();
+        
+        let isQueued = Boolean(onlineItem && onlineItem.status === "queued");
+        let isDownloading = Boolean(onlineItem && onlineItem.status === "downloading");
+
+        // Vérification dynamique via la file globale WebSocket
+        if (!isQueued && !isDownloading && currentUrl) {
+            const queueList = window.currentDownloadQueue || [];
+            if (queueList.some(q => q.url && q.url.trim() === currentUrl)) {
+                isQueued = true;
+            }
+            const currentDl = window.currentDownloadingItem;
+            if (currentDl && currentDl.url && currentDl.url.trim() === currentUrl) {
+                isDownloading = true;
+            }
+        }
+
+        if (onlineBox) onlineBox.style.display = "block";
+        if (headerBtn) headerBtn.style.display = "inline-flex";
+        if (miniBtn) miniBtn.style.display = "inline-flex";
+
+        if (isDownloading) {
+            if (onlineBtn) {
+                onlineBtn.disabled = true;
+                onlineBtn.classList.add("btn-dl-state-disabled");
+                onlineBtn.title = "Cet album est actuellement en cours de téléchargement";
+                onlineBtn.innerHTML = `<span style="display:inline-block; animation: spin 1.2s linear infinite; margin-right: 5px;">⚡</span><span id="player-btn-download-online-label">En cours de téléchargement</span>`;
+            }
+            if (headerBtn) {
+                headerBtn.disabled = true;
+                headerBtn.classList.add("btn-dl-state-disabled");
+                headerBtn.title = "Cet album est actuellement en cours de téléchargement";
+                headerBtn.innerHTML = `<span style="display:inline-block; animation: spin 1.2s linear infinite; margin-right: 5px;">⚡</span><span id="player-download-header-label">En cours...</span>`;
+            }
+            if (miniBtn) {
+                miniBtn.disabled = true;
+                miniBtn.title = "En cours de téléchargement";
+            }
+        } else if (isQueued) {
+            if (onlineBtn) {
+                onlineBtn.disabled = true;
+                onlineBtn.classList.add("btn-dl-state-disabled");
+                onlineBtn.title = "Déjà présent dans la file d'attente de téléchargement";
+                onlineBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="margin-right: 5px;"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg><span id="player-btn-download-online-label">En file d'attente</span>`;
+            }
+            if (headerBtn) {
+                headerBtn.disabled = true;
+                headerBtn.classList.add("btn-dl-state-disabled");
+                headerBtn.title = "Déjà présent dans la file d'attente de téléchargement";
+                headerBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="margin-right: 5px;"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg><span id="player-download-header-label">En file</span>`;
+            }
+            if (miniBtn) {
+                miniBtn.disabled = true;
+                miniBtn.title = "En file d'attente";
+            }
+        } else {
+            // État normal : bouton actif et cliquable
+            if (onlineBtn) {
+                onlineBtn.disabled = false;
+                onlineBtn.classList.remove("btn-dl-state-disabled");
+                onlineBtn.title = isSingle ? "Télécharger ce titre dans votre collection" : "Télécharger tout cet album dans votre collection";
+                onlineBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg><span id="player-btn-download-online-label">${labelLeft}</span>`;
+            }
+            if (headerBtn) {
+                headerBtn.disabled = false;
+                headerBtn.classList.remove("btn-dl-state-disabled");
+                headerBtn.title = isSingle ? "Télécharger ce titre dans votre collection" : "Télécharger tout cet album dans votre collection";
+                headerBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg><span id="player-download-header-label">${labelHeader}</span>`;
+            }
+            if (miniBtn) {
+                miniBtn.disabled = false;
+                miniBtn.title = labelLeft;
+            }
         }
     },
 
@@ -6747,34 +6928,43 @@ const AudioPlayer = {
             return;
         }
 
-        const fmt = currentConfig.default_format || "m4a";
-        const origHtml = btnEl ? btnEl.innerHTML : "";
-        if (btnEl) {
-            btnEl.disabled = true;
-            btnEl.innerHTML = `⏳ Ajout...`;
+        const onlineBtn = document.getElementById("player-btn-download-online");
+        const headerBtn = document.getElementById("player-btn-download-album");
+        const miniBtn = document.getElementById("mini-player-download-btn");
+
+        if (onlineBtn) {
+            onlineBtn.disabled = true;
+            onlineBtn.innerHTML = `⏳ Ajout...`;
         }
+        if (headerBtn) {
+            headerBtn.disabled = true;
+            headerBtn.innerHTML = `⏳ Ajout...`;
+        }
+        if (miniBtn) miniBtn.disabled = true;
+
+        const fmt = currentConfig.default_format || "m4a";
+        const itemObj = this.currentAlbum.online_item || {
+            url: targetUrl,
+            title: targetTitle,
+            artist: this.currentAlbum.artist,
+            thumbnail: this.currentAlbum.cover_url,
+            type: isSingle ? "track" : "album"
+        };
 
         try {
             await downloadItemFromSearch(
                 targetUrl,
                 targetTitle,
                 fmt,
-                btnEl,
-                origHtml,
-                this.currentAlbum.online_item || {
-                    url: targetUrl,
-                    title: targetTitle,
-                    artist: this.currentAlbum.artist,
-                    thumbnail: this.currentAlbum.cover_url,
-                    type: isSingle ? "track" : "album"
-                }
+                null,
+                "",
+                itemObj
             );
+            if (itemObj) itemObj.status = "queued";
+            this.updateOnlineDownloadButtons();
         } catch (e) {
             console.error("Erreur téléchargement depuis le lecteur:", e);
-            if (btnEl && origHtml) {
-                btnEl.disabled = false;
-                btnEl.innerHTML = origHtml;
-            }
+            this.updateOnlineDownloadButtons();
         }
     },
 
@@ -6881,7 +7071,7 @@ const AudioPlayer = {
             is_online: true,
             is_single_track: false,
             online_url: albumInfo.url || "",
-            online_item: albumInfo
+            online_item: albumInfo.online_item || albumInfo
         };
         this.playlist = tracks.map((t, idx) => ({
             title: t.title || `Piste ${idx + 1}`,
@@ -6918,7 +7108,7 @@ const AudioPlayer = {
     },
 
     // Pré-écoute en ligne (Stream d'un titre seul)
-    playOnlineTrack(title, artist, thumb, videoId, albumName = "", albumUrl = "") {
+    playOnlineTrack(title, artist, thumb, videoId, albumName = "", albumUrl = "", itemObj = null) {
         if (!videoId) {
             showToast("Identifiant de piste introuvable.", "warning");
             return;
@@ -6943,13 +7133,14 @@ const AudioPlayer = {
             is_online: true,
             is_single_track: true,
             online_url: albumUrl || `https://www.youtube.com/watch?v=${videoId}`,
-            online_item: {
+            online_item: itemObj || {
                 title: title,
                 artist: artist,
                 thumbnail: thumb,
                 id: videoId,
                 type: "track",
-                url: albumUrl || `https://www.youtube.com/watch?v=${videoId}`
+                url: albumUrl || `https://www.youtube.com/watch?v=${videoId}`,
+                status: null
             }
         };
         this.playlist = [{
@@ -7171,23 +7362,21 @@ const AudioPlayer = {
             setTimeout(() => this.scrollToActiveTrack(true), 60);
             return;
         }
-        if (!pObj.items || !Array.isArray(pObj.items)) {
-            // ── Utiliser le cache UserPlaylists.playlistCache si disponible ──
-            const cached = window.UserPlaylists?.playlistCache?.get(pObj.id);
-            if (cached && cached.items) {
-                pObj = cached;
-            } else {
-                try {
-                    const res = await fetch(`/api/playlists/${pObj.id}`);
-                    if (res.ok) {
-                        pObj = await res.json();
-                        // Stocker dans le cache pour les prochains clics
-                        if (window.UserPlaylists && pObj.items) {
-                            window.UserPlaylists.playlistCache.set(pObj.id, pObj);
-                        }
+        if (pObj.is_smart || !pObj.items || !Array.isArray(pObj.items)) {
+            // Pour les Smart Playlists ou playlists non encore préchargées : fetch systématique pour ne jamais jouer de fichiers supprimés
+            try {
+                const res = await fetch(`/api/playlists/${pObj.id}`);
+                if (res.ok) {
+                    pObj = await res.json();
+                    if (window.UserPlaylists && pObj.items) {
+                        window.UserPlaylists.playlistCache.set(pObj.id, pObj);
                     }
-                } catch (e) {
-                    console.error("Erreur chargement playlist:", e);
+                }
+            } catch (e) {
+                console.error("Erreur chargement playlist:", e);
+                const cached = window.UserPlaylists?.playlistCache?.get(pObj.id);
+                if (cached && cached.items) {
+                    pObj = cached;
                 }
             }
         }
@@ -7283,8 +7472,8 @@ function setupAudioPlayer() {
     AudioPlayer.init();
 }
 
-function playTrack(title, artist, thumb, videoId, albumName = "", albumUrl = "") {
-    AudioPlayer.playOnlineTrack(title, artist, thumb, videoId, albumName, albumUrl);
+function playTrack(title, artist, thumb, videoId, albumName = "", albumUrl = "", itemObj = null) {
+    AudioPlayer.playOnlineTrack(title, artist, thumb, videoId, albumName, albumUrl, itemObj);
 }
 
 async function playOnlineAlbumFromItem(item, btnEl = null, startIndex = 0) {
@@ -7320,7 +7509,9 @@ async function playOnlineAlbumFromItem(item, btnEl = null, startIndex = 0) {
                 thumbnail: item.thumbnail || data.thumbnail,
                 url: item.url,
                 subtype: data.subtype || item.subtype || "album",
-                is_playlist: isPlaylistUrlOrItem(item, item.url)
+                is_playlist: isPlaylistUrlOrItem(item, item.url),
+                status: item.status || null,
+                online_item: item
             },
             availableTracks,
             startIndex

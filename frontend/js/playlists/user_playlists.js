@@ -739,10 +739,13 @@ const UserPlaylists = {
 
         // Vérifier d'abord le cache mémoire pour affichage instantané à 0 ms !
         const cached = this.playlistCache.get(playlistId);
+        const isSmart = (basicPl && basicPl.is_smart) || (cached && cached.is_smart);
         if (cached && cached.items && cached.items.length > 0) {
             this.currentDetailPlaylist = cached;
             this.renderDetail(cached);
-            return;
+            if (!isSmart) {
+                return;
+            }
         }
 
         // Trouver les métadonnées de base si déjà listée

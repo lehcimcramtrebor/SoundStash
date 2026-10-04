@@ -51,10 +51,32 @@ CONFIG_FILE = Path(os.environ["SOUNDSTASH_CONFIG_FILE"]).resolve() if os.environ
     )
 )
 
+COOKIES_FILE = CONFIG_DIR / "cookies.txt"
+
 BIN_DIR = PROJECT_ROOT / "bin"
 KID3_DIR = BIN_DIR / "kid3"
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+
+def get_app_version() -> str:
+    """Résout dynamiquement la version de SoundStash depuis package.json ou version.json."""
+    for candidate in [
+        PROJECT_ROOT / "package.json",
+        PROJECT_ROOT / "backend" / "version.json",
+        Path(__file__).resolve().parent / "version.json",
+        Path(__file__).resolve().parent.parent / "package.json"
+    ]:
+        try:
+            if candidate.is_file():
+                with open(candidate, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if "version" in data and data["version"]:
+                        return str(data["version"]).strip()
+        except Exception:
+            pass
+    return "3.3.7"
+
+APP_VERSION = get_app_version()
 
 if os.environ.get("SOUNDSTASH_TEMP_DIR"):
     TEMP_DOWNLOAD_DIR = Path(os.environ["SOUNDSTASH_TEMP_DIR"]).resolve()
@@ -114,7 +136,7 @@ class AppConfig(BaseModel):
     video_library_dir: Optional[str] = None
     library_dir: Optional[str] = None
     default_format: str = "m4a"
-    default_quality: str = "128K"
+    default_quality: str = "auto"
     default_video_quality: str = "1080p"  # "2160p", "1440p", "1080p", "720p", "best"
     auto_retag: bool = True
     clean_titles: bool = True
@@ -139,6 +161,10 @@ class AppConfig(BaseModel):
     auto_update_yt_dlp: bool = True
     # Auto-vérification des mises à jour de SoundStash (GitHub releases)
     auto_check_app_updates: bool = True
+    # Fichier de cookies de session YouTube (contournement anti-bot)
+    cookies_file: Optional[str] = None
+    # Qualité audio maximale automatique (256 kbps / source) si une session YouTube est active
+    max_audio_quality_when_signed: bool = True
 
     @validator('export_dir', 'video_export_dir', 'video_library_dir', 'library_dir', pre=True)
     def ensure_parent_exists(cls, v):
@@ -188,3 +214,32 @@ def save_config(cfg: AppConfig):
         print(f"WARNING: Impossible de sauvegarder config.json dans {CONFIG_FILE}: {e}")
 
 config = load_config()
+
+def get_effective_cookies_file() -> Optional[Path]:
+    """
+    Retourne le chemin du fichier cookies.txt valide s'il existe et est non vide.
+    Vérifie d'abord le chemin explicite configuré, puis COOKIES_FILE,
+    puis en fallback persistant _resolve_user_data_dir() / 'cookies.txt'.
+    """
+    try:
+        if config and config.cookies_file:
+            p = Path(config.cookies_file).resolve()
+            if p.is_file() and p.stat().st_size > 0:
+                return p
+    except Exception:
+        pass
+
+    try:
+        if COOKIES_FILE.is_file() and COOKIES_FILE.stat().st_size > 0:
+            return COOKIES_FILE
+    except Exception:
+        pass
+
+    try:
+        user_cookies = _resolve_user_data_dir() / "cookies.txt"
+        if user_cookies.is_file() and user_cookies.stat().st_size > 0:
+            return user_cookies
+    except Exception:
+        pass
+
+    return None

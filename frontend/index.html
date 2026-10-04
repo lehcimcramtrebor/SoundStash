@@ -11,7 +11,7 @@
             document.documentElement.setAttribute("data-theme", savedTheme);
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=3.3.4">
+    <link rel="stylesheet" href="/static/style.css?v=3.3.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -119,6 +119,12 @@
                         <div>
                             <h2 class="card-title" style="margin-bottom: 2px;">Recherche en Ligne</h2>
                             <p class="text-muted" style="font-size: 0.85rem;">Trouvez et importez directement des albums, artistes ou morceaux sans quitter l'application.</p>
+                        </div>
+                        <div id="search-session-status-wrap" style="display: flex; align-items: center;">
+                            <button type="button" id="search-session-status-badge" class="badge badge-idle" style="cursor: pointer; border: 1px solid var(--border-subtle); font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease; background: var(--surface-2, rgba(255,255,255,0.04));" title="Cliquer pour configurer la session YouTube dans les paramètres">
+                                <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted, #777); display: inline-block;"></span>
+                                <span class="session-text">Session YouTube : Inactive</span>
+                            </button>
                         </div>
                     </div>
 
@@ -372,9 +378,10 @@
                             <div class="form-group col" id="audio-quality-group">
                                 <label for="quality-select">Qualité Audio :</label>
                                 <select id="quality-select">
-                                    <option value="128K" selected>128 kbps (Standard)</option>
-                                    <option value="192K">192 kbps</option>
-                                    <option value="256K">256 kbps</option>
+                                    <option value="auto" selected>Auto — Maximale sans perte (256k si abonné / 128k)</option>
+                                    <option value="256K">256 kbps (Haute Fidélité)</option>
+                                    <option value="192K">192 kbps (Réencodage)</option>
+                                    <option value="128K">128 kbps (Standard)</option>
                                 </select>
                             </div>
                             <div class="form-group col" id="video-quality-group" style="display: none;">
@@ -1250,6 +1257,8 @@
                                 <option value="artist-desc">🔤 Artiste (Z ➔ A)</option>
                                 <option value="title-asc">💿 Album (A ➔ Z)</option>
                                 <option value="title-desc">💿 Album (Z ➔ A)</option>
+                                <option value="genre-asc">🏷️ Genre (A ➔ Z)</option>
+                                <option value="genre-desc">🏷️ Genre (Z ➔ A)</option>
                                 <option value="tracks-desc">🎵 Nb de pistes (Décroissant)</option>
                                 <option value="year-desc">📅 Année (Plus récent)</option>
                                 <option value="year-asc">⏳ Année (Plus ancien)</option>
@@ -1868,6 +1877,68 @@
                             </div>
                         </div>
 
+                        <!-- Session YouTube & Anti-Bot Cookies -->
+                        <div class="settings-section-card">
+                            <h3 class="settings-card-title">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+                                Session YouTube &amp; Contournement Anti-Bot (Cookies)
+                            </h3>
+                            <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 14px;">
+                                Permet à SoundStash de signer ses requêtes avec votre session YouTube pour contourner définitivement les blocages <em>« Sign in to confirm you're not a bot »</em> lors de téléchargements soutenus.
+                            </p>
+                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px 16px;">
+                                <div>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span style="font-weight: 600; font-size: 0.92rem;">État de la session :</span>
+                                        <span id="cfg-cookies-status-badge" class="badge badge-idle">Mode Anonyme (Aucun cookie)</span>
+                                    </div>
+                                    <p id="cfg-cookies-status-details" class="text-muted" style="font-size: 0.8rem; margin: 4px 0 0 0;">
+                                        Aucun fichier de session actif. SoundStash télécharge en visiteur anonyme.
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <input type="file" id="cfg-cookies-file-input" accept=".txt" style="display: none;">
+                                    <button type="button" id="btn-cfg-cookies-import" class="btn btn-sm btn-primary" title="Sélectionner et importer votre fichier cookies.txt">
+                                        📥 Importer cookies.txt
+                                    </button>
+                                    <button type="button" id="btn-cfg-cookies-open-folder" class="btn btn-sm btn-secondary" title="Ouvrir le dossier de configuration dans l'explorateur Windows">
+                                        📁 Dossier
+                                    </button>
+                                    <button type="button" id="btn-cfg-cookies-remove" class="btn btn-sm btn-secondary" style="display: none; color: #ef4444;" title="Supprimer le fichier de cookies et revenir au mode anonyme">
+                                        🗑️ Supprimer
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border-subtle, #333);">
+                                <label class="checkbox-label" style="font-weight: 600; color: var(--accent, #89b4fa); font-size: 0.92rem;">
+                                    <input type="checkbox" id="cfg-max-audio-quality-signed" checked>
+                                    <span>Qualité audio maximale automatique (256 kbps / Haute Fidélité)</span>
+                                </label>
+                                <p class="text-muted" style="font-size: 0.8rem; margin: 4px 0 0 24px; line-height: 1.45;">
+                                    Si votre session YouTube est active, SoundStash bascule automatiquement sur les flux audio source de qualité maximale (256 kbps AAC / YouTube Premium) sans ré-échantillonnage compressé.
+                                </p>
+                            </div>
+
+                            <details class="settings-info-accordion" style="margin-top: 14px;">
+                                <summary>
+                                    <span class="settings-acc-badge">ℹ️</span>
+                                    <span class="settings-acc-title">Comment générer mon fichier cookies.txt en 1 minute ?</span>
+                                </summary>
+                                <div class="settings-acc-content" style="padding: 12px 14px; font-size: 0.82rem; line-height: 1.6; color: var(--text-muted); border-top: 1px solid var(--border-subtle);">
+                                    1. Installez l'extension open-source <strong>Get cookies.txt LOCALLY</strong> (100% locale, zéro fuite de données) :<br>
+                                    <div style="display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap;">
+                                        <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbngbenkjcffliehddfaccca" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-secondary" style="font-size: 0.78rem; text-decoration: none;">🌐 Chrome / Brave</a>
+                                        <a href="https://microsoftedge.microsoft.com/addons/detail/get-cookiestxt-locally/bpeioeeomhpimchmdflipcljhknblhnb" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-secondary" style="font-size: 0.78rem; text-decoration: none;">🌐 Microsoft Edge</a>
+                                        <a href="https://addons.mozilla.org/fr/firefox/addon/get-cookies-txt-locally/" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-secondary" style="font-size: 0.78rem; text-decoration: none;">🦊 Mozilla Firefox</a>
+                                    </div>
+                                    2. Ouvrez <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" style="color: var(--accent); font-weight: 500;">youtube.com</a> dans votre navigateur en étant connecté (un compte dédié/secondaire est idéal).<br>
+                                    3. Cliquez sur l'icône de l'extension en haut à droite du navigateur, puis cliquez sur <strong>Export</strong> (le fichier est téléchargé dans vos Téléchargements).<br>
+                                    4. Cliquez sur <strong>📥 Importer cookies.txt</strong> ci-dessus et sélectionnez ce fichier. SoundStash s'occupe du reste !
+                                </div>
+                            </details>
+                        </div>
+
                         <div class="settings-section-card">
                             <h3 class="settings-card-title">
                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7l-2 3v1h8v-1l-2-3h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 12H3V4h18v10z"/></svg>
@@ -2009,7 +2080,7 @@
                                         Mise à Jour de l'Application SoundStash
                                     </h3>
                                     <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
-                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v3.3.3</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
+                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v3.3.8</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
                                     </p>
                                 </div>
                                 <button type="button" id="btn-check-app-update" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
@@ -2219,7 +2290,7 @@
                     <div>
                         <div style="font-size: 0.8rem; color: var(--text-muted);">Version actuelle / Nouvelle version</div>
                         <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; margin-top: 2px;">
-                            <span id="app-update-current-ver" style="color: var(--text-muted);">v3.3.3</span>
+                            <span id="app-update-current-ver" style="color: var(--text-muted);">v3.3.8</span>
                             <span style="color: var(--accent);">➔</span>
                             <span id="app-update-target-ver" style="color: #10b981;">v...</span>
                         </div>
@@ -4012,45 +4083,45 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Socle JavaScript Modulaire Core -->
-    <script src="/static/js/core/icons.js?v=3.3.4"></script>
-    <script src="/static/js/core/utils.js?v=3.3.4"></script>
-    <script src="/static/js/core/modals.js?v=3.3.4"></script>
-    <script src="/static/js/core/websocket.js?v=3.3.4"></script>
-    <script src="/static/js/core/app_updater.js?v=3.3.4"></script>
+    <script src="/static/js/core/icons.js?v=3.3.8"></script>
+    <script src="/static/js/core/utils.js?v=3.3.8"></script>
+    <script src="/static/js/core/modals.js?v=3.3.8"></script>
+    <script src="/static/js/core/websocket.js?v=3.3.8"></script>
+    <script src="/static/js/core/app_updater.js?v=3.3.8"></script>
 
     <!-- Modules Autonomes : Mode Ambiance & Synthwave -->
-    <script src="/static/js/ambient/synthwave_canvas.js?v=3.3.4"></script>
-    <script src="/static/js/ambient/ambient_manager.js?v=3.3.4"></script>
+    <script src="/static/js/ambient/synthwave_canvas.js?v=3.3.8"></script>
+    <script src="/static/js/ambient/ambient_manager.js?v=3.3.8"></script>
 
     <!-- Modules Autonomes : Playlists Utilisateur -->
-    <script src="/static/js/playlists/user_playlists.js?v=3.3.4"></script>
+    <script src="/static/js/playlists/user_playlists.js?v=3.3.8"></script>
 
     <!-- Modules Autonomes : Configuration, Veille & Sécurité -->
-    <script src="/static/js/extras/settings.js?v=3.3.4"></script>
-    <script src="/static/js/extras/sleep_timer.js?v=3.3.4"></script>
-    <script src="/static/js/extras/party_lock.js?v=3.3.4"></script>
-    <script src="/static/js/extras/user_guide.js?v=3.3.4"></script>
+    <script src="/static/js/extras/settings.js?v=3.3.8"></script>
+    <script src="/static/js/extras/sleep_timer.js?v=3.3.8"></script>
+    <script src="/static/js/extras/party_lock.js?v=3.3.8"></script>
+    <script src="/static/js/extras/user_guide.js?v=3.3.8"></script>
 
     <!-- Modules Métier : Atelier de Recherche & Téléchargement -->
-    <script src="/static/js/workshop/workbench.js?v=3.3.4"></script>
-    <script src="/static/js/workshop/search.js?v=3.3.4"></script>
-    <script src="/static/js/workshop/download.js?v=3.3.4"></script>
+    <script src="/static/js/workshop/workbench.js?v=3.3.8"></script>
+    <script src="/static/js/workshop/search.js?v=3.3.8"></script>
+    <script src="/static/js/workshop/download.js?v=3.3.8"></script>
 
     <!-- Modules Métier : Éditeur de Tags & Reconstitution -->
-    <script src="/static/js/editor/reconstitute.js?v=3.3.4"></script>
-    <script src="/static/js/editor/tag_editor.js?v=3.3.4"></script>
+    <script src="/static/js/editor/reconstitute.js?v=3.3.8"></script>
+    <script src="/static/js/editor/tag_editor.js?v=3.3.8"></script>
 
     <!-- Modules Métier : Discothèque & Corbeille -->
-    <script src="/static/js/library/library_manager.js?v=3.3.4"></script>
+    <script src="/static/js/library/library_manager.js?v=3.3.8"></script>
 
     <!-- Modules Métier : Lecteur Audio, Égaliseur & Raccourcis -->
-    <script src="/static/js/player/audio_player.js?v=3.3.4"></script>
-    <script src="/static/js/player/shortcuts.js?v=3.3.4"></script>
+    <script src="/static/js/player/audio_player.js?v=3.3.8"></script>
+    <script src="/static/js/player/shortcuts.js?v=3.3.8"></script>
 
     <!-- Modules Métier : Lecteur Vidéo Clip & Moteur Audio Vidéo -->
-    <script src="/static/js/video/video_player.js?v=3.3.4"></script>
+    <script src="/static/js/video/video_player.js?v=3.3.8"></script>
 
     <!-- Orchestrateur Principal -->
-    <script src="/static/app.js?v=3.3.4"></script>
+    <script src="/static/app.js?v=3.3.8"></script>
 </body>
 </html>

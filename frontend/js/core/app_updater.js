@@ -5,7 +5,7 @@
  */
 
 window.AppUpdater = {
-    currentVersion: "3.3.4",
+    currentVersion: "3.3.6",
     latestRelease: null,
     isChecking: false,
     isDownloading: false,
@@ -13,11 +13,19 @@ window.AppUpdater = {
     installerPath: null,
 
     init() {
-        // Résolution dynamique de la version installée depuis le DOM
-        const installedVerEl = document.getElementById("app-installed-version");
-        if (installedVerEl && installedVerEl.textContent) {
-            const parsed = installedVerEl.textContent.replace(/^[vV\.\s]+/, '').trim();
-            if (parsed) this.currentVersion = parsed;
+        // Résolution dynamique de la version installée depuis la config API ou le DOM
+        if (window.currentConfig && window.currentConfig.app_version) {
+            this.currentVersion = window.currentConfig.app_version;
+            const installedVerEl = document.getElementById("app-installed-version");
+            if (installedVerEl) installedVerEl.textContent = `v${this.currentVersion}`;
+            const modalCurrentVerEl = document.getElementById("app-update-current-ver");
+            if (modalCurrentVerEl) modalCurrentVerEl.textContent = `v${this.currentVersion}`;
+        } else {
+            const installedVerEl = document.getElementById("app-installed-version");
+            if (installedVerEl && installedVerEl.textContent) {
+                const parsed = installedVerEl.textContent.replace(/^[vV\.\s]+/, '').trim();
+                if (parsed) this.currentVersion = parsed;
+            }
         }
 
         const btnCheck = document.getElementById("btn-check-app-update");

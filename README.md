@@ -1,4 +1,4 @@
-# 🎵 SoundStash v3.2.6
+# 🎵 SoundStash v3.3.8
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -25,13 +25,14 @@ Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve tou
 - **Mode Soirée (Party Lock)** verrouillable par code PIN pour sanctuariser la lecture lors d'événements.
 - **Minidock persistant** : lecture continue et contrôles accessibles partout lors de la navigation dans l'atelier ou la bibliothèque.
 - **Diffusion Réseau** : Intégration Chromium Media Router pour diffuser directement vers les Smart TVs (LG WebOS, Chromecast, DLNA).
+- **Badges de format et débit audio** : affichage discret et élégant du format et du débit réel (FLAC, AAC 256k, MP3 320k) aligné avant la durée des pistes.
 
 ### 2. 🌐 Catalogue Global « Tout » & Fluidité Extrême
 - **Vue continue « Tout » sans pop-in** : exploration fluide de l'ensemble de votre collection sans découpage saccadé.
 - **Virtualisation CSS native** (`content-visibility: auto`) : calcul et peinture limités aux éléments visibles dans le viewport, garantissant 60 FPS constants même sur des bibliothèques de 5 000+ pistes.
 - **Préchargement silencieux en arrière-plan (Prefetch)** : catalogue indexé et pré-rendu en tâche de fond dès l'ouverture de l'application, rendant l'onglet disponible instantanément au clic.
 - **Recherche globale ultra-rapide (< 1ms)** : indexation normalisée en temps réel pour filtrer immédiatement titres, albums ou artistes, avec surlignage des termes trouvés.
-- **Tri multi-modes dynamique** : tri instantané par artiste, titre, année, nombre de pistes ou durée.
+- **Tri multi-modes dynamique** : tri instantané par artiste, titre, genre, année, nombre de pistes ou durée.
 
 ### 3. 🎬 Hub Vidéo Musical & Concerts 16:9
 - **Double univers vidéo dédié** : séparation automatique et intelligente entre les **Clips musicaux** et les **Concerts intégraux**.
@@ -41,6 +42,7 @@ Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve tou
 
 ### 4. 🏷️ Atelier d'Organisation "Tag-First" & Reconstitution
 - **Atelier et zone de transit dédiée** : téléchargez ou importez vos médias dans un dossier temporaire dédié (`temp_downloads`), vérifiez leur structure, écoutez-les et éditez leurs métadonnées avant l'exportation finale vers votre bibliothèque musicale (`Library`).
+- **Gestion des cookies YouTube (`cookies.txt`)** : importateur sécurisé 100% local avec guide pas-à-pas intégré dans les paramètres pour contourner sans effort les restrictions réseau.
 - **Reconstitution automatique d'albums** : détection intelligente des morceaux manquants ou orphelins, recherche automatisée des pistes manquantes et reconstitution en 1 clic.
 - **Nettoyage automatique des bruits et tags superflus** : suppression des mentions parasites (`(Official Audio)`, `[Clip Officiel]`, `4K Remaster`, etc.).
 - **Normalisation Kid3-CLI** : standardisation des métadonnées ID3v2, Vorbis et MP4 pilotée par moteur natif.
@@ -48,9 +50,12 @@ Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve tou
 - **Support des albums multi-disques** : gestion transparente des disques multiples (`Disc 1`, `Disc 2`, etc.).
 - **Sas d'importation `_imports`** : zone de transit avec détection automatique des nouveaux fichiers, synchronisation disque transparente et détection des doublons.
 
-### 5. 🗂️ Bibliothèque Modulaire & Playlists
+### 5. 🗂️ Bibliothèque Modulaire, Playlists & Tags de Genre
 - **Vues spécialisées** : **Albums**, **Tout**, **Artistes** (grille réactive commutable 3 ou 4 colonnes), **Genres**, **Clips**, **Concerts** et **Listes** (Playlists).
-- **Playlists personnalisées** : création instantanée, réorganisation par glisser-déposer (drag & drop) et export.
+- **Tuiles d'albums enrichies** : affichage du tag de genre directement sous le nom de l'album avec filtrage direct au clic, badges de type (Album, Single, EP, Rip Audio).
+- **Tri complet par genre** : options de tri dédiées **🏷️ Genre (A ➔ Z)** et **🏷️ Genre (Z ➔ A)** disponibles dans la discothèque et le catalogue intégral.
+- **Playlists Mixtes & Smart Playlists auto-guérissantes** : listage exclusif de titres physiquement présents sur le disque, élimination automatique des fichiers supprimés et reconstitution dynamique en temps réel via WebSocket.
+- **Grilles Artistes & Genres unifiées** : dimensions et sélecteurs de densité harmonisés avec bouton direct de lecture aléatoire dédiée.
 - **Sources commutables en 1 clic** : basculement instantané entre la Bibliothèque principale et le dossier des Téléchargements.
 
 ---

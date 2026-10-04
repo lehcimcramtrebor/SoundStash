@@ -475,16 +475,24 @@ def extract_4digit_year(val: str) -> str:
         return m2.group(1)
     return ""
 
-def get_audio_duration_fast(filepath: Path | str) -> str:
+def get_audio_info_fast(filepath: Path | str) -> tuple[str, Optional[int], str]:
     """
-    Extrait la durée d'un fichier audio en format 'M:SS' ou 'H:MM:SS'.
+    Extrait la durée ('M:SS' ou 'H:MM:SS'), le débit en kbps (int) et le format ('M4A', 'MP3', etc.).
     Lit l'en-tête MP4/M4A/AAC en Python pur (< 0.5ms) avec fallback ffprobe pour les autres formats.
     """
     p = Path(filepath)
     if not p.is_file():
-        return ""
+        return "", None, ""
     
     ext = p.suffix.lower()
+    fmt = ext.lstrip(".").upper() if ext else "AUDIO"
+    sec: Optional[float] = None
+    file_sz = 0
+    try:
+        file_sz = p.stat().st_size
+    except Exception:
+        pass
+
     if ext in {".m4a", ".mp4", ".aac"}:
         try:
             with open(p, "rb") as f:
@@ -496,45 +504,52 @@ def get_audio_duration_fast(filepath: Path | str) -> str:
                         timescale, duration = struct.unpack(">II", data[idx + 16 : idx + 24])
                         if timescale > 0:
                             sec = duration / timescale
-                            m, s = divmod(int(sec), 60)
-                            if m >= 60:
-                                h, m = divmod(m, 60)
-                                return f"{h}:{m:02d}:{s:02d}"
-                            return f"{m}:{s:02d}"
                     elif version == 1:
                         timescale = struct.unpack(">I", data[idx + 24 : idx + 28])[0]
                         duration = struct.unpack(">Q", data[idx + 28 : idx + 36])[0]
                         if timescale > 0:
                             sec = duration / timescale
-                            m, s = divmod(int(sec), 60)
-                            if m >= 60:
-                                h, m = divmod(m, 60)
-                                return f"{h}:{m:02d}:{s:02d}"
-                            return f"{m}:{s:02d}"
         except Exception:
             pass
 
-    # Repli via ffprobe pour les autres formats (MP3, FLAC, OGG, WAV, etc.)
-    if Path(FFPROBE_PATH).exists():
+    # Repli via ffprobe pour les autres formats (MP3, FLAC, OGG, WAV, etc.) ou si non trouvé
+    if sec is None and Path(FFPROBE_PATH).exists():
         try:
             res = subprocess.run(
-                [str(FFPROBE_PATH), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(p.resolve())],
+                [str(FFPROBE_PATH), "-v", "error", "-show_entries", "format=duration,bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", str(p.resolve())],
                 capture_output=True,
                 text=True,
                 timeout=4
             )
-            raw = res.stdout.strip()
-            if raw:
-                sec = float(raw)
-                m, s = divmod(int(sec), 60)
-                if m >= 60:
-                    h, m = divmod(m, 60)
-                    return f"{h}:{m:02d}:{s:02d}"
-                return f"{m}:{s:02d}"
+            raw_lines = [l.strip() for l in res.stdout.strip().splitlines() if l.strip()]
+            if raw_lines:
+                try:
+                    sec = float(raw_lines[0])
+                except ValueError:
+                    pass
+                if len(raw_lines) > 1 and raw_lines[1].isdigit():
+                    br = int(int(raw_lines[1]) / 1000)
+                    if br > 0:
+                        m, s = divmod(int(sec), 60)
+                        dur_str = f"{m // 60}:{m % 60:02d}:{s:02d}" if m >= 60 else f"{m}:{s:02d}"
+                        return dur_str, br, fmt
         except Exception:
             pass
 
-    return ""
+    dur_str = ""
+    bitrate_kbps = None
+    if sec is not None and sec > 0:
+        m, s = divmod(int(sec), 60)
+        dur_str = f"{m // 60}:{m % 60:02d}:{s:02d}" if m >= 60 else f"{m}:{s:02d}"
+        if file_sz > 0:
+            bitrate_kbps = int(round((file_sz * 8) / (sec * 1000)))
+
+    return dur_str, bitrate_kbps, fmt
+
+def get_audio_duration_fast(filepath: Path | str) -> str:
+    """Extrait la durée d'un fichier audio en format 'M:SS' ou 'H:MM:SS'."""
+    dur, _, _ = get_audio_info_fast(filepath)
+    return dur
 
 KID3_FIELD_MAP = {
     'titre': 'title', 'title': 'title',
@@ -581,6 +596,8 @@ def _finalize_track_metadata(file_path: Path, raw_fields: dict) -> dict:
 
     is_vid = file_path.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov"}
 
+    dur_str, bitrate_val, fmt_val = get_audio_info_fast(file_path)
+
     return {
         "filename": file_path.name,
         "filepath": str(file_path.resolve()),
@@ -595,7 +612,9 @@ def _finalize_track_metadata(file_path: Path, raw_fields: dict) -> dict:
         "track_number": str(track_number) if track_number else "",
         "genre": raw_fields.get("genre", ""),
         "comment": raw_fields.get("comment", ""),
-        "duration": get_audio_duration_fast(file_path)
+        "duration": dur_str,
+        "bitrate": bitrate_val,
+        "format": fmt_val
     }
 
 def get_track_metadata(file_path: Path) -> dict:
@@ -606,7 +625,7 @@ def get_track_metadata(file_path: Path) -> dict:
             "filepath": str(file_path.resolve()),
             "title": "", "artist": "", "album": "", "raw_album": "",
             "album_artist": "", "year": "", "track_number": "",
-            "genre": "", "comment": "", "duration": ""
+            "genre": "", "comment": "", "duration": "", "bitrate": None, "format": ""
         }
 
     raw_fields = {}

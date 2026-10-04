@@ -79,15 +79,48 @@ class PlaybackStatsManager:
         logger.info(f"Écoute enregistrée : '{entry['title']}' ({entry['artist']}) -> {entry['play_count']} écoute(s)")
         return entry
 
-    def get_top_played(self, limit: int = 50, genre: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Retourne les pistes les plus écoutées, optionnellement filtrées par genre."""
+    def get_top_played(self, limit: int = 50, genre: Optional[str] = None, existing_only: bool = True) -> List[Dict[str, Any]]:
+        """Retourne les pistes les plus écoutées, optionnellement filtrées par genre et vérifiées sur disque."""
         tracks = list(self._cache.values())
         if genre and genre.strip():
             target_g = genre.strip().lower()
             tracks = [t for t in tracks if target_g in str(t.get("genre", "")).lower()]
 
+        if existing_only:
+            valid_tracks = []
+            for t in tracks:
+                p = t.get("path")
+                if p:
+                    try:
+                        if Path(p).is_file():
+                            valid_tracks.append(t)
+                    except Exception:
+                        pass
+            tracks = valid_tracks
+
         tracks.sort(key=lambda t: (t.get("play_count", 0), t.get("last_played", 0)), reverse=True)
         return tracks[:limit]
+
+    def prune_missing_files(self) -> int:
+        """Nettoie l'historique des écoutes en supprimant les entrées de fichiers n'existant plus sur le disque."""
+        keys_to_remove = []
+        for k, v in self._cache.items():
+            p = v.get("path")
+            if p:
+                try:
+                    if not Path(p).is_file():
+                        keys_to_remove.append(k)
+                except Exception:
+                    keys_to_remove.append(k)
+            else:
+                keys_to_remove.append(k)
+
+        if keys_to_remove:
+            for k in keys_to_remove:
+                self._cache.pop(k, None)
+            self._save()
+            logger.info(f"Playback stats : {len(keys_to_remove)} piste(s) supprimée(s) du disque retirée(s) de l'historique.")
+        return len(keys_to_remove)
 
     def get_stats_summary(self) -> Dict[str, Any]:
         """Retourne un résumé global des écoutes."""
@@ -98,3 +131,4 @@ class PlaybackStatsManager:
         }
 
 playback_stats = PlaybackStatsManager()
+

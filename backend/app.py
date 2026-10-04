@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from starlette.responses import Response
 
 from backend.config import (
@@ -23,7 +24,8 @@ from backend.config import (
     YTM_BAT_PATH, YTM_OGG_BAT_PATH, TEMP_DOWNLOAD_DIR, DEFAULT_EXPORT_DIR,
     DESKTOP_EXPORT_DIR, DOWNLOADS_EXPORT_DIR, MUSIC_EXPORT_DIR, PREVIEW_CACHE_DIR,
     DEFAULT_VIDEO_EXPORT_DIR, DESKTOP_VIDEO_EXPORT_DIR, DOWNLOADS_VIDEO_EXPORT_DIR, VIDEOS_SYSTEM_EXPORT_DIR,
-    save_config
+    COOKIES_FILE, get_effective_cookies_file,
+    save_config, APP_VERSION
 )
 from backend.downloader import download_manager
 from backend.tagger import (
@@ -74,7 +76,7 @@ from backend.cover_restorer import (
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.3.4")
+app = FastAPI(title="SoundStash API", version=APP_VERSION)
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -336,6 +338,12 @@ class UpdateConfigRequest(BaseModel):
     has_seen_tray_notice: Optional[bool] = None
     auto_update_yt_dlp: Optional[bool] = None
     auto_check_app_updates: Optional[bool] = None
+    cookies_file: Optional[str] = None
+    max_audio_quality_when_signed: Optional[bool] = None
+
+class CookiesUploadRequest(BaseModel):
+    content: Optional[str] = None
+    file_path: Optional[str] = None
 
 class MatchSearchItem(BaseModel):
     title: str
@@ -513,7 +521,11 @@ async def get_configuration():
         "minimize_to_tray_on_minimize": config.minimize_to_tray_on_minimize,
         "has_seen_tray_notice": config.has_seen_tray_notice,
         "auto_update_yt_dlp": getattr(config, "auto_update_yt_dlp", True),
-        "auto_check_app_updates": getattr(config, "auto_check_app_updates", True)
+        "auto_check_app_updates": getattr(config, "auto_check_app_updates", True),
+        "cookies_file": getattr(config, "cookies_file", None),
+        "has_cookies": bool(get_effective_cookies_file()),
+        "max_audio_quality_when_signed": getattr(config, "max_audio_quality_when_signed", True),
+        "app_version": APP_VERSION
     }
 
 @app.post("/api/config")
@@ -552,8 +564,129 @@ async def update_configuration(req: UpdateConfigRequest):
         config.auto_update_yt_dlp = req.auto_update_yt_dlp
     if req.auto_check_app_updates is not None:
         config.auto_check_app_updates = req.auto_check_app_updates
+    if "cookies_file" in req.model_fields_set:
+        config.cookies_file = req.cookies_file.strip() if (req.cookies_file and req.cookies_file.strip()) else None
+    if req.max_audio_quality_when_signed is not None:
+        config.max_audio_quality_when_signed = req.max_audio_quality_when_signed
     save_config(config)
     return {"success": True, "config": config.dict()}
+
+@app.get("/api/cookies/status")
+async def get_cookies_status_endpoint():
+    """Vérifie l'état et la validité du fichier de cookies de session YouTube."""
+    target = get_effective_cookies_file()
+    if not target or not target.is_file():
+        return {
+            "exists": False,
+            "path": str(COOKIES_FILE),
+            "size_bytes": 0,
+            "formatted_size": "0 B",
+            "modified_at": None,
+            "has_youtube_auth": False
+        }
+
+    try:
+        stat = target.stat()
+        size_bytes = stat.st_size
+        modified_at = datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M")
+
+        has_yt = False
+        with open(target, "r", encoding="utf-8", errors="ignore") as f:
+            sample = f.read(8192)
+            has_yt = (".youtube.com" in sample or "youtube" in sample.lower() or ".google.com" in sample)
+
+        def _fmt_size(b: int) -> str:
+            if b < 1024: return f"{b} o"
+            if b < 1024 * 1024: return f"{b / 1024:.1f} Ko"
+            return f"{b / (1024 * 1024):.1f} Mo"
+
+        return {
+            "exists": True,
+            "path": str(target),
+            "filename": target.name,
+            "size_bytes": size_bytes,
+            "formatted_size": _fmt_size(size_bytes),
+            "modified_at": modified_at,
+            "has_youtube_auth": has_yt
+        }
+    except Exception as e:
+        logger.warning(f"Erreur inspection cookies {target}: {e}")
+        return {
+            "exists": True,
+            "path": str(target),
+            "error": str(e),
+            "has_youtube_auth": False
+        }
+
+@app.post("/api/cookies/upload")
+async def upload_cookies_endpoint(req: CookiesUploadRequest):
+    """Importe ou enregistre le fichier de cookies."""
+    try:
+        text_content = ""
+        if req.file_path and os.path.isfile(req.file_path):
+            with open(req.file_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_content = f.read()
+        elif req.content:
+            text_content = req.content
+
+        if not text_content or not text_content.strip():
+            raise HTTPException(status_code=400, detail="Contenu de cookies vide.")
+
+        if "<!doctype html" in text_content.lower() or "<html" in text_content.lower():
+            raise HTTPException(status_code=400, detail="Le fichier fourni semble être une page web HTML, pas un fichier cookies.txt valide.")
+
+        COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+            f.write(text_content.strip() + "\n")
+
+        config.cookies_file = str(COOKIES_FILE)
+        save_config(config)
+
+        logger.info(f"Fichier cookies.txt enregistré avec succès dans {COOKIES_FILE} ({len(text_content)} car.)")
+        return {
+            "success": True,
+            "message": "Fichier cookies.txt importé et configuré avec succès !",
+            "path": str(COOKIES_FILE)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur enregistrement cookies : {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur enregistrement cookies : {e}")
+
+@app.delete("/api/cookies")
+async def delete_cookies_endpoint():
+    """Supprime le fichier cookies.txt pour repasser en mode anonyme."""
+    deleted = False
+    if COOKIES_FILE.exists():
+        try:
+            COOKIES_FILE.unlink()
+            deleted = True
+        except Exception as e:
+            logger.warning(f"Impossible de supprimer {COOKIES_FILE}: {e}")
+
+    if config.cookies_file:
+        config.cookies_file = None
+        save_config(config)
+
+    logger.info("Cookies révoqués / supprimés. Mode anonyme actif.")
+    return {"success": True, "deleted": deleted, "message": "Cookies supprimés avec succès. Mode anonyme réactivé."}
+
+@app.post("/api/cookies/open-folder")
+async def open_cookies_folder_endpoint():
+    """Ouvre le dossier contenant le fichier cookies dans l'explorateur Windows."""
+    folder = COOKIES_FILE.parent
+    if not folder.exists():
+        folder.mkdir(parents=True, exist_ok=True)
+    try:
+        if sys.platform == "win32":
+            os.startfile(str(folder))
+        else:
+            import subprocess
+            subprocess.Popen(["xdg-open", str(folder)])
+        return {"success": True, "path": str(folder)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.get("/api/tools/yt-dlp/status")
 async def get_yt_dlp_status_endpoint():
@@ -2185,6 +2318,22 @@ async def delete_exported_album_endpoint(req: ActionPathRequest):
             base_dir = video_export_dir if is_in_video else export_dir
             if parent != base_dir and parent.exists() and not any(parent.iterdir()):
                 safe_rmtree(parent)
+
+            # Mise à jour immédiate de l'indexothèque et purge des statistiques pour fichiers supprimés
+            try:
+                if is_in_video and hasattr(video_indexer, "scan"):
+                    video_indexer.scan()
+                elif hasattr(library_indexer, "scan"):
+                    library_indexer.scan(force=True)
+            except Exception as e:
+                logger.warning(f"Erreur re-scan post suppression album : {e}")
+
+            try:
+                playback_stats.prune_missing_files()
+            except Exception:
+                pass
+
+            dispatch_library_updated()
             return {"success": True, "message": "Album exporté supprimé avec succès."}
         except Exception as e:
             return {"success": False, "message": str(e)}
@@ -2205,6 +2354,21 @@ async def clear_all_exported_endpoint():
             elif item.is_file():
                 item.unlink()
                 deleted_count += 1
+
+        try:
+            if hasattr(library_indexer, "scan"):
+                library_indexer.scan(force=True)
+            if hasattr(video_indexer, "scan"):
+                video_indexer.scan()
+        except Exception:
+            pass
+
+        try:
+            playback_stats.prune_missing_files()
+        except Exception:
+            pass
+
+        dispatch_library_updated()
         return {"success": True, "deleted_count": deleted_count, "message": f"{deleted_count} élément(s) supprimé(s) du dossier d'exportation."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors du nettoyage : {str(e)}")
@@ -3047,7 +3211,9 @@ async def get_library_catalog(source: str = Query("library")):
                     inf_year = tags_meta.get("year")
                     inf_genre = tags_meta.get("genre")
                     from backend.library_indexer import extract_album_tracks_fast
-                    track_dur_map = {tr.filename: tr.duration_str for tr in extract_album_tracks_fast(item)}
+                    fast_tracks = extract_album_tracks_fast(item)
+                    track_dur_map = {tr.filename: tr.duration_str for tr in fast_tracks}
+                    track_br_map = {tr.filename: tr.bitrate_kbps for tr in fast_tracks}
 
                     alb_tracks = []
                     for f in audio_files:
@@ -3062,6 +3228,7 @@ async def get_library_catalog(source: str = Query("library")):
                             "year": str(inf_year) if inf_year else "",
                             "genre": inf_genre or "",
                             "duration": track_dur_map.get(f.name, ""),
+                            "bitrate": track_br_map.get(f.name),
                             "filepath": str(f.resolve()),
                             "format": ext,
                             "stream_url": f"/api/audio/stream-local?path={urllib.parse.quote(str(f.resolve()))}",
@@ -3089,6 +3256,7 @@ async def get_library_catalog(source: str = Query("library")):
                 continue
             alb_tracks = []
             dur_map = {tr.filename: tr.duration_str for tr in getattr(alb, "tracks", [])}
+            br_map = {tr.filename: tr.bitrate_kbps for tr in getattr(alb, "tracks", [])}
             alb_cover_url = _build_cover_url(alb.path, getattr(alb, "cover_file", None), getattr(alb, "mtime", None))
 
             def scan_dir(dir_path):
@@ -3106,6 +3274,7 @@ async def get_library_catalog(source: str = Query("library")):
                                 "year": str(alb.year) if alb.year else "",
                                 "genre": alb.genre or "",
                                 "duration": dur_map.get(entry.name, ""),
+                                "bitrate": br_map.get(entry.name),
                                 "filepath": entry.path,
                                 "format": ext,
                                 "stream_url": f"/api/audio/stream-local?path={urllib.parse.quote(entry.path)}",
@@ -3754,8 +3923,8 @@ async def get_library_tree_endpoint():
 @app.get("/api/playlists")
 async def list_playlists_endpoint():
     """Retourne la liste résumée de toutes les playlists utilisateur et l'état de la collection système."""
-    playlists = playlist_manager.list_playlists()
     all_albums = library_indexer.get_all_albums() if hasattr(library_indexer, "get_all_albums") else getattr(library_indexer, "albums", [])
+    playlists = playlist_manager.list_playlists(library_albums=all_albums)
     has_system = len(all_albums) > 0
     return {
         "playlists": playlists,
@@ -3771,7 +3940,8 @@ async def get_preset_covers_endpoint():
 @app.get("/api/playlists/{playlist_id}")
 async def get_playlist_endpoint(playlist_id: str):
     """Retourne une playlist complète avec ses pistes mixtes (audio + vidéo)."""
-    pl = playlist_manager.get_playlist(playlist_id)
+    all_albums = library_indexer.get_all_albums() if hasattr(library_indexer, "get_all_albums") else getattr(library_indexer, "albums", [])
+    pl = playlist_manager.get_playlist(playlist_id, library_albums=all_albums, video_indexer=video_indexer)
     if not pl:
         raise HTTPException(status_code=404, detail="Playlist introuvable.")
     return pl

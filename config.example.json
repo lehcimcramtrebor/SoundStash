@@ -15,5 +15,6 @@
   "cooldown_single": 10,
   "start_in_fullscreen": true,
   "audio_fader_enabled": true,
-  "audio_fader_duration": 0.5
+  "audio_fader_duration": 0.5,
+  "max_audio_quality_when_signed": true
 }

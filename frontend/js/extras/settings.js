@@ -371,7 +371,8 @@ function setupSettings() {
                     audio_fader_enabled: audioFaderEnabled,
                     cooldown_album: cooldownAlbum,
                     cooldown_single: cooldownSingle,
-                    auto_check_app_updates: document.getElementById("cfg-auto-check-app-updates") ? document.getElementById("cfg-auto-check-app-updates").checked : true
+                    auto_check_app_updates: document.getElementById("cfg-auto-check-app-updates") ? document.getElementById("cfg-auto-check-app-updates").checked : true,
+                    max_audio_quality_when_signed: document.getElementById("cfg-max-audio-quality-signed") ? document.getElementById("cfg-max-audio-quality-signed").checked : true
                 })
             });
             if (res.ok) {
@@ -567,6 +568,93 @@ function setupQuickDestButtons() {
             }
         });
     }
+
+    // Gestion des cookies de session YouTube (Anti-Bot)
+    const btnImportCookies = document.getElementById("btn-cfg-cookies-import");
+    const fileInputCookies = document.getElementById("cfg-cookies-file-input");
+    const btnOpenCookiesFolder = document.getElementById("btn-cfg-cookies-open-folder");
+    const btnRemoveCookies = document.getElementById("btn-cfg-cookies-remove");
+
+    if (btnImportCookies && fileInputCookies) {
+        btnImportCookies.addEventListener("click", () => {
+            fileInputCookies.value = "";
+            fileInputCookies.click();
+        });
+
+        fileInputCookies.addEventListener("change", async () => {
+            const file = fileInputCookies.files && fileInputCookies.files[0];
+            if (!file) return;
+
+            btnImportCookies.disabled = true;
+            btnImportCookies.innerHTML = `⏳ Importation...`;
+
+            try {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const text = e.target.result;
+                    if (!text || !text.trim()) {
+                        showToast("Le fichier sélectionné est vide.", "warning");
+                        btnImportCookies.disabled = false;
+                        btnImportCookies.innerHTML = `📥 Importer cookies.txt`;
+                        return;
+                    }
+
+                    try {
+                        const res = await fetch("/api/cookies/upload", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ content: text })
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                            showToast("✓ Session YouTube importée avec succès !", "success");
+                            await refreshCookiesStatus();
+                        } else {
+                            showModalAlert("Erreur d'importation", data.detail || "Fichier cookies invalide.", "danger");
+                        }
+                    } catch (err) {
+                        showModalAlert("Erreur réseau", "Impossible d'envoyer le fichier : " + err.message, "danger");
+                    } finally {
+                        btnImportCookies.disabled = false;
+                        btnImportCookies.innerHTML = `📥 Importer cookies.txt`;
+                    }
+                };
+                reader.readAsText(file);
+            } catch (err) {
+                btnImportCookies.disabled = false;
+                btnImportCookies.innerHTML = `📥 Importer cookies.txt`;
+                showToast("Erreur lecture fichier : " + err.message, "danger");
+            }
+        });
+    }
+
+    if (btnOpenCookiesFolder) {
+        btnOpenCookiesFolder.addEventListener("click", async () => {
+            await fetch("/api/cookies/open-folder", { method: "POST" });
+        });
+    }
+
+    if (btnRemoveCookies) {
+        btnRemoveCookies.addEventListener("click", async () => {
+            const confirmed = await showModalConfirm(
+                "Supprimer la session YouTube ?",
+                "Souhaitez-vous supprimer le fichier cookies.txt et repasser en mode anonyme standard ?",
+                "Supprimer les cookies",
+                true
+            );
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch("/api/cookies", { method: "DELETE" });
+                if (res.ok) {
+                    showToast("Session YouTube supprimée. Mode anonyme réactivé.", "info");
+                    await refreshCookiesStatus();
+                }
+            } catch (err) {
+                showToast("Erreur lors de la suppression des cookies.", "danger");
+            }
+        });
+    }
 }
 
 async function refreshYtDlpStatus() {
@@ -586,11 +674,94 @@ async function refreshYtDlpStatus() {
     }
 }
 
+async function refreshCookiesStatus() {
+    const badge = document.getElementById("cfg-cookies-status-badge");
+    const details = document.getElementById("cfg-cookies-status-details");
+    const btnRemove = document.getElementById("btn-cfg-cookies-remove");
+    const searchBadge = document.getElementById("search-session-status-badge");
+
+    // Raccourci pour ouvrir directement le sous-onglet Système / Session depuis la recherche
+    if (searchBadge && !searchBadge._hasClickListener) {
+        searchBadge._hasClickListener = true;
+        searchBadge.addEventListener("click", () => {
+            if (typeof openSettingsModal === "function") {
+                openSettingsModal("subtab-system");
+            }
+        });
+    }
+
+    try {
+        const res = await fetch("/api/cookies/status");
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.exists) {
+            if (badge) {
+                badge.className = "badge badge-success";
+                badge.innerHTML = `🟢 Session YouTube active`;
+                badge.title = `Fichier : ${data.path}`;
+            }
+            if (details) {
+                const modText = data.modified_at ? ` (importé le ${data.modified_at})` : "";
+                const ytNotice = data.has_youtube_auth ? "Identifiants YouTube reconnus." : "Fichier cookies détecté.";
+                details.innerHTML = `✅ Fichier <code>cookies.txt</code> actif (${data.formatted_size})${modText}. ${ytNotice} Vos requêtes de téléchargement sont signées.`;
+            }
+            if (btnRemove) btnRemove.style.display = "inline-flex";
+
+            if (searchBadge) {
+                searchBadge.className = "badge badge-success";
+                searchBadge.style.background = "rgba(46, 204, 113, 0.15)";
+                searchBadge.style.color = "#2ecc71";
+                searchBadge.style.borderColor = "rgba(46, 204, 113, 0.4)";
+                searchBadge.innerHTML = `
+                    <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; display: inline-block; box-shadow: 0 0 6px #2ecc71;"></span>
+                    <span class="session-text" style="font-weight: 600;">Session YouTube Active</span>
+                `;
+                searchBadge.title = `Session connectée active (${data.formatted_size}). Cliquez pour gérer les cookies ou la qualité.`;
+            }
+        } else {
+            if (badge) {
+                badge.className = "badge badge-idle";
+                badge.textContent = "Mode Anonyme (Aucun cookie)";
+                badge.title = "Aucun fichier cookies.txt actif dans le dossier de configuration.";
+            }
+            if (details) {
+                details.textContent = "Aucun fichier de session actif. SoundStash télécharge en visiteur anonyme.";
+            }
+            if (btnRemove) btnRemove.style.display = "none";
+
+            if (searchBadge) {
+                searchBadge.className = "badge badge-idle";
+                searchBadge.style.background = "var(--surface-2, rgba(255, 255, 255, 0.04))";
+                searchBadge.style.color = "var(--text-muted, #888)";
+                searchBadge.style.borderColor = "var(--border-subtle, #333)";
+                searchBadge.innerHTML = `
+                    <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #888; display: inline-block;"></span>
+                    <span class="session-text">Session YouTube : Inactive</span>
+                `;
+                searchBadge.title = "Aucune session YouTube connectée. Cliquez pour importer vos cookies et éviter les blocages.";
+            }
+        }
+    } catch (e) {
+        console.warn("Impossible de vérifier le statut des cookies:", e);
+    }
+}
+window.refreshCookiesStatus = refreshCookiesStatus;
+
 async function loadConfiguration() {
     try {
         const res = await fetch("/api/config");
         const data = await res.json();
         currentConfig = data;
+
+        // Mise à jour synchrone de la version installée affichée
+        if (data.app_version) {
+            const installedVerEl = document.getElementById("app-installed-version");
+            if (installedVerEl) installedVerEl.textContent = `v${data.app_version}`;
+            const modalCurrentVerEl = document.getElementById("app-update-current-ver");
+            if (modalCurrentVerEl) modalCurrentVerEl.textContent = `v${data.app_version}`;
+            if (window.AppUpdater) window.AppUpdater.currentVersion = data.app_version;
+        }
 
         document.getElementById("cfg-export-dir").value = data.export_dir || "";
         const effectiveVideoDir = data.video_library_dir || data.video_export_dir || "";
@@ -660,6 +831,12 @@ async function loadConfiguration() {
         if (cooldownAlbumInput) cooldownAlbumInput.value = data.cooldown_album ?? 30;
         const cooldownSingleInput = document.getElementById("cfg-cooldown-single");
         if (cooldownSingleInput) cooldownSingleInput.value = data.cooldown_single ?? 10;
+
+        // Pré-remplir la qualité audio max en session signée
+        const maxAudioSignedEl = document.getElementById("cfg-max-audio-quality-signed");
+        if (maxAudioSignedEl) {
+            maxAudioSignedEl.checked = data.max_audio_quality_when_signed !== false;
+        }
 
         // Charger l'état actuel de la bibliothèque indexée
         try {
@@ -736,6 +913,7 @@ async function loadConfiguration() {
             autoCheckAppUpdatesCheckbox.checked = data.auto_check_app_updates !== false;
         }
         refreshYtDlpStatus();
+        refreshCookiesStatus();
     } catch (err) {
         console.error("Erreur chargement configuration:", err);
     }
@@ -815,7 +993,7 @@ async function sendDirectDownload(url, title, itemType = "album") {
             url: url,
             title: title,
             format: currentConfig.default_format || "m4a",
-            quality: currentConfig.default_quality || "128K",
+            quality: currentConfig.default_quality || "auto",
             auto_retag: true,
             naming_pattern: currentConfig.naming_pattern || "{track:02d} {title}",
             clean_titles: true,
