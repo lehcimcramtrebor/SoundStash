@@ -832,6 +832,11 @@ body.player-mode-active .nav-tabs {
     color: #ffffff;
 }
 
+.player-card-type-badge.badge-concert {
+    background-color: rgba(16, 185, 129, 0.95);
+    color: #ffffff;
+}
+
 .player-card-overlay-btn,
 .player-card-play-btn {
     position: absolute;
@@ -2978,6 +2983,12 @@ body.player-mode-active .nav-tabs {
     background-color: rgba(245, 158, 11, 0.22);
     color: #fcd34d;
     border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.player-type-badge-inline.badge-concert {
+    background-color: rgba(16, 185, 129, 0.22);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.45);
 }
 
 .all-album-actions {

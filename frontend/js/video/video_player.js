@@ -600,6 +600,9 @@ function syncAudioPlayerWithVideo(item) {
             playlist: [videoTrack],
             currentIndex: 0
         };
+        if (typeof ap.recordPlaybackOrigin === "function") {
+            ap.recordPlaybackOrigin("video");
+        }
         ap.updateDisplayedAlbumUI();
         ap.updateCurrentTrackUI(videoTrack);
         ap.renderPlayerTab();

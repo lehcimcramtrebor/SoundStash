@@ -213,19 +213,45 @@ function isPlaylistUrlOrItem(item, url) {
 window.isPlaylistUrlOrItem = isPlaylistUrlOrItem;
 
 // ===================================================
-// Mise à jour de l'UI du sélecteur de mode dans l'éditeur
+// Mise à jour de l'UI du sélecteur de mode dans l'éditeur (v3.3.3)
 // ===================================================
-function updateEditorTypeToggleUI(mode) {
+function getBadgeInfoForType(type) {
+    switch (type) {
+        case "single":
+            return { label: "SINGLE", class: "badge-single", emoji: "⚡", title: "Singles & EPs" };
+        case "rip":
+            return { label: "RIP AUDIO", class: "badge-rip", emoji: "🎙️", title: "Rips Audio vidéo" };
+        case "playlist":
+            return { label: "LISTE", class: "badge-playlist", emoji: "📑", title: "Listes de lecture importées" };
+        case "concert":
+            return { label: "CONCERT", class: "badge-concert", emoji: "🎸", title: "Concerts & Lives" };
+        case "album":
+        default:
+            return { label: "ALBUM", class: "badge-album", emoji: "💿", title: "Albums officiels" };
+    }
+}
+window.getBadgeInfoForType = getBadgeInfoForType;
+
+function updateEditorTypeToggleUI(mode, isManual = false) {
+    const autoBtn = document.getElementById("toggle-type-auto-btn");
     const albumBtn = document.getElementById("toggle-type-album-btn");
     const singleBtn = document.getElementById("toggle-type-single-btn");
+    const ripBtn = document.getElementById("toggle-type-rip-btn");
     const plBtn = document.getElementById("toggle-type-playlist-btn");
     const concertBtn = document.getElementById("toggle-type-concert-btn");
+
+    const isAuto = !isManual;
     const isPlaylist = mode === true || mode === "playlist";
     const isSingle = mode === "single";
+    const isRip = mode === "rip";
     const isConcert = mode === "concert";
-    if (albumBtn) albumBtn.classList.toggle("active", !isPlaylist && !isSingle && !isConcert);
-    if (singleBtn) singleBtn.classList.toggle("active", isSingle);
-    if (plBtn) plBtn.classList.toggle("active", isPlaylist);
-    if (concertBtn) concertBtn.classList.toggle("active", isConcert);
+    const isAlbum = mode === "album" || (!isPlaylist && !isSingle && !isRip && !isConcert);
+
+    if (autoBtn) autoBtn.classList.toggle("active", isAuto);
+    if (albumBtn) albumBtn.classList.toggle("active", isManual && isAlbum);
+    if (singleBtn) singleBtn.classList.toggle("active", isManual && isSingle);
+    if (ripBtn) ripBtn.classList.toggle("active", isManual && isRip);
+    if (plBtn) plBtn.classList.toggle("active", isManual && isPlaylist);
+    if (concertBtn) concertBtn.classList.toggle("active", isManual && isConcert);
 }
 window.updateEditorTypeToggleUI = updateEditorTypeToggleUI;

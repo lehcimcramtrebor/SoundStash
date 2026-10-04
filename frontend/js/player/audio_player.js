@@ -1427,16 +1427,73 @@ const AudioPlayer = {
     },
 
     /**
-     * Redirige dynamiquement vers le contenu en cours de lecture
-     * (l'album dans l'onglet Albums, la playlist dans l'onglet Playlists,
-     * la vue Tout si active, ou le clip dans l'onglet Clips) et scrolle jusqu'au morceau actif.
+     * Mémorise la section d'origine d'une lecture au moment de son lancement (v3.3.2).
+     * Cette trace permet à « En écoute » (touche N) de toujours renvoyer vers l'endroit
+     * exact d'où la lecture a été lancée, quel que soit l'onglet où l'on se trouve ensuite.
+     */
+    recordPlaybackOrigin(forcedType = null) {
+        const alb = this.currentAlbum || {};
+        const albPath = alb.path || "";
+
+        // Vue de lancement : si on a déjà basculé en Grand Écran, retenir la vue d'où l'on venait
+        let view = this.currentView || "albums";
+        if (view === "now-playing") {
+            view = this.previousView || "albums";
+        }
+
+        let type = forcedType;
+        if (!type) {
+            if (alb.is_video && (albPath === "video_standalone" || (this.playlist && this.playlist.length === 1 && this.playlist[0] && this.playlist[0].is_video))
+                && !String(albPath).startsWith("playlist:") && !String(albPath).startsWith("system:")) {
+                type = "video";
+            } else if (view === "all") {
+                // Tout lancement depuis l'onglet Tout (album, aléatoire collection, recherche) revient sur Tout
+                type = "all";
+            } else if (String(albPath).startsWith("playlist:") || (albPath && String(albPath).startsWith("system:") && view === "playlists")) {
+                type = "playlist";
+            } else if (albPath === "system:all-collection") {
+                type = (view === "playlists") ? "playlist" : "all";
+            } else if (albPath === "system:search-results") {
+                type = "all";
+            } else if (!albPath) {
+                type = "filtered";
+            } else {
+                type = "album";
+            }
+        }
+
+        if (type === "video") {
+            view = alb.is_concert ? "concerts" : (view === "concerts" ? "concerts" : "videos");
+        }
+
+        this.playbackOrigin = {
+            type,
+            view,
+            path: albPath,
+            artistFilter: this.selectedArtistFilter || null,
+            genreFilter: this.selectedGenreFilter || null
+        };
+        this._playbackOriginCtxRef = this.playbackContext || null;
+    },
+
+    /**
+     * Redirige vers la section d'où la lecture en cours a été lancée (v3.3.2) :
+     * - Album      → ce seul album (détail)
+     * - Tout       → onglet Tout, morceau en cours mis en vision
+     * - Playlist   → la playlist concernée
+     * - Vidéo      → le lecteur vidéo
+     * Le comportement ne dépend plus de l'onglet où se trouve l'utilisateur.
      */
     navigateToCurrentlyPlaying() {
-        const isVideo = Boolean(
+        const origin = this.playbackOrigin || null;
+        const videoEl = document.getElementById("video-modal-player");
+        const isVideoActive = Boolean(
             window.isVideoPlayingInBackground ||
-            (document.getElementById("video-modal-player") && !document.getElementById("video-modal-player").paused)
+            (videoEl && videoEl.src && !videoEl.paused)
         );
-        if (isVideo && window.reopenVideoModal) {
+
+        // Vidéo : rouvrir le lecteur vidéo
+        if ((isVideoActive || (origin && origin.type === "video")) && window.reopenVideoModal && videoEl && videoEl.src) {
             window.reopenVideoModal();
             return;
         }
@@ -1454,55 +1511,85 @@ const AudioPlayer = {
             enterPlayerMode();
         }
 
-        // Si l'utilisateur est déjà sur la vue "Tout" : maintenir la vue Tout et placer le morceau en vision
-        if (this.currentView === "all") {
-            if (typeof this.updateActiveTrackInAllContainer === "function") {
-                this.updateActiveTrackInAllContainer();
-            }
-            this.scrollToActiveTrack(true);
-            return;
-        }
+        // Trace absente (lecture lancée avant la v3.3.2) : la reconstituer à partir du contexte actuel
+        const ctxAlbum = (this.playbackContext && this.playbackContext.album) || this.currentAlbum || {};
+        const o = origin || (() => {
+            const p = ctxAlbum.path || "";
+            if (String(p).startsWith("playlist:")) return { type: "playlist", view: "playlists", path: p };
+            if (p === "system:all-collection" || p === "system:search-results") return { type: "all", view: "all", path: p };
+            if (p && p !== "video_standalone") return { type: "album", view: "albums", path: p };
+            return { type: "now-playing", view: "now-playing", path: p };
+        })();
 
-        // 1. Playlist en cours de lecture (Toute la Collection ou Playlist Utilisateur)
-        if (this.isUserPlaylistActive || (this.currentAlbum && (this.currentAlbum.is_playlist || this.currentAlbum.is_collection))) {
-            const curPath = this.currentAlbum ? this.currentAlbum.path : "";
-            if (this.currentView === "playlists") {
-                // Déjà sur les playlists, scroller immédiatement
-                this.scrollToActiveTrack(true);
+        const scrollLater = (delay = 150) => setTimeout(() => this.scrollToActiveTrack(true), delay);
+
+        switch (o.type) {
+            case "all": {
+                if (this.currentView !== "all") this.setView("all");
+                const refresh = () => {
+                    if (typeof this.updateActiveTrackInAllContainer === "function") {
+                        this.updateActiveTrackInAllContainer();
+                    }
+                    this.scrollToActiveTrack(true);
+                };
+                refresh();
+                setTimeout(refresh, 180);
                 return;
             }
-            this.setView("playlists");
-            if (curPath && (curPath === "system:all-collection" || curPath.includes("all-collection"))) {
-                if (window.UserPlaylists && window.UserPlaylists.openAllCollectionDetail) {
-                    window.UserPlaylists.openAllCollectionDetail();
-                }
-            } else if (curPath && curPath.startsWith("playlist:")) {
-                const plId = curPath.replace("playlist:", "");
-                if (window.UserPlaylists && window.UserPlaylists.openDetail) {
-                    window.UserPlaylists.openDetail(plId);
-                }
-            }
-            setTimeout(() => this.scrollToActiveTrack(true), 150);
-            return;
-        }
 
-        // 2. Album de la collection en cours de lecture
-        if (this.currentAlbum && this.activeAlbumPath) {
-            if (this.currentView === "albums" && this.isAlbumDetailOpen) {
-                this.scrollToActiveTrack(true);
+            case "playlist": {
+                const curPath = o.path || (ctxAlbum.path || "");
+                const plOpen = window.UserPlaylists && window.UserPlaylists.isDetailOpen;
+                if (this.currentView !== "playlists") this.setView("playlists");
+                if (curPath === "system:all-collection" || String(curPath).includes("all-collection")) {
+                    if (window.UserPlaylists && window.UserPlaylists.openAllCollectionDetail) {
+                        window.UserPlaylists.openAllCollectionDetail();
+                    }
+                } else if (String(curPath).startsWith("playlist:")) {
+                    const plId = curPath.replace("playlist:", "");
+                    const openPl = window.UserPlaylists && window.UserPlaylists.currentDetailPlaylist;
+                    const sameOpen = plOpen && openPl && String(openPl.id) === String(plId);
+                    if (!sameOpen && window.UserPlaylists && window.UserPlaylists.openDetail) {
+                        window.UserPlaylists.openDetail(plId);
+                    }
+                }
+                scrollLater(150);
                 return;
             }
-            this.setView("albums");
-            this.openAlbumDetail(this.activeAlbumPath);
-            setTimeout(() => this.scrollToActiveTrack(true), 150);
-            return;
+
+            case "album": {
+                const albPath = o.path || this.activeAlbumPath;
+                if (albPath) {
+                    const alreadyOpen = this.currentView === "albums" && this.isAlbumDetailOpen && this.detailAlbumPath === albPath;
+                    if (!alreadyOpen) {
+                        if (this.currentView !== "albums") this.setView("albums");
+                        this.openAlbumDetail(albPath);
+                    }
+                    scrollLater(alreadyOpen ? 0 : 150);
+                    return;
+                }
+                break;
+            }
+
+            case "filtered": {
+                const v = o.view && o.view !== "now-playing" ? o.view : "albums";
+                if (this.currentView !== v) this.setView(v);
+                scrollLater(150);
+                return;
+            }
+
+            case "video": {
+                const v = o.view || "videos";
+                if (this.currentView !== v) this.setView(v);
+                return;
+            }
         }
 
-        // 3. Fallback (ex: titre seul en ligne ou grand lecteur)
+        // Fallback (ex: titre seul en ligne) : Grand Écran
         if (this.currentView !== "now-playing") {
             this.setView("now-playing");
         }
-        setTimeout(() => this.scrollToActiveTrack(true), 120);
+        scrollLater(120);
     },
 
     updateNowPlayingBackLabel() {
@@ -1989,15 +2076,32 @@ const AudioPlayer = {
 
     getAlbumType(alb) {
         if (!alb) return "album";
-        if (alb.album_type) return alb.album_type;
         const title = (alb.title || "").toLowerCase();
         const path = (alb.path || "").toLowerCase();
         const trkCount = (alb.tracks && alb.tracks.length) || parseInt(alb.tracks_count, 10) || 0;
+
+        if (alb.album_type) {
+            // Sécurité absolue : un album de plus de 3 pistes n'est JAMAIS un single
+            if (alb.album_type === "single" && trkCount > 3) {
+                return "album";
+            }
+            return alb.album_type;
+        }
+
         if (path.includes("singles & rips") || path.includes("singles et rips") || title.includes("singles & rips") || title.includes("rip")) {
             return "rip";
         }
         if (title.includes("[playlist]") || path.includes("[playlist]")) {
             return "playlist";
+        }
+        if (title.includes("[concert]") || path.includes("[concert]") || path.includes("/concerts/")) {
+            return "concert";
+        }
+        if (trkCount > 3) {
+            return "album";
+        }
+        if (title.includes("[single]") || path.includes("[single]")) {
+            return "single";
         }
         if (trkCount > 0 && trkCount <= 3) {
             return "single";
@@ -2013,6 +2117,8 @@ const AudioPlayer = {
                 return { label: "RIP AUDIO", class: "badge-rip", emoji: "🎙️", title: "Rips Audio vidéo" };
             case "playlist":
                 return { label: "LISTE", class: "badge-playlist", emoji: "📑", title: "Listes de lecture importées" };
+            case "concert":
+                return { label: "CONCERT", class: "badge-concert", emoji: "🎸", title: "Concerts & Lives" };
             case "album":
             default:
                 return { label: "ALBUM", class: "badge-album", emoji: "💿", title: "Albums officiels" };
@@ -6183,6 +6289,10 @@ const AudioPlayer = {
                 playlist: this.playlist.slice(),
                 currentIndex: index
             };
+        }
+        // Trace de la section de lancement (v3.3.2) : un nouveau contexte = un nouveau lancement
+        if (!this.playbackOrigin || this._playbackOriginCtxRef !== this.playbackContext) {
+            this.recordPlaybackOrigin();
         }
         this.activeAlbumPath = this.currentAlbum ? this.currentAlbum.path : null;
         this.activePlaylist = this.playlist.slice();

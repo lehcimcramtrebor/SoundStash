@@ -86,7 +86,72 @@ def is_playlist_url(url: str) -> bool:
         if ("WATCH?V=" in u or "WATCH/" in u) and (list_id.startswith("RD") or list_id.startswith("UL")):
             return False
         return True
-    return False
+def classify_album_type(
+    title: str = "",
+    path: str = "",
+    track_count: int = 0,
+    is_concert: bool = False,
+    is_playlist: bool = False
+) -> str:
+    """
+    Détermine de manière robuste et déterministe le type d'un album ou regroupement :
+    - 'album' (Album Studio officiel)
+    - 'single' (Single / EP, 1 à 3 pistes ou tag explicite [Single])
+    - 'rip' (Rips Audio vidéo, conteneur Singles & Rips)
+    - 'playlist' (Playlist)
+    - 'concert' (Concert & Live)
+    """
+    # 1. Choix manuel forcé enregistré dans le dossier
+    if path:
+        try:
+            p_dir = Path(path)
+            if p_dir.is_file():
+                p_dir = p_dir.parent
+            type_file = p_dir / ".album_type"
+            if type_file.exists():
+                forced = type_file.read_text(encoding="utf-8").strip().lower()
+                if forced in ("album", "single", "rip", "playlist", "concert"):
+                    return forced
+        except Exception:
+            pass
+
+    if is_concert:
+        return "concert"
+
+    t = (title or "").lower()
+    p = (path or "").lower()
+
+    # 2. Playlists
+    if is_playlist or "[playlist]" in t or "[playlist]" in p or "playlist" in t:
+        return "playlist"
+
+    # 3. Rips audio
+    if (
+        "singles & rips" in t
+        or "singles & rips" in p
+        or "singles et rips" in t
+        or "singles et rips" in p
+        or "[rip]" in t
+        or "[audio rip]" in t
+        or "extrait vidéo" in t
+        or "extrait video" in t
+    ):
+        return "rip"
+
+    # 4. Bouclier absolu : un album avec plus de 3 titres ne peut JAMAIS être un single
+    # (ex: "Singles Collection", "The Singles", compilations de singles)
+    if track_count > 3:
+        return "album"
+
+    # 5. Tag explicite entre crochets [Single] ou [single]
+    if "[single]" in t or "[single]" in p:
+        return "single"
+
+    # 6. Format court naturel (1 à 3 pistes)
+    if 0 < track_count <= 3:
+        return "single"
+
+    return "album"
 
 # Expressions régulières pour nettoyer les titres pollués YouTube
 NOISE_PATTERNS = [
@@ -1220,6 +1285,26 @@ def get_album_info(album_dir: Path | str) -> dict:
             year = tracks[0].get("year") or ""
             genre = tracks[0].get("genre") or ""
 
+    # Détection ou lecture du type d'album (Auto vs Manuel)
+    target_check_dir = p.parent if is_single_file_mode else album_dir
+    manual_type = None
+    type_file = target_check_dir / ".album_type"
+    if type_file.exists():
+        try:
+            val = type_file.read_text(encoding="utf-8").strip().lower()
+            if val in ("album", "single", "rip", "playlist", "concert"):
+                manual_type = val
+        except Exception:
+            pass
+
+    detected_type = manual_type or classify_album_type(
+        title=album_name,
+        path=str(target_check_dir),
+        track_count=len(tracks),
+        is_concert=is_concert,
+        is_playlist=is_playlist_folder
+    )
+
     result_info = {
         "album_dir": str(p.resolve()) if is_single_file_mode else str(album_dir.resolve()),
         "is_single_file": is_single_file_mode,
@@ -1236,6 +1321,9 @@ def get_album_info(album_dir: Path | str) -> dict:
         "is_playlist": is_playlist_folder,
         "is_video": is_video_folder,
         "is_concert": is_concert,
+        "album_type": detected_type,
+        "is_manual_type": bool(manual_type),
+        "manual_type": manual_type,
         "editor_draft": editor_draft
     }
     _ALBUM_INFO_CACHE[p_key] = (dir_mtime, len(audio_files), draft_mtime, meta_mtime, result_info)
@@ -1533,7 +1621,8 @@ def uniformize_album(
     clean_titles: bool = True,
     custom_tracks: Optional[list] = None,
     is_playlist: Optional[bool] = None,
-    origin_album: Optional[str] = None
+    origin_album: Optional[str] = None,
+    custom_album_type: Optional[str] = None
 ) -> dict:
     """Applique le retaggage uniforme sur toutes les pistes d'un album ou d'une playlist via kid3-cli."""
     if not album_dir or not str(album_dir).strip():
@@ -2088,6 +2177,21 @@ def uniformize_album(
         except Exception:
             pass
 
+        # Enregistrer ou supprimer le marqueur de type d'album (.album_type)
+        if custom_album_type:
+            cat = custom_album_type.strip().lower()
+            type_f = final_file.parent / ".album_type"
+            if cat in ("album", "single", "rip", "playlist", "concert"):
+                try:
+                    type_f.write_text(cat, encoding="utf-8")
+                except Exception:
+                    pass
+            elif cat == "auto" and type_f.exists():
+                try:
+                    type_f.unlink()
+                except Exception:
+                    pass
+
         invalidate_album_cache(p)
         invalidate_album_cache(final_file)
 
@@ -2166,6 +2270,21 @@ def uniformize_album(
         if meta_file.exists():
             try:
                 meta_file.unlink()
+            except Exception:
+                pass
+
+    # Enregistrer ou supprimer le marqueur de type d'album (.album_type)
+    type_file = current_dir / ".album_type"
+    if custom_album_type:
+        cat = custom_album_type.strip().lower()
+        if cat in ("album", "single", "rip", "playlist", "concert"):
+            try:
+                type_file.write_text(cat, encoding="utf-8")
+            except Exception as e:
+                logger.warning(f"Erreur écriture .album_type : {e}")
+        elif cat == "auto" and type_file.exists():
+            try:
+                type_file.unlink()
             except Exception:
                 pass
 

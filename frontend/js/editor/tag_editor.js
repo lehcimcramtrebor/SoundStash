@@ -6,6 +6,8 @@
 window.currentAlbumPath = window.currentAlbumPath || null;
 window.currentAlbumIsPlaylist = window.currentAlbumIsPlaylist || false;
 window.currentAlbumIsConcert = window.currentAlbumIsConcert || false;
+window.currentAlbumManualType = window.currentAlbumManualType || null;
+window.currentAlbumDetectedType = window.currentAlbumDetectedType || "album";
 window.tempAlbumsList = window.tempAlbumsList || [];
 window.currentAlbumIndex = window.currentAlbumIndex !== undefined ? window.currentAlbumIndex : -1;
 window.editorDirtyState = window.editorDirtyState || {};
@@ -393,15 +395,55 @@ function setupEditorActions() {
         });
     }
 
+    // =========================================================
+    // Sélecteur de type d'album & Aperçu dynamique du Badge (v3.3.3)
+    // =========================================================
+    function updateEditorBadgePreview(type, isManual = false) {
+        const badgeEl = document.getElementById("editor-type-badge-preview");
+        if (!badgeEl) return;
+        const info = (typeof window.getBadgeInfoForType === "function")
+            ? window.getBadgeInfoForType(type)
+            : { label: (type || "ALBUM").toUpperCase(), class: "badge-album", emoji: "💿" };
+
+        badgeEl.className = `player-card-type-badge ${info.class}`;
+        badgeEl.textContent = info.label;
+        badgeEl.title = isManual
+            ? `Aperçu : ${info.label} (Choix Manuel ✍️ - Cliquez pour changer de type)`
+            : `Aperçu : ${info.label} (Détection Automatique 🤖 - Cliquez pour forcer manuellement)`;
+    }
+    window.updateEditorBadgePreview = updateEditorBadgePreview;
+
+    const toggleAutoBtn = document.getElementById("toggle-type-auto-btn");
     const toggleAlbumBtn = document.getElementById("toggle-type-album-btn");
+    const toggleSingleBtn = document.getElementById("toggle-type-single-btn");
+    const toggleRipBtn = document.getElementById("toggle-type-rip-btn");
     const togglePlaylistBtn = document.getElementById("toggle-type-playlist-btn");
+    const toggleConcertBtn = document.getElementById("toggle-type-concert-btn");
+    const badgePreviewEl = document.getElementById("editor-type-badge-preview");
+
+    if (toggleAutoBtn) {
+        toggleAutoBtn.addEventListener("click", () => {
+            if (!currentAlbumPath) return;
+            currentAlbumManualType = null;
+            const det = currentAlbumDetectedType || "album";
+            currentAlbumIsPlaylist = (det === "playlist");
+            currentAlbumIsConcert = (det === "concert");
+            updateEditorTypeToggleUI(det, false);
+            updateEditorBadgePreview(det, false);
+            markEditorDirty();
+            const bInfo = window.getBadgeInfoForType ? window.getBadgeInfoForType(det) : { label: det.toUpperCase() };
+            showToast(`Mode Automatique 🤖 réactivé : Badge « ${bInfo.label} » appliqué.`, "info");
+        });
+    }
 
     if (toggleAlbumBtn) {
         toggleAlbumBtn.addEventListener("click", () => {
             if (!currentAlbumPath) return;
+            currentAlbumManualType = "album";
             currentAlbumIsPlaylist = false;
             currentAlbumIsConcert = false;
-            updateEditorTypeToggleUI("album");
+            updateEditorTypeToggleUI("album", true);
+            updateEditorBadgePreview("album", true);
 
             // 1. Nettoyer ou restaurer le champ Nom de l'Album
             const nameInput = document.getElementById("edit-album-name");
@@ -438,16 +480,57 @@ function setupEditorActions() {
             });
 
             markEditorDirty();
-            showToast(`Mode Album Studio activé : ${cleanedCount > 0 ? cleanedCount + " titres nettoyés (suffixes retirés) !" : "album configuré en studio"}`, "success");
+            showToast(`Mode Manuel ✍️ : Badge forcé en « ALBUM » ${cleanedCount > 0 ? `(${cleanedCount} titres nettoyés)` : ""}`, "success");
+        });
+    }
+
+    if (toggleSingleBtn) {
+        toggleSingleBtn.addEventListener("click", () => {
+            if (!currentAlbumPath) return;
+            currentAlbumManualType = "single";
+            currentAlbumIsPlaylist = false;
+            currentAlbumIsConcert = false;
+            updateEditorTypeToggleUI("single", true);
+            updateEditorBadgePreview("single", true);
+
+            markEditorDirty();
+            showToast("Mode Manuel ✍️ : Badge forcé en « SINGLE ».", "info");
+        });
+    }
+
+    if (toggleRipBtn) {
+        toggleRipBtn.addEventListener("click", () => {
+            if (!currentAlbumPath) return;
+            currentAlbumManualType = "rip";
+            currentAlbumIsPlaylist = false;
+            currentAlbumIsConcert = false;
+            updateEditorTypeToggleUI("rip", true);
+            updateEditorBadgePreview("rip", true);
+
+            // Mettre le nom de l'album sur "Singles & Rips" tout en mémorisant le nom actuel
+            const nameInput = document.getElementById("edit-album-name");
+            if (nameInput && nameInput.value.trim().toLowerCase() !== "singles & rips") {
+                nameInput.dataset.originalAlbumName = nameInput.value.replace(/\s*\[(playlist|mix|compilation)\]/gi, "").trim();
+                nameInput.value = "Singles & Rips";
+                const titleEl = document.getElementById("editor-album-title");
+                if (titleEl) titleEl.textContent = "Singles & Rips";
+                nameInput.classList.add("input-highlight");
+                setTimeout(() => nameInput.classList.remove("input-highlight"), 600);
+            }
+
+            markEditorDirty();
+            showToast("Mode Manuel ✍️ : Badge forcé en « RIP AUDIO » (dossier Singles & Rips).", "info");
         });
     }
 
     if (togglePlaylistBtn) {
         togglePlaylistBtn.addEventListener("click", () => {
             if (!currentAlbumPath) return;
+            currentAlbumManualType = "playlist";
             currentAlbumIsPlaylist = true;
             currentAlbumIsConcert = false;
-            updateEditorTypeToggleUI("playlist");
+            updateEditorTypeToggleUI("playlist", true);
+            updateEditorBadgePreview("playlist", true);
 
             const nameInput = document.getElementById("edit-album-name");
             if (nameInput) {
@@ -463,43 +546,18 @@ function setupEditorActions() {
             }
 
             markEditorDirty();
-            showToast("Mode Playlist activé : les pistes conserveront leurs mentions et l'export sera isolé.", "info");
+            showToast("Mode Manuel ✍️ : Badge forcé en « PLAYLIST ».", "info");
         });
     }
 
-    // Bouton Single & Rip
-    const toggleSingleBtn = document.getElementById("toggle-type-single-btn");
-    if (toggleSingleBtn) {
-        toggleSingleBtn.addEventListener("click", () => {
-            if (!currentAlbumPath) return;
-            currentAlbumIsPlaylist = false;
-            currentAlbumIsConcert = false;
-            updateEditorTypeToggleUI("single");
-
-            // Mettre le nom de l'album sur "Singles & Rips" tout en mémorisant le nom actuel
-            const nameInput = document.getElementById("edit-album-name");
-            if (nameInput && nameInput.value.trim().toLowerCase() !== "singles & rips") {
-                nameInput.dataset.originalAlbumName = nameInput.value.replace(/\s*\[(playlist|mix|compilation)\]/gi, "").trim();
-                nameInput.value = "Singles & Rips";
-                const titleEl = document.getElementById("editor-album-title");
-                if (titleEl) titleEl.textContent = "Singles & Rips";
-                nameInput.classList.add("input-highlight");
-                setTimeout(() => nameInput.classList.remove("input-highlight"), 600);
-            }
-
-            markEditorDirty();
-            showToast("Mode Single & Rip activé : ce morceau sera classé dans le conteneur « Singles & Rips ».", "info");
-        });
-    }
-
-    // Bouton Concert & Live
-    const toggleConcertBtn = document.getElementById("toggle-type-concert-btn");
     if (toggleConcertBtn) {
         toggleConcertBtn.addEventListener("click", () => {
             if (!currentAlbumPath) return;
+            currentAlbumManualType = "concert";
             currentAlbumIsPlaylist = false;
             currentAlbumIsConcert = true;
-            updateEditorTypeToggleUI("concert");
+            updateEditorTypeToggleUI("concert", true);
+            updateEditorBadgePreview("concert", true);
 
             const nameInput = document.getElementById("edit-album-name");
             if (nameInput) {
@@ -513,7 +571,32 @@ function setupEditorActions() {
             }
 
             markEditorDirty();
-            showToast("Mode Concert & Live activé : classé dans Artiste / Concerts / [Titre].mp4 (exclu des playlists).", "info");
+            showToast("Mode Manuel ✍️ : Badge forcé en « CONCERT ».", "info");
+        });
+    }
+
+    // Clic direct sur l'aperçu du badge sur la pochette pour cycler entre les modes
+    if (badgePreviewEl) {
+        badgePreviewEl.addEventListener("click", () => {
+            if (!currentAlbumPath) return;
+            const cycle = ["auto", "album", "single", "rip", "playlist", "concert"];
+            const currentMode = currentAlbumManualType || "auto";
+            const nextIdx = (cycle.indexOf(currentMode) + 1) % cycle.length;
+            const nextMode = cycle[nextIdx];
+
+            if (nextMode === "auto") {
+                if (toggleAutoBtn) toggleAutoBtn.click();
+            } else if (nextMode === "album") {
+                if (toggleAlbumBtn) toggleAlbumBtn.click();
+            } else if (nextMode === "single") {
+                if (toggleSingleBtn) toggleSingleBtn.click();
+            } else if (nextMode === "rip") {
+                if (toggleRipBtn) toggleRipBtn.click();
+            } else if (nextMode === "playlist") {
+                if (togglePlaylistBtn) togglePlaylistBtn.click();
+            } else if (nextMode === "concert") {
+                if (toggleConcertBtn) toggleConcertBtn.click();
+            }
         });
     }
 
@@ -862,7 +945,8 @@ function setupEditorActions() {
                     rename_files: true,
                     clean_titles: true,
                     custom_tracks: customTracks.length > 0 ? customTracks : undefined,
-                    is_playlist: currentAlbumIsPlaylist
+                    is_playlist: currentAlbumIsPlaylist,
+                    custom_album_type: currentAlbumManualType || "auto"
                 })
             });
 
@@ -1282,7 +1366,10 @@ function resetEditorState(customTitle = "Sélectionnez un album", customPath = "
     currentAlbumPath = null;
     currentAlbumIsPlaylist = false;
     currentAlbumIsConcert = false;
-    updateEditorTypeToggleUI("album");
+    currentAlbumManualType = null;
+    currentAlbumDetectedType = "album";
+    updateEditorTypeToggleUI("album", false);
+    updateEditorBadgePreview("album", false);
     const wb = document.getElementById("editor-warning-banner");
     if (wb) wb.style.display = "none";
     const titleEl = document.getElementById("editor-album-title");
@@ -1352,8 +1439,10 @@ function updateEditorInteractiveState() {
         "delete-current-album-btn",     // Supprimer (Temp / Collection)
         "detect-genre-btn",             // Détecter genre
         "apply-genre-to-all-btn",       // Appliquer genre à tous
+        "toggle-type-auto-btn",         // Type Auto
         "toggle-type-album-btn",        // Type Studio
-        "toggle-type-single-btn",       // Type Single & Rip
+        "toggle-type-single-btn",       // Type Single
+        "toggle-type-rip-btn",          // Type Rip Audio
         "toggle-type-playlist-btn",     // Type Playlist
         "toggle-type-concert-btn"       // Type Concert & Live
     ];
@@ -1748,11 +1837,22 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
             : !!info.is_concert;
 
         const isSinglesRips = !currentAlbumIsPlaylist && !currentAlbumIsConcert && info.album_name && info.album_name.toLowerCase() === "singles & rips";
-        let initialToggleMode = "album";
+        let initialToggleMode = info.album_type || "album";
         if (currentAlbumIsPlaylist) initialToggleMode = "playlist";
         else if (currentAlbumIsConcert) initialToggleMode = "concert";
-        else if (isSinglesRips) initialToggleMode = "single";
-        updateEditorTypeToggleUI(initialToggleMode);
+        else if (isSinglesRips) initialToggleMode = "rip";
+
+        currentAlbumDetectedType = info.album_type || initialToggleMode;
+
+        if (info.is_manual_type && info.manual_type) {
+            currentAlbumManualType = info.manual_type;
+            updateEditorTypeToggleUI(currentAlbumManualType, true);
+            updateEditorBadgePreview(currentAlbumManualType, true);
+        } else {
+            currentAlbumManualType = null;
+            updateEditorTypeToggleUI(currentAlbumDetectedType, false);
+            updateEditorBadgePreview(currentAlbumDetectedType, false);
+        }
 
         const effectiveAlbumName = (activeDraft && activeDraft.album_name !== undefined) ? activeDraft.album_name : (info.album_name || "");
         const effectiveArtist = (activeDraft && activeDraft.album_artist !== undefined) ? activeDraft.album_artist : (info.album_artist || "");

@@ -33,7 +33,7 @@ from backend.tagger import (
     save_pending_substitutes, clear_pending_substitutes,
     save_editor_draft, clear_editor_draft, clean_artist_name,
     extract_embedded_cover, consolidate_album_cover, parse_track_filename,
-    invalidate_album_cache, sanitize_folder_name
+    invalidate_album_cache, sanitize_folder_name, classify_album_type
 )
 from backend.ytm_client import (
     extract_ytm_browse_id, browse_ytm_innertube, search_ytm_innertube, search_ytm_continuation,
@@ -74,7 +74,7 @@ from backend.cover_restorer import (
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.3.1")
+app = FastAPI(title="SoundStash API", version="3.3.3")
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -282,6 +282,11 @@ class RetagRequest(BaseModel):
     clean_titles: bool = True
     custom_tracks: Optional[List[dict]] = None
     is_playlist: Optional[bool] = None
+    custom_album_type: Optional[str] = None
+
+class SetAlbumTypeRequest(BaseModel):
+    album_dir: str
+    album_type: str
 
 class ExportRequest(BaseModel):
     album_dir: str
@@ -1861,7 +1866,8 @@ async def retag_album(req: RetagRequest):
         naming_pattern=req.naming_pattern,
         clean_titles=req.clean_titles,
         custom_tracks=req.custom_tracks,
-        is_playlist=req.is_playlist
+        is_playlist=req.is_playlist,
+        custom_album_type=req.custom_album_type
     )
     if res.get("success"):
         clear_editor_draft(album_p)
@@ -1878,6 +1884,41 @@ async def retag_album(req: RetagRequest):
             except Exception as e:
                 logger.warning(f"Erreur mise à jour indexothèque après retag : {e}")
     return res
+
+@app.post("/api/album/set-type")
+async def set_album_type_endpoint(req: SetAlbumTypeRequest):
+    """
+    Définit ou réinitialise manuellement le type d'un album (.album_type).
+    """
+    if not req.album_dir.strip():
+        raise HTTPException(status_code=400, detail="Chemin requis")
+    p = Path(req.album_dir)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Dossier ou fichier introuvable")
+    target_dir = p.parent if p.is_file() else p
+    type_file = target_dir / ".album_type"
+    cat = (req.album_type or "").strip().lower()
+    if cat in ("album", "single", "rip", "playlist", "concert"):
+        try:
+            type_file.write_text(cat, encoding="utf-8")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erreur écriture : {e}")
+    elif cat == "auto":
+        if type_file.exists():
+            try:
+                type_file.unlink()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Erreur suppression : {e}")
+    else:
+        raise HTTPException(status_code=400, detail=f"Type invalide : {cat}")
+
+    invalidate_album_cache(target_dir)
+    if config.library_dir and Path(config.library_dir).exists():
+        try:
+            library_indexer.add_or_update_album(target_dir)
+        except Exception:
+            pass
+    return {"success": True, "album_type": cat}
 
 @app.post("/api/album/save-draft")
 async def save_editor_draft_endpoint(req: SaveEditorDraftRequest):
@@ -2895,22 +2936,7 @@ async def get_library_albums(source: str = Query("library")):
                         })
 
     def _classify_type(title: str, path: str, track_count: int) -> str:
-        t = (title or "").lower()
-        p = (path or "").lower()
-        if "[playlist]" in t or "[playlist]" in p or "playlist" in t:
-            return "playlist"
-        if (
-            "singles & rips" in t
-            or "singles & rips" in p
-            or "[rip]" in t
-            or "[audio rip]" in t
-            or "extrait vidéo" in t
-            or "extrait video" in t
-        ):
-            return "rip"
-        if "[single]" in t or "[single]" in p or "singles" in t or track_count <= 2:
-            return "single"
-        return "album"
+        return classify_album_type(title=title, path=path, track_count=track_count)
 
     if source in ("library", "all"):
         for alb in library_indexer.albums:
