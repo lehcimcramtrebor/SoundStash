@@ -74,7 +74,7 @@ from backend.cover_restorer import (
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="SoundStash API", version="3.3.3")
+app = FastAPI(title="SoundStash API", version="3.3.4")
 
 # WebSocket Connection Manager
 class ConnectionManager:

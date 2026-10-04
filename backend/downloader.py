@@ -403,6 +403,7 @@ class DownloadManager:
             self.current_process = process
 
             error_403_count = 0
+            bot_detected = False
             _leftover = ""  # Buffer pour les lignes incomplètes entre les chunks
 
             while True:
@@ -424,8 +425,18 @@ class DownloadManager:
                     if not decoded_line:
                         continue
 
+                    line_lower = decoded_line.lower()
+                    # Détecter les blocages anti-bot / rate limits YouTube
+                    if ("confirm you" in line_lower and "bot" in line_lower) or \
+                       ("not a bot" in line_lower) or \
+                       ("too many requests" in line_lower) or \
+                       ("unusual traffic" in line_lower) or \
+                       ("automated queries" in line_lower) or \
+                       ("429" in line_lower and "error" in line_lower):
+                        bot_detected = True
+
                     # Compter les erreurs HTTP 403 pour améliorer le diagnostic final
-                    if "403" in decoded_line and "error" in decoded_line.lower():
+                    if "403" in decoded_line and "error" in line_lower:
                         error_403_count += 1
 
                     progress_info = self._parse_progress_line(decoded_line)
@@ -439,7 +450,15 @@ class DownloadManager:
             # Traiter le dernier fragment s'il reste quelque chose
             if _leftover.strip():
                 decoded_line = _leftover.strip()
-                if "403" in decoded_line and "error" in decoded_line.lower():
+                line_lower = decoded_line.lower()
+                if ("confirm you" in line_lower and "bot" in line_lower) or \
+                   ("not a bot" in line_lower) or \
+                   ("too many requests" in line_lower) or \
+                   ("unusual traffic" in line_lower) or \
+                   ("automated queries" in line_lower) or \
+                   ("429" in line_lower and "error" in line_lower):
+                    bot_detected = True
+                if "403" in decoded_line and "error" in line_lower:
                     error_403_count += 1
                 progress_info = self._parse_progress_line(decoded_line)
                 await self.broadcast("log", {"text": decoded_line, "progress": progress_info, "task_id": task["id"]})
@@ -469,23 +488,44 @@ class DownloadManager:
                 )
                 if not has_audio:
                     # Échec total sans aucun fichier téléchargé
-                    logger.error(f"Échec total du téléchargement (code {process.returncode}) | aucun média audio récupéré | url={url}")
+                    album_display_title = task.get("title") or task.get("custom_album") or ""
+                    if bot_detected:
+                        logger.error(f"Échec total du téléchargement : Détection anti-bot YouTube ('Sign in to confirm you're not a bot') | url={url}")
+                        err_reason = "bot_detected"
+                        err_msg = (
+                            "Téléchargement bloqué par la protection anti-bot de YouTube. "
+                            "Patientez quelques minutes avant de relancer un téléchargement."
+                        )
+                    elif error_403_count > 0:
+                        logger.error(f"Échec total du téléchargement (HTTP 403 Forbidden sur {error_403_count} tentatives) | url={url}")
+                        err_reason = "http_403"
+                        err_msg = f"Le téléchargement a été refusé par YouTube (Erreur HTTP 403 Forbidden sur {error_403_count} tentative(s))."
+                    else:
+                        logger.error(f"Échec total du téléchargement (code {process.returncode}) | aucun média audio récupéré | url={url}")
+                        err_reason = "unknown"
+                        err_msg = f"Le téléchargement a échoué (code {process.returncode}). Aucun fichier n'a pu être récupéré."
+
                     for d in temp_dir.iterdir():
                         if d.is_dir() and d.name not in {"_external", "_Hors_Analyse"}:
                             if not any(f.suffix.lower() in ALL_MEDIA_EXTENSIONS for f in d.iterdir() if f.is_file()):
                                 safe_rmtree(d)
                     await self.broadcast("status", {
                         "status": "error",
-                        "message": f"Le téléchargement a échoué (code {process.returncode}). Aucun fichier n'a pu être récupéré.",
+                        "reason": err_reason,
+                        "message": err_msg,
+                        "album_title": album_display_title,
                         "task_id": task["id"],
                         "remaining_in_queue": len(self.queue)
                     })
-                    return {"success": False, "message": f"Erreur script (code {process.returncode})"}
+                    return {"success": False, "message": err_msg, "reason": err_reason}
                 else:
                     # Succès partiel : certaines vidéos de la playlist étaient inaccessibles, mais des morceaux ont été téléchargés !
+                    part_msg = "Certaines pistes de la sélection étaient indisponibles sur la source. Finalisation et retaggage des pistes récupérées..."
+                    if bot_detected:
+                        part_msg = "Certaines pistes ont été bloquées par la protection anti-bot YouTube. Finalisation des pistes récupérées..."
                     await self.broadcast("status", {
                         "status": "info",
-                        "message": "Certaines pistes de la sélection étaient indisponibles sur la source. Finalisation et retaggage des pistes récupérées...",
+                        "message": part_msg,
                         "task_id": task["id"]
                     })
 

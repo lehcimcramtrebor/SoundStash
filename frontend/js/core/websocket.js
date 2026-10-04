@@ -313,12 +313,33 @@ function handleWsEvent(data) {
             scheduleBadgeReset(5000);
         } else if (status === "error") {
             const remaining = data.remaining_in_queue || 0;
+            const reason = data.reason;
+            const albumTitle = data.album_title ? ` « ${data.album_title} »` : "";
+
+            if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
+
+            if (reason === "bot_detected") {
+                if (typeof showModalAlert === "function") {
+                    showModalAlert(
+                        "Protection Anti-Bot YouTube Détectée",
+                        `Le téléchargement de${albumTitle} a été bloqué par YouTube (défi anti-bot / trop de requêtes consécutives).\n\n💡 Conseil : Patientez 5 à 10 minutes avant de relancer un téléchargement afin que YouTube lève automatiquement la restriction temporaire sur votre adresse IP.`,
+                        "warning"
+                    );
+                }
+                if (typeof showToast === "function") {
+                    showToast(`🤖 Blocage anti-bot YouTube : patientez quelques minutes avant de relancer`, "warning");
+                }
+            } else if (typeof showToast === "function") {
+                showToast(`⚠️ Échec du téléchargement : ${msg || "Erreur de récupération"}`, "danger");
+            }
+
             if (remaining === 0) {
                 setDownloadTabWorking(false);
                 if (typeof loadLibrary === "function") loadLibrary();
                 badge.className = "badge badge-idle";
-                badge.textContent = "Erreur";
-                document.getElementById("progress-title").textContent = "Erreur lors de l'opération";
+                badge.textContent = reason === "bot_detected" ? "Anti-Bot" : "Erreur";
+                badge.title = reason === "bot_detected" ? "Téléchargement bloqué par la protection anti-bot YouTube" : "Erreur lors de l'opération";
+                document.getElementById("progress-title").textContent = reason === "bot_detected" ? "Téléchargement bloqué par YouTube (Anti-Bot)" : "Erreur lors de l'opération";
                 document.getElementById("progress-subtitle").textContent = msg;
                 startBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Lancer le Téléchargement`;
                 startBtn.className = "btn btn-primary btn-large";

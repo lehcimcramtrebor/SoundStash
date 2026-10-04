@@ -257,8 +257,8 @@
    ========================================================= */
 
 .preview-dialog {
-    max-width: 660px;
-    width: 92%;
+    max-width: 900px;
+    width: 95%;
     max-height: 85vh;
     display: flex;
     flex-direction: column;
