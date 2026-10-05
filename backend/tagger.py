@@ -160,7 +160,9 @@ NOISE_PATTERNS = [
     r"\s*[\(\[](?:(?:4k|1080p|720p|hd|hdr|uhd|hq|full\s*hd)[\s,]+)?(?:paroles|lyrics|visualizer|remaster(?:ed)?(?:\s+\d{4})?)(?:[,\s]+(?:60fps|\d+fps|hdr))*[)\]]",
     r"\s*[\(\[](?:(?:4k|1080p|720p|hd|hdr|uhd|hq|full\s*hd)(?:[,\s]+(?:60fps|\d+fps|hdr))*|\d+fps)[)\]]",
     r"\s*[\(\[](?:(?:official\s+)?live\s+(?:video|clip|session|stream)|video\s+live)[)\]]",
-    r"\s*[\(\[](?:ft\.|feat\.)\s*([^\)\]]+)[\)\]]",
+    r"\s*[\(\[](?:ft\.|feat\.)\s*(?:\[[^\]]*\]|\([^\)]*\)|[^)\]])*[)\]]",
+    r"\s*[\(\[](?:avec)\s*(?:\[[^\]]*\]|\([^\)]*\)|[^)\]])*[)\]]",
+    r"\s*[\(\[](?:officiel|official)[\)\]]",
     r"^\s*-\s*",
     r"\s*-\s*$",
     r"\s{2,}"
@@ -169,14 +171,31 @@ NOISE_PATTERNS = [
 def clean_artist_name(artist: Optional[str]) -> str:
     """
     Nettoie un nom d'artiste en éliminant les suffixes auto-générés par YouTube
-    tels que ' - Topic', ' - Thème', ' - Theme', ' (Topic)'.
-    Ex: 'Whiskey&Lead - Topic' -> 'Whiskey&Lead'
+    tels que ' - Topic', ' - Thème', ' - Theme', ' (Topic)' ainsi que les mentions
+    parasites de chaînes officielles telles que ' [Officiel]', ' (Officiel)', ' Officiel',
+    ' [Official]', ' - Official', ' VEVO', etc.
+    Ex: 'Les Ogres de Barback [Officiel]' -> 'Les Ogres de Barback'
         'Renaud - Thème' -> 'Renaud'
     """
     if not artist:
         return ""
     s = str(artist).strip()
-    return re.sub(r"\s*(?:[\-–—]\s*|\()(?:topic|th[eè]me)\)?\s*$", "", s, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(
+        r"\s*(?:[\-–—:\/]\s*|[\(\[])\s*(?:topic|th[eè]me|theme|officiel|official|clip\s+officiel|cha[iî]ne\s+officielle|official\s+channel)\s*[\)\]]?\s*$",
+        "",
+        s,
+        flags=re.IGNORECASE
+    ).strip()
+    cleaned = re.sub(
+        r"\s+(?:officiel|official|topic|th[eè]me|theme)\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE
+    ).strip()
+    cleaned = re.sub(r"\s+vevo\s*$", "", cleaned, flags=re.IGNORECASE).strip()
+    if cleaned.lower().endswith("vevo") and len(cleaned) > 5 and not cleaned.lower().startswith("vevo"):
+        cleaned = cleaned[:-4].strip()
+    return cleaned if cleaned else s
 
 def extract_artist_and_title(raw_title: str, existing_artist: str = "", uploader: str = "") -> tuple[str, str]:
     """
@@ -192,7 +211,7 @@ def extract_artist_and_title(raw_title: str, existing_artist: str = "", uploader
     # Nettoyer les parasites YouTube du titre
     cleaned_title = clean_track_title(cleaned_raw, preserve_feat=True)
 
-    # Assainir systématiquement existing_artist et uploader de tout suffixe Topic/Thème
+    # Assainir systématiquement existing_artist et uploader de tout suffixe Topic/Thème/Officiel
     clean_exist = clean_artist_name(existing_artist)
     clean_up = clean_artist_name(uploader)
 
@@ -219,8 +238,16 @@ def clean_track_title(title: str, preserve_feat: bool = True) -> str:
     """Nettoie le titre d'une piste de toutes les mentions parasites typiques de YouTube."""
     cleaned = title.strip()
     
-    feat_match = re.search(r"[\(\[](?:ft\.|feat\.)\s*([^\)\]]+)[\)\]]", cleaned, re.IGNORECASE)
-    feat_str = f" (feat. {feat_match.group(1).strip()})" if feat_match and preserve_feat else ""
+    fm = re.search(r"[\(\[](?:ft\.|feat\.)\s*((?:\[[^\]]*\]|\([^\)]*\)|[^)\]])+)[)\]]", cleaned, re.IGNORECASE)
+    am = re.search(r"[\(\[](?:avec)\s+((?:\[[^\]]*\]|\([^\)]*\)|[^)\]])+)[)\]]", cleaned, re.IGNORECASE)
+    feat_artist = fm.group(1).strip() if fm else (am.group(1).strip() if am else "")
+
+    if feat_artist:
+        clean_cand = re.sub(r"[\[\(\]\)\-_]", "", feat_artist).strip().lower()
+        if clean_cand in {"officiel", "official", "topic", "thème", "theme", "clip", "video", "vidéo", "audio", "vevo"}:
+            feat_artist = ""
+
+    feat_str = f" (feat. {feat_artist})" if feat_artist and preserve_feat else ""
 
     for pattern in NOISE_PATTERNS:
         cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
@@ -2063,7 +2090,11 @@ def uniformize_album(
                 # Nettoyer d'éventuels séparateurs restants aux extrémités
                 feat_part = re.sub(r"^(?:feat\.?|ft\.?|featuring|et|and|avec|&|,)\s*", "", feat_part, flags=re.IGNORECASE).strip()
                 feat_part = re.sub(r"\s*(?:feat\.?|ft\.?|featuring|et|and|avec|&|,)$", "", feat_part, flags=re.IGNORECASE).strip()
-                # Si le titre ne contient pas déjà un feat., l'ajouter
+                # Garde-fou absolu contre les résidus parasites (ex: '[Officiel]', 'Officiel', 'Topic', etc.)
+                clean_feat_check = re.sub(r"[\[\(\]\)\-_]", "", feat_part).strip().lower()
+                if clean_feat_check in {"officiel", "official", "topic", "thème", "theme", "clip", "video", "vidéo", "audio", "vevo", ""}:
+                    feat_part = ""
+                # Si le titre ne contient pas déjà un feat. et que feat_part est valide, l'ajouter
                 if feat_part and feat_part.lower() != track_artist.lower() and "(feat." not in final_title.lower():
                     final_title = f"{final_title} (feat. {feat_part})"
         
