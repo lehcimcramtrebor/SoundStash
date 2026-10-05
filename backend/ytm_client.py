@@ -948,7 +948,32 @@ async def browse_ytm_innertube(url_or_id: str) -> Optional[dict]:
         if track_artist and track_artist != "Artiste inconnu":
             artist_counts[track_artist] = artist_counts.get(track_artist, 0) + 1
 
-        is_avail = (not it.get("isDisabled", False)) and bool(vid)
+        # Détection précise de l'indisponibilité (pistes grisées / indisponibles)
+        display_policy = str(it.get("musicItemRendererDisplayPolicy") or "")
+        is_greyed_out = any(flag in display_policy for flag in ["GREY_OUT", "GRAY_OUT", "UNAVAILABLE", "DISABLED", "RESTRICTED"])
+        is_disabled = bool(it.get("isDisabled", False))
+
+        # Sur YouTube Music, une piste jouable possède un playNavigationEndpoint actif dans le musicPlayButtonRenderer
+        # ou un navigationEndpoint avec watchEndpoint dans le titre.
+        title_nav = t_runs[0].get("navigationEndpoint", {}) if t_runs else {}
+        has_title_watch = bool(title_nav.get("watchEndpoint", {}).get("videoId"))
+        has_play_watch = bool(play_nav.get("watchEndpoint", {}).get("videoId"))
+        has_playable_endpoint = has_title_watch or has_play_watch
+
+        is_unavailable_title = (
+            not t_name or
+            t_name.strip() in ["[Private video]", "[Deleted video]", "[Vidéo supprimée]", "[Vidéo privée]", "NA"] or
+            "vidéo indisponible" in t_name.lower() or
+            "titre indisponible" in t_name.lower()
+        )
+
+        is_avail = (
+            not is_greyed_out and
+            not is_disabled and
+            not is_unavailable_title and
+            bool(vid) and
+            has_playable_endpoint
+        )
         if is_avail:
             avail_count += 1
 
@@ -959,7 +984,7 @@ async def browse_ytm_innertube(url_or_id: str) -> Optional[dict]:
             "album": album_name,
             "duration": dur_text,
             "is_available": is_avail,
-            "video_id": vid
+            "video_id": vid if is_avail else None
         })
 
     # Si le titre de l'en-tête n'a pas été trouvé (ex: vue VLOLAK...), déduire depuis les pistes

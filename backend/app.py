@@ -1121,7 +1121,7 @@ async def preview_album_endpoint(url: str = Query(..., min_length=1)):
                 "album": entry.get("album"),
                 "duration": dur_str,
                 "is_available": is_available,
-                "video_id": track_id
+                "video_id": track_id if is_available else None
             })
 
         total_tracks = len(tracks)

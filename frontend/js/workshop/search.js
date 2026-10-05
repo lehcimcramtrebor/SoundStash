@@ -1736,7 +1736,8 @@ async function openAlbumPreview(album) {
             availBadge.innerHTML = `✓ ${data.available_tracks} / ${data.total_tracks} pistes disponibles (Complet)${ownedBadgeStr}`;
         } else {
             availBadge.className = "availability-badge badge-has-missing";
-            availBadge.innerHTML = `⚠️ ${data.available_tracks} / ${data.total_tracks} disponibles (${data.missing_count} grisée/retirée)${ownedBadgeStr}`;
+            const missingText = data.missing_count > 1 ? `${data.missing_count} grisées/retirées` : `${data.missing_count} grisée/retirée`;
+            availBadge.innerHTML = `⚠️ ${data.available_tracks} / ${data.total_tracks} pistes disponibles (${missingText})${ownedBadgeStr}`;
         }
 
         // Bouton 'Télécharger les pistes manquantes' si album partiellement possédé
