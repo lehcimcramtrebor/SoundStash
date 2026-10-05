@@ -1,4 +1,4 @@
-# 🎵 SoundStash v3.3.8
+# 🎵 SoundStash v4.0.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -14,15 +14,17 @@ Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve tou
 
 ---
 
-## ✨ Fonctionnalités Majeures
+## ✨ Nouveautés & Fonctionnalités Clés (v4.0.0)
 
 ### 1. 🎧 Lecteur Audio Sanctuaire & Expérience d'Écoute
 - **Double colonne ergonomique** sanctuarisée (largeur minimale 1040px) avec file d'attente intuitive (« Lire », « Ensuite », « + File »).
+- **Sélecteur de sortie son Windows 11 en direct** : basculez instantanément votre flux audio vers votre casque, vos haut-parleurs ou votre écran HDMI/DisplayPort depuis la barre de lecture et le dock du Mode Ambiance sans aucune micro-coupure.
+- **Navigation ergonomique fluide & Souris X1 / Backspace** : pile de navigation intelligente avec boutons retour contextuels précis (`← Revenir aux albums (Artiste / Genre)`), support natif du bouton précédent de la souris (Bouton 4 / X1) et fermeture progressive des tiroirs et modales.
 - **Égaliseur 10 bandes** haute précision avec 10 presets DSP (Basses profondes, Voix claire, R&B, Rock, etc.).
 - **Correction physiologique (Loudness contour)** : compensation dynamique pour préserver l'équilibre basses/aigus à faible volume.
 - **Fondu audio (Audio Fader / Crossfade)** paramétrable pour des transitions musicales sans rupture.
-- **Mode Ambiance immersif** plein écran avec visualiseur procédural réactif.
-- **Mode Soirée (Party Lock)** verrouillable par code PIN pour sanctuariser la lecture lors d'événements.
+- **Mode Ambiance immersif** plein écran avec visualiseur procédural réactif (4 univers rétro-futuristes).
+- **Mode Soirée (Party Lock)** verrouillable par code PIN à 4 chiffres pour sanctuariser la lecture lors d'événements tout en laissant la navigation et la file d'attente libres.
 - **Minidock persistant** : lecture continue et contrôles accessibles partout lors de la navigation dans l'atelier ou la bibliothèque.
 - **Diffusion Réseau** : Intégration Chromium Media Router pour diffuser directement vers les Smart TVs (LG WebOS, Chromecast, DLNA).
 - **Badges de format et débit audio** : affichage discret et élégant du format et du débit réel (FLAC, AAC 256k, MP3 320k) aligné avant la durée des pistes.
@@ -41,22 +43,20 @@ Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve tou
 - **Mixage synchronisé** : pont audio transparent entre le flux vidéo et l'infrastructure audio du lecteur.
 
 ### 4. 🏷️ Atelier d'Organisation "Tag-First" & Reconstitution
+- **Reconstitution intelligente d'albums (v4.0.0)** : modale 960px dédiée comparant les fichiers disque avec la discographie officielle, extraction automatique du cœur de titre pour les bandes originales (OST / Soundtracks) et recherche/téléchargement de pistes manquantes en 1 clic avec conservation des tags d'origine.
+- **Surveillance continue en direct (Windows Explorer Sync)** : surveillance continue par `LibraryWatcher` de votre bibliothèque et du dossier `temp_downloads`. Tout ajout, déplacement ou suppression effectué depuis l'Explorateur Windows est reflété instantanément sans recharger l'application (F5).
 - **Atelier et zone de transit dédiée** : téléchargez ou importez vos médias dans un dossier temporaire dédié (`temp_downloads`), vérifiez leur structure, écoutez-les et éditez leurs métadonnées avant l'exportation finale vers votre bibliothèque musicale (`Library`).
 - **Gestion des cookies YouTube (`cookies.txt`)** : importateur sécurisé 100% local avec guide pas-à-pas intégré dans les paramètres pour contourner sans effort les restrictions réseau.
-- **Reconstitution automatique d'albums** : détection intelligente des morceaux manquants ou orphelins, recherche automatisée des pistes manquantes et reconstitution en 1 clic.
 - **Nettoyage automatique des bruits et tags superflus** : suppression des mentions parasites (`(Official Audio)`, `[Clip Officiel]`, `4K Remaster`, etc.).
 - **Normalisation Kid3-CLI** : standardisation des métadonnées ID3v2, Vorbis et MP4 pilotée par moteur natif.
 - **Pochettes HD & Métadonnées certifiées** : intégration automatique de jaquettes haute définition et tags officiels.
 - **Support des albums multi-disques** : gestion transparente des disques multiples (`Disc 1`, `Disc 2`, etc.).
-- **Sas d'importation `_imports`** : zone de transit avec détection automatique des nouveaux fichiers, synchronisation disque transparente et détection des doublons.
 
-### 5. 🗂️ Bibliothèque Modulaire, Playlists & Tags de Genre
+### 5. 🗂️ Bibliothèque Modulaire, Playlists & Smart Playlists
 - **Vues spécialisées** : **Albums**, **Tout**, **Artistes** (grille réactive commutable 3 ou 4 colonnes), **Genres**, **Clips**, **Concerts** et **Listes** (Playlists).
+- **Smart Playlists Illimitées & Multi-genres stricts (v4.0.0)** : génération dynamique de listes thématiques (par genre ou décennie) avec sélection jusqu'à l'intégralité des pistes disponibles et suggestion exclusive des tags de genre réels.
 - **Tuiles d'albums enrichies** : affichage du tag de genre directement sous le nom de l'album avec filtrage direct au clic, badges de type (Album, Single, EP, Rip Audio).
-- **Tri complet par genre** : options de tri dédiées **🏷️ Genre (A ➔ Z)** et **🏷️ Genre (Z ➔ A)** disponibles dans la discothèque et le catalogue intégral.
-- **Playlists Mixtes & Smart Playlists auto-guérissantes** : listage exclusif de titres physiquement présents sur le disque, élimination automatique des fichiers supprimés et reconstitution dynamique en temps réel via WebSocket.
-- **Grilles Artistes & Genres unifiées** : dimensions et sélecteurs de densité harmonisés avec bouton direct de lecture aléatoire dédiée.
-- **Sources commutables en 1 clic** : basculement instantané entre la Bibliothèque principale et le dossier des Téléchargements.
+- **Playlists Mixtes auto-guérissantes** : listage exclusif de titres physiquement présents sur le disque, élimination automatique des fichiers supprimés et reconstitution dynamique en temps réel via WebSocket.
 
 ---
 

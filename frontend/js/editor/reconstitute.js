@@ -324,23 +324,48 @@ async function searchSubstitute(trackNum, query) {
     if (!resultsContainer) return;
 
     resultsContainer.style.display = "flex";
-    resultsContainer.innerHTML = `<div class="text-muted" style="padding: 10px; font-size: 0.85rem;"><span class="spinner" style="width:16px;height:16px;vertical-align:middle;display:inline-block;margin-right:8px;"></span> Recherche en ligne...</div>`;
+    resultsContainer.innerHTML = `<div class="text-muted" style="padding: 14px; font-size: 0.9rem;"><span class="spinner" style="width:18px;height:18px;vertical-align:middle;display:inline-block;margin-right:10px;"></span> Recherche en cours (morceaux & vidéos)...</div>`;
 
     try {
-        const res = await fetch(`/api/search?query=${encodeURIComponent(query)}&filter_type=track`);
-        const data = await res.json();
-        const results = data.results || [];
+        // Interroger simultanément les pistes officielles et la recherche globale (clips, versions BO/OST)
+        const [trackRes, allRes] = await Promise.all([
+            fetch(`/api/search?query=${encodeURIComponent(query)}&filter_type=track`).then(r => r.json()).catch(() => ({ results: [] })),
+            fetch(`/api/search?query=${encodeURIComponent(query)}&filter_type=all`).then(r => r.json()).catch(() => ({ results: [] }))
+        ]);
 
-        if (results.length === 0) {
-            const fbRes = await fetch(`/api/search?query=${encodeURIComponent(query)}&filter_type=all`);
-            const fbData = await fbRes.json();
-            const fallbackResults = (fbData.results || []).filter(r => r.type === "track" || r.type === "video");
-            renderSubstituteResults(trackNum, fallbackResults.slice(0, 6));
-        } else {
-            renderSubstituteResults(trackNum, results.slice(0, 6));
-        }
+        const rawTracks = (trackRes.results || []).filter(r => r.type === "track" || r.type === "video");
+        const rawAll = (allRes.results || []).filter(r => r.type === "track" || r.type === "video");
+
+        // Déduplication par videoId / url et calcul d'un score de pertinence textuelle
+        const seen = new Set();
+        const merged = [];
+        const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+
+        const scoreItem = (item) => {
+            const text = `${item.title || ''} ${item.artist || ''} ${item.album || ''}`.toLowerCase();
+            let score = 0;
+            queryTerms.forEach(term => {
+                if (text.includes(term)) score += 10;
+            });
+            if (item.type === "track") score += 2; // Léger bonus studio
+            return score;
+        };
+
+        const allCandidates = [...rawTracks, ...rawAll];
+        allCandidates.forEach(item => {
+            const key = item.id || (item.url ? (item.url.match(/v=([a-zA-Z0-9_-]{11})/) || [])[1] : item.url);
+            if (key && !seen.has(key)) {
+                seen.add(key);
+                merged.push({ ...item, _score: scoreItem(item) });
+            }
+        });
+
+        // Trier par pertinence décroissante
+        merged.sort((a, b) => b._score - a._score);
+
+        renderSubstituteResults(trackNum, merged.slice(0, 8));
     } catch (err) {
-        resultsContainer.innerHTML = `<div class="text-danger" style="padding: 8px; font-size: 0.85rem;">Erreur de recherche : ${escapeHtml(err.message)}</div>`;
+        resultsContainer.innerHTML = `<div class="text-danger" style="padding: 10px; font-size: 0.85rem;">Erreur de recherche : ${escapeHtml(err.message)}</div>`;
     }
 }
 
@@ -349,7 +374,7 @@ function renderSubstituteResults(trackNum, results) {
     if (!resultsContainer) return;
 
     if (!results || results.length === 0) {
-        resultsContainer.innerHTML = `<div class="text-muted" style="padding: 10px; font-size: 0.85rem;">Aucun morceau trouvé pour cette recherche. Essayez d'ajuster les termes.</div>`;
+        resultsContainer.innerHTML = `<div class="text-muted" style="padding: 14px; font-size: 0.88rem;">Aucun morceau trouvé pour cette recherche. Essayez d'ajuster les termes.</div>`;
         return;
     }
 
@@ -403,11 +428,24 @@ function renderSubstituteResults(trackNum, results) {
                 if (selectedSubstitutes[trackNum] && selectedSubstitutes[trackNum].video_id === videoId) {
                     unselectSubstitute(trackNum);
                 } else {
+                    const exp = currentReconstituteDetails && currentReconstituteDetails.missing_tracks
+                        ? currentReconstituteDetails.missing_tracks.find(m => m.track_number === trackNum)
+                        : null;
+
+                    const finalTitle = (exp && exp.expected_title && !exp.expected_title.startsWith("Piste "))
+                        ? exp.expected_title
+                        : item.title;
+
+                    const finalArtist = (exp && exp.expected_artist && exp.expected_artist.toLowerCase() !== "various artists")
+                        ? exp.expected_artist
+                        : (item.artist && item.artist !== "Artiste inconnu" ? item.artist : (currentReconstituteDetails ? currentReconstituteDetails.album_artist : ""));
+
                     selectSubstitute(trackNum, {
                         track_number: trackNum,
                         video_id: videoId,
-                        title: item.title,
-                        artist: item.artist || (currentReconstituteDetails ? currentReconstituteDetails.album_artist : "Artiste inconnu"),
+                        title: finalTitle,
+                        artist: finalArtist,
+                        display_title: item.title,
                         duration: durStr
                     });
                 }

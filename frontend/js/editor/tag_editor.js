@@ -24,7 +24,7 @@ window.cachedTagSuggestions = window.cachedTagSuggestions || null;
 // Éditeur & Curation de Collection
 async function loadCollectionAlbumsForEditor() {
     try {
-        const res = await fetch("/api/library/albums");
+        const res = await fetch(`/api/library/albums?source=library&_t=${Date.now()}`);
         if (!res.ok) return;
         const data = await res.json();
         collectionAlbumsList = data.albums || [];
@@ -239,7 +239,7 @@ function setupEditorActions() {
             isCollectionEditorMode = false;
             updateEditorSourceModeUI();
             initGenreBatchUI();
-            await loadGenreBatchAlbums();
+            await loadGenreBatchAlbums(true);
         });
     }
 
@@ -249,7 +249,7 @@ function setupEditorActions() {
             isCollectionEditorMode = false;
             updateEditorSourceModeUI();
             initCoversGalleryUI();
-            await loadCoversGalleryAlbums();
+            await loadCoversGalleryAlbums(true);
         });
     }
 
@@ -851,6 +851,9 @@ function setupEditorActions() {
                 if (typeof refreshAlbumNavList === "function") {
                     await refreshAlbumNavList();
                 }
+                if (typeof loadExternalTempAlbums === "function") {
+                    loadExternalTempAlbums();
+                }
                 if (typeof window.refreshSearchBadges === "function") {
                     window.refreshSearchBadges();
                 } else if (typeof enrichItemsWithLibraryStatus === "function") {
@@ -952,26 +955,43 @@ function setupEditorActions() {
 
             const result = await res.json();
             if (result.success) {
-                clearCurrentEditorDraft(currentAlbumPath);
+                const oldAlbumPath = currentAlbumPath;
+                clearCurrentEditorDraft(oldAlbumPath);
                 if (result.album_dir) {
                     currentAlbumPath = result.album_dir;
                 }
+
+                if (window.AudioPlayer && typeof window.AudioPlayer.remapAlbumPaths === "function" && oldAlbumPath !== currentAlbumPath) {
+                    window.AudioPlayer.remapAlbumPaths(oldAlbumPath, currentAlbumPath, {
+                        artist: albumArtist,
+                        title: albumName,
+                        genre: genre,
+                        year: year
+                    });
+                }
+
                 await showModalAlert("Succès", isCollectionEditorMode ? "Tags enregistrés et collection mise à jour !" : "Tags sauvegardés et album mis à jour !", "success");
                 if (isCollectionEditorMode) {
                     await loadCollectionAlbumsForEditor();
                     await loadAlbumInEditor(currentAlbumPath, true);
                     if (window.AudioPlayer) {
-                        if (typeof window.AudioPlayer.loadLibrary === "function") window.AudioPlayer.loadLibrary();
+                        if (typeof window.AudioPlayer.loadLibraryData === "function") window.AudioPlayer.loadLibraryData(true);
                         if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") window.AudioPlayer.loadAndRenderVideosCatalog(true);
                     }
+                    if (typeof loadGenreBatchAlbums === "function") loadGenreBatchAlbums(true);
+                    if (typeof loadCoversGalleryAlbums === "function") loadCoversGalleryAlbums(true);
                 } else {
                     await loadAlbumInEditor(currentAlbumPath, false);
                     await refreshAlbumNavList();
-                    loadLibrary();
+                    if (typeof loadExternalTempAlbums === "function") loadExternalTempAlbums();
+                    if (typeof updateTempTabBadge === "function") updateTempTabBadge();
+                    if (typeof loadLibrary === "function") loadLibrary();
                     if (window.AudioPlayer) {
-                        if (typeof window.AudioPlayer.loadLibrary === "function") window.AudioPlayer.loadLibrary();
+                        if (typeof window.AudioPlayer.loadLibraryData === "function") window.AudioPlayer.loadLibraryData(true);
                         if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") window.AudioPlayer.loadAndRenderVideosCatalog(true);
                     }
+                    if (typeof loadGenreBatchAlbums === "function") loadGenreBatchAlbums(true);
+                    if (typeof loadCoversGalleryAlbums === "function") loadCoversGalleryAlbums(true);
                 }
             } else {
                 await showModalAlert("Erreur", result.message || "Erreur lors de la sauvegarde.", "danger");
@@ -2190,9 +2210,11 @@ async function loadGenreBatchAlbums(forceRefresh = false) {
     if (!tbody) return;
 
     if (forceRefresh || !window.genreBatchAlbums || window.genreBatchAlbums.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="table-empty-cell"><div class="table-empty-state"><span>Chargement des albums et playlists...</span></div></td></tr>`;
+        if (!window.genreBatchAlbums || window.genreBatchAlbums.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="table-empty-cell"><div class="table-empty-state"><span>Chargement des albums et playlists...</span></div></td></tr>`;
+        }
         try {
-            const res = await fetch("/api/library/albums?source=all");
+            const res = await fetch(`/api/library/albums?source=all&_t=${Date.now()}`);
             if (!res.ok) throw new Error("Erreur de communication avec le serveur");
             const data = await res.json();
             window.genreBatchAlbums = data.albums || [];
@@ -2203,7 +2225,9 @@ async function loadGenreBatchAlbums(forceRefresh = false) {
             updateGenreScopeBadges();
             populateGenreBatchDatalistAndChips();
         } catch (err) {
-            tbody.innerHTML = `<tr><td colspan="7" class="table-empty-cell"><div class="table-empty-state"><span style="color: var(--color-danger);">Erreur lors de la récupération des albums : ${err.message}</span></div></td></tr>`;
+            if (!window.genreBatchAlbums || window.genreBatchAlbums.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="table-empty-cell"><div class="table-empty-state"><span style="color: var(--color-danger);">Erreur lors de la récupération des albums : ${err.message}</span></div></td></tr>`;
+            }
             return;
         }
     }
@@ -2602,14 +2626,14 @@ async function loadCoversGalleryAlbums(forceRefresh = false) {
     const emptyEl = document.getElementById("covers-gallery-empty");
     const gridEl = document.getElementById("covers-gallery-grid");
 
-    if (loadingEl) loadingEl.style.display = "flex";
-    if (emptyEl) emptyEl.style.display = "none";
-    if (gridEl && (!window.coversGalleryAlbums || window.coversGalleryAlbums.length === 0)) {
-        gridEl.innerHTML = "";
+    if (!window.coversGalleryAlbums || window.coversGalleryAlbums.length === 0) {
+        if (loadingEl) loadingEl.style.display = "flex";
+        if (emptyEl) emptyEl.style.display = "none";
+        if (gridEl) gridEl.innerHTML = "";
     }
 
     try {
-        const res = await fetch("/api/library/albums?source=library");
+        const res = await fetch(`/api/library/albums?source=library&_t=${Date.now()}`);
         if (!res.ok) throw new Error("Erreur chargement discothèque");
         const data = await res.json();
         window.coversGalleryAlbums = data.albums || [];

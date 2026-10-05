@@ -279,6 +279,16 @@ const AmbientVisualizer = {
         const themePill = document.getElementById("ambient-theme-pill");
         const themeDockBtn = document.getElementById("ambient-theme-dock-btn");
 
+        const audioOutBtn = document.getElementById("ambient-audio-output-btn");
+        if (audioOutBtn) {
+            audioOutBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (window.AudioPlayer) {
+                    window.AudioPlayer.toggleAudioOutputFlyout(audioOutBtn);
+                }
+            });
+        }
+
         if (eqBtn) {
             eqBtn.addEventListener("click", () => {
                 if (window.AudioPlayer) window.AudioPlayer.openEqualizerModal();

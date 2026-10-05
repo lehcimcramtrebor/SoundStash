@@ -64,6 +64,19 @@ document.addEventListener("DOMContentLoaded", () => {
     loadCollectionAlbumsForEditor();
     setTimeout(() => triggerLibrarySync(), 5000);
 
+    // Actualisation discrète au retour de focus Windows (Alt-Tab / retour depuis l'Explorateur)
+    let lastFocusSyncTime = 0;
+    window.addEventListener("focus", () => {
+        const now = Date.now();
+        if (now - lastFocusSyncTime < 2500) return; // Anti-rebond 2.5s
+        lastFocusSyncTime = now;
+        if (typeof updateTempTabBadge === "function") updateTempTabBadge();
+        if (typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen) {
+            if (typeof loadExternalTempAlbums === "function") loadExternalTempAlbums();
+            if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
+        }
+    });
+
 
     // Support d'audit visuel automatisé via paramètres d'URL (immédiat & synchrone)
     const urlParams = new URLSearchParams(window.location.search);
@@ -411,6 +424,11 @@ window.goToNowPlaying = function() {
     }
 
     if (!ap) return;
+
+    // Fermer le tiroir de la file d'attente s'il est ouvert pour dégager la vue
+    if (ap && ap.isQueueDrawerOpen && typeof ap.closeQueueDrawer === "function") {
+        ap.closeQueueDrawer();
+    }
 
     // Fermer l'Atelier si ouvert et entrer dans le mode lecteur
     const wasWorkshop = !isPlayerModeActive;

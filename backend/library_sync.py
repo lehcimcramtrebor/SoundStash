@@ -1179,6 +1179,7 @@ class LibraryWatcher(threading.Thread):
         self.check_interval = check_interval
         self._running = True
         self._last_signature: Optional[Tuple] = None
+        self._last_temp_signature: Optional[Tuple] = None
 
     def stop(self):
         self._running = False
@@ -1250,7 +1251,9 @@ class LibraryWatcher(threading.Thread):
 
         stable_cycles = 0
         while self._running:
+            had_change = False
             try:
+                # 1. Surveillance de la Collection musicale
                 lib_dir = config.library_dir
                 if lib_dir and os.path.isdir(lib_dir):
                     target_path = Path(lib_dir)
@@ -1276,7 +1279,7 @@ class LibraryWatcher(threading.Thread):
                         synchronize_collection(target_path, is_automatic=True)
                         self._last_signature = self.compute_signature(target_path)
                     elif sig != self._last_signature:
-                        stable_cycles = 0
+                        had_change = True
                         is_deletion = bool(self._last_signature and len(sig) < len(self._last_signature))
                         logger.info(f"Changement détecté dans la collection musicale (suppression={is_deletion})...")
                         if not is_deletion:
@@ -1287,13 +1290,31 @@ class LibraryWatcher(threading.Thread):
                         res = synchronize_collection(target_path, is_automatic=True)
                         if res.get("status") != "in_progress":
                             self._last_signature = self.compute_signature(target_path)
-                    else:
-                        stable_cycles += 1
-                else:
-                    stable_cycles += 1
+
+                # 2. Surveillance du Dossier Temporaire / Sas de Téléchargement de l'Atelier
+                temp_dir = getattr(config, "temp_download_dir", None) or getattr(config, "temp_dir", None)
+                if temp_dir and os.path.isdir(temp_dir):
+                    target_temp = Path(temp_dir)
+                    temp_sig = self.compute_signature(target_temp)
+                    if self._last_temp_signature is None:
+                        self._last_temp_signature = temp_sig
+                    elif temp_sig != self._last_temp_signature:
+                        had_change = True
+                        logger.info("Changement externe détecté dans le dossier temporaire (temp_downloads)...")
+                        self._last_temp_signature = temp_sig
+                        if _global_library_updated_callback:
+                            try:
+                                _global_library_updated_callback()
+                            except Exception:
+                                pass
 
             except Exception as e:
                 logger.debug(f"Exception dans LibraryWatcher: {e}")
+
+            if had_change:
+                stable_cycles = 0
+            else:
+                stable_cycles += 1
 
             # Rythme adaptatif éco-responsable (évite le matraquage disque en cas d'inactivité de 1h-2h) :
             if stable_cycles > 60:

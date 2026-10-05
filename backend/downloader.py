@@ -427,6 +427,7 @@ class DownloadManager:
 
             error_403_count = 0
             bot_detected = False
+            cookie_expired = False
             _leftover = ""  # Buffer pour les lignes incomplètes entre les chunks
 
             while True:
@@ -449,6 +450,16 @@ class DownloadManager:
                         continue
 
                     line_lower = decoded_line.lower()
+                    # Détecter le rejet ou l'expiration des cookies de session
+                    if ("provided cookies are invalid or expired" in line_lower) or \
+                       ("cookies are expired" in line_lower) or \
+                       ("invalid cookies" in line_lower) or \
+                       ("sign in to confirm your age" in line_lower) or \
+                       ("login required" in line_lower) or \
+                       ("this content isn't available, try signing in" in line_lower) or \
+                       ("sign in to confirm you're not a bot" in line_lower and effective_cookies):
+                        cookie_expired = True
+
                     # Détecter les blocages anti-bot / rate limits YouTube
                     if ("confirm you" in line_lower and "bot" in line_lower) or \
                        ("not a bot" in line_lower) or \
@@ -474,6 +485,14 @@ class DownloadManager:
             if _leftover.strip():
                 decoded_line = _leftover.strip()
                 line_lower = decoded_line.lower()
+                if ("provided cookies are invalid or expired" in line_lower) or \
+                   ("cookies are expired" in line_lower) or \
+                   ("invalid cookies" in line_lower) or \
+                   ("sign in to confirm your age" in line_lower) or \
+                   ("login required" in line_lower) or \
+                   ("this content isn't available, try signing in" in line_lower) or \
+                   ("sign in to confirm you're not a bot" in line_lower and effective_cookies):
+                    cookie_expired = True
                 if ("confirm you" in line_lower and "bot" in line_lower) or \
                    ("not a bot" in line_lower) or \
                    ("too many requests" in line_lower) or \
@@ -512,7 +531,14 @@ class DownloadManager:
                 if not has_audio:
                     # Échec total sans aucun fichier téléchargé
                     album_display_title = task.get("title") or task.get("custom_album") or ""
-                    if bot_detected:
+                    if cookie_expired:
+                        logger.error(f"Échec total du téléchargement : Session YouTube (cookies.txt) expirée ou rejetée | url={url}")
+                        err_reason = "cookies_expired"
+                        err_msg = (
+                            "Votre session YouTube (cookies.txt) a expiré ou votre mot de passe a changé. "
+                            "Veuillez réimporter votre nouveau fichier cookies.txt dans les Paramètres pour réactiver vos téléchargements."
+                        )
+                    elif bot_detected:
                         logger.error(f"Échec total du téléchargement : Détection anti-bot YouTube ('Sign in to confirm you're not a bot') | url={url}")
                         err_reason = "bot_detected"
                         err_msg = (

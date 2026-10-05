@@ -618,6 +618,61 @@ async def get_cookies_status_endpoint():
             "has_youtube_auth": False
         }
 
+def check_youtube_session_validity(cookies_path: Path) -> dict:
+    """Vérifie en direct auprès des serveurs YouTube si les cookies sont acceptés ou révoqués."""
+    import urllib.request
+    import http.cookiejar
+    if not cookies_path or not cookies_path.is_file() or cookies_path.stat().st_size == 0:
+        return {"status": "no_cookies", "valid": False, "message": "Aucun fichier cookies configuré (Mode anonyme)."}
+    try:
+        cj = http.cookiejar.MozillaCookieJar(str(cookies_path))
+        cj.load(ignore_discard=True, ignore_expires=True)
+        has_auth_cookies = any(c.name in {"SID", "HSID", "SSID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "LOGIN_INFO"} for c in cj)
+        
+        req = urllib.request.Request(
+            "https://www.youtube.com",
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+            }
+        )
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+        resp = opener.open(req, timeout=7)
+        html = resp.read().decode("utf-8", errors="ignore")
+        
+        q = '"'
+        if f'{q}LOGGED_IN{q}:true' in html or f'{q}LOGGED_IN{q}: true' in html:
+            return {"status": "valid", "valid": True, "message": "Session YouTube active et connectée."}
+        elif f'{q}LOGGED_IN{q}:false' in html or f'{q}LOGGED_IN{q}: false' in html:
+            if has_auth_cookies:
+                return {
+                    "status": "expired",
+                    "valid": False,
+                    "message": "Session expirée ou révoquée par Google (mot de passe modifié ou cookies expirés)."
+                }
+            else:
+                return {
+                    "status": "anonymous",
+                    "valid": False,
+                    "message": "Le fichier cookies ne contient aucune session connectée."
+                }
+        else:
+            return {"status": "unknown", "valid": None, "message": "Réponse YouTube indéterminée."}
+    except Exception as e:
+        logger.warning(f"Vérification session cookies YouTube échouée: {e}")
+        return {"status": "error", "valid": None, "message": f"Erreur de communication avec YouTube: {e}"}
+
+@app.get("/api/cookies/verify")
+@app.post("/api/cookies/verify")
+async def verify_cookies_session_endpoint():
+    """Vérifie en direct auprès des serveurs YouTube si le cookie est accepté ou révoqué."""
+    target = get_effective_cookies_file()
+    if not target:
+        return {"status": "no_cookies", "valid": False, "message": "Aucun fichier cookies configuré (Mode anonyme)."}
+    loop = asyncio.get_event_loop()
+    res = await loop.run_in_executor(None, check_youtube_session_validity, target)
+    return res
+
 @app.post("/api/cookies/upload")
 async def upload_cookies_endpoint(req: CookiesUploadRequest):
     """Importe ou enregistre le fichier de cookies."""
@@ -2007,6 +2062,13 @@ async def retag_album(req: RetagRequest):
         new_album_dir = Path(res.get("album_dir", album_p))
         invalidate_album_cache(album_p)
         invalidate_album_cache(new_album_dir)
+        try:
+            if str(new_album_dir.resolve()).lower() != str(album_p.resolve()).lower():
+                playback_stats.remap_album_paths(album_p, new_album_dir)
+                playlist_manager.remap_album_paths(album_p, new_album_dir)
+        except Exception as e:
+            logger.warning(f"Erreur remappage après retag : {e}")
+
         if config.library_dir and Path(config.library_dir).exists():
             try:
                 lib_resolved = str(Path(config.library_dir).resolve())
@@ -2016,6 +2078,12 @@ async def retag_album(req: RetagRequest):
                     library_indexer.add_or_update_album(new_album_dir)
             except Exception as e:
                 logger.warning(f"Erreur mise à jour indexothèque après retag : {e}")
+
+        try:
+            dispatch_library_updated()
+        except Exception:
+            pass
+
     return res
 
 @app.post("/api/album/set-type")
@@ -2051,6 +2119,12 @@ async def set_album_type_endpoint(req: SetAlbumTypeRequest):
             library_indexer.add_or_update_album(target_dir)
         except Exception:
             pass
+
+    try:
+        dispatch_library_updated()
+    except Exception:
+        pass
+
     return {"success": True, "album_type": cat}
 
 @app.post("/api/album/save-draft")
@@ -2148,6 +2222,14 @@ async def reconstitute_album(req: ReconstituteRequest):
 
     updated_info = get_album_info(album_p)
     remaining_missing = len(updated_info.get("missing_tracks", []))
+
+    if any(r.get("success") for r in results):
+        try:
+            invalidate_album_cache(album_p)
+            library_indexer.add_or_update_album(album_p)
+            dispatch_library_updated()
+        except Exception as e:
+            logger.warning(f"Erreur actualisation après reconstitution : {e}")
 
     return {
         "success": all(r.get("success") for r in results),
@@ -2739,6 +2821,11 @@ async def apply_album_cover_endpoint(req: ApplyCoverRequest):
     library_indexer._save_to_cache()
     invalidate_album_cache(p)
 
+    try:
+        dispatch_library_updated()
+    except Exception:
+        pass
+
     return {
         "success": True,
         "album_path": str(p),
@@ -3159,8 +3246,18 @@ async def batch_genre_endpoint(req: BatchGenreRequest):
         if res.get("success"):
             updated_count += 1
             total_tracks_updated += res.get("tracks_updated", 0)
+            try:
+                library_indexer.add_or_update_album(alb_path)
+            except Exception:
+                pass
         else:
             errors.append({"album": alb_path, "error": res.get("message", "Erreur inconnue")})
+
+    if updated_count > 0:
+        try:
+            dispatch_library_updated()
+        except Exception:
+            pass
 
     return {
         "success": True,
@@ -3832,6 +3929,16 @@ async def trash_library_item_endpoint(req: TrashItemRequest):
     except Exception:
         pass
 
+    try:
+        playback_stats.prune_missing_files()
+    except Exception:
+        pass
+
+    try:
+        dispatch_library_updated()
+    except Exception:
+        pass
+
     logger.info(f"Élément envoyé dans la Corbeille Windows : {p} (Taille : {total_bytes} octets)")
     return {
         "success": True,
@@ -4058,21 +4165,31 @@ async def get_stats_summary_endpoint():
 
 @app.get("/api/genres/list")
 async def get_library_genres_endpoint():
-    """Retourne la liste triée des genres disponibles dans la bibliothèque et référentiels."""
+    """Retourne la liste triée des genres uniquement présents et utilisés dans la collection musicale."""
+    import unicodedata
     genres = set()
-    for alb in getattr(library_indexer, "albums", []):
+    albums = library_indexer.get_all_albums() if hasattr(library_indexer, "get_all_albums") else getattr(library_indexer, "albums", [])
+    for alb in albums:
         g = alb.get("genre") if isinstance(alb, dict) else getattr(alb, "genre", None)
         if g and str(g).strip():
-            genres.add(str(g).strip())
-    common_genres = [
-        "Rock", "Hard Rock", "Metal", "Heavy Metal", "Synthwave", "Cyberpunk",
-        "Pop", "Chanson française", "Variété française", "Électro", "Electronic",
-        "Hip-Hop", "Rap", "Jazz", "Blues", "B.O. / Soundtrack", "Bande Originale",
-        "Retrogaming", "Jeu Vidéo", "Classique", "Ambient", "Chill", "R&B", "Disco"
-    ]
-    for cg in common_genres:
-        genres.add(cg)
-    return {"genres": sorted(list(genres))}
+            genre_name = str(g).strip()
+            if genre_name.lower() not in {"inconnu", "unknown", "na", "non classé", "non classe"}:
+                genres.add(genre_name)
+
+    # Récupérer également les genres de morceaux existants enregistrés dans les stats
+    try:
+        for s in getattr(playback_stats, "_cache", {}).values():
+            p = s.get("path")
+            if p and Path(p).is_file():
+                g = s.get("genre")
+                if g and str(g).strip():
+                    genre_name = str(g).strip()
+                    if genre_name.lower() not in {"inconnu", "unknown", "na", "non classé", "non classe"}:
+                        genres.add(genre_name)
+    except Exception:
+        pass
+
+    return {"genres": sorted(list(genres), key=lambda s: unicodedata.normalize('NFKD', s).lower())}
 
 @app.websocket("/ws/logs")
 async def websocket_logs_endpoint(websocket: WebSocket):

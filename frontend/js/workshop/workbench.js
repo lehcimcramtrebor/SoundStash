@@ -167,13 +167,19 @@ function switchWorkflowTab(tabId) {
         }
     } else if (tabId === "tab-editor") {
         triggerLibrarySync();
-        if (!collectionAlbumsList || collectionAlbumsList.length === 0) {
+        if (typeof loadCollectionAlbumsForEditor === "function") {
             loadCollectionAlbumsForEditor();
         }
-        ensureLibraryTagSuggestions();
+        if (typeof ensureLibraryTagSuggestions === "function") {
+            ensureLibraryTagSuggestions();
+        }
         if (window.editorSubMode === "genres") {
             if (typeof loadGenreBatchAlbums === "function") {
-                loadGenreBatchAlbums();
+                loadGenreBatchAlbums(true);
+            }
+        } else if (window.editorSubMode === "covers") {
+            if (typeof loadCoversGalleryAlbums === "function") {
+                loadCoversGalleryAlbums(true);
             }
         } else if (!isCollectionEditorMode && (!tempAlbumsList || tempAlbumsList.length === 0)) {
             resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
@@ -365,6 +371,11 @@ function setupTabs() {
             }
             if (window.AudioPlayer && window.AudioPlayer.currentView === "albums" && window.AudioPlayer.isAlbumDetailOpen) {
                 window.AudioPlayer.closeAlbumDetail(true);
+                e.stopPropagation();
+                return;
+            }
+            if (window.AudioPlayer && window.AudioPlayer.currentView === "albums" && (window.AudioPlayer.selectedArtistFilter || window.AudioPlayer.selectedGenreFilter)) {
+                window.AudioPlayer.returnFromFilterToOrigin();
                 e.stopPropagation();
                 return;
             }

@@ -15,19 +15,48 @@ function triggerBackNavigation() {
     if (now - lastBackNavigationTime < 250) return false; // Anti-rebond
     lastBackNavigationTime = now;
 
-    // Si on est dans le détail d'un album dans l'onglet Albums : revenir à la grille des albums
+    // 0a. Si le tiroir Atelier est ouvert : le replier en priorité vers le lecteur
+    if (typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen && typeof closeWorkshopDrawer === "function") {
+        if (typeof isReconstituteModalOpen === "function" && isReconstituteModalOpen()) return false;
+        if (typeof isCustomModalOpen === "function" && isCustomModalOpen()) return false;
+        const gapModal = document.getElementById("gap-modal-backdrop");
+        if (gapModal && gapModal.style.display !== "none") return false;
+        closeWorkshopDrawer();
+        return true;
+    }
+
+    // 0b. Si le tiroir de la file d'attente est ouvert : le fermer
+    if (window.AudioPlayer && window.AudioPlayer.isQueueDrawerOpen && typeof window.AudioPlayer.closeQueueDrawer === "function") {
+        window.AudioPlayer.closeQueueDrawer();
+        return true;
+    }
+
+    // 0c. Si la modale d'égaliseur est ouverte : la fermer
+    if (window.AudioPlayer && window.AudioPlayer.isEqualizerModalOpen && typeof window.AudioPlayer.closeEqualizerModal === "function") {
+        window.AudioPlayer.closeEqualizerModal();
+        return true;
+    }
+
+    // 1. Si on est dans le détail d'un album dans l'onglet Albums : revenir à la grille des albums
     if (window.AudioPlayer && window.AudioPlayer.isAlbumDetailOpen) {
         window.AudioPlayer.closeAlbumDetail();
         return true;
     }
 
-    // Si on est dans le détail d'une playlist dans l'onglet Playlists : revenir à la grille des playlists
+    // 2. Si on est dans la grille des albums avec un filtre Artiste ou Genre actif : revenir à l'onglet Artistes ou Genres
+    if (window.AudioPlayer && window.AudioPlayer.currentView === "albums") {
+        if (window.AudioPlayer.selectedArtistFilter || window.AudioPlayer.selectedGenreFilter) {
+            return window.AudioPlayer.returnFromFilterToOrigin();
+        }
+    }
+
+    // 3. Si on est dans le détail d'une playlist dans l'onglet Playlists : revenir à la grille des playlists
     if (window.AudioPlayer && window.AudioPlayer.currentView === "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
         window.UserPlaylists.closeDetail();
         return true;
     }
 
-    // Fonction unique : Revenir du lecteur (now-playing) vers le dernier onglet de contenu précédent
+    // 4. Fonction unique : Revenir du lecteur (now-playing) vers le dernier onglet de contenu précédent
     if (window.AudioPlayer && window.AudioPlayer.currentView === "now-playing") {
         window.AudioPlayer.returnToPreviousView();
         return true;

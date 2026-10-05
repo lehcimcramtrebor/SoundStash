@@ -175,6 +175,24 @@ function handleWsEvent(data) {
                 UserPlaylists.loadAndRenderPlaylists(true);
             }
         }
+        if (typeof loadCollectionAlbumsForEditor === "function") {
+            loadCollectionAlbumsForEditor();
+        }
+        if (typeof window.loadGenreBatchAlbums === "function") {
+            window.loadGenreBatchAlbums(true);
+        }
+        if (typeof window.loadCoversGalleryAlbums === "function") {
+            window.loadCoversGalleryAlbums(true);
+        }
+        if (typeof ensureLibraryTagSuggestions === "function") {
+            ensureLibraryTagSuggestions(true);
+        }
+        if (typeof loadExternalTempAlbums === "function") {
+            loadExternalTempAlbums();
+        }
+        if (typeof updateTempTabBadge === "function") {
+            updateTempTabBadge();
+        }
         return;
     }
 
@@ -317,10 +335,15 @@ function handleWsEvent(data) {
                     showToast(`✓ "${albumName}" téléchargé avec succès !`, "success");
                 }
             }
+            if (typeof loadExternalTempAlbums === "function") loadExternalTempAlbums();
+            if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
+            if (typeof updateTempTabBadge === "function") updateTempTabBadge();
         } else if (status === "queue_completed") {
             setDownloadTabWorking(false);
             if (typeof loadLibrary === "function") loadLibrary();
             if (typeof refreshAlbumNavList === "function") refreshAlbumNavList();
+            if (typeof loadExternalTempAlbums === "function") loadExternalTempAlbums();
+            if (typeof updateTempTabBadge === "function") updateTempTabBadge();
             if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
             if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
                 AudioPlayer.updateOnlineDownloadButtons();
@@ -341,7 +364,30 @@ function handleWsEvent(data) {
 
             if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
 
-            if (reason === "bot_detected") {
+            if (reason === "cookies_expired") {
+                const searchBadge = document.getElementById("search-session-status-badge");
+                if (searchBadge) {
+                    searchBadge.className = "badge badge-warning";
+                    searchBadge.style.background = "rgba(245, 158, 11, 0.20)";
+                    searchBadge.style.color = "#f59e0b";
+                    searchBadge.style.borderColor = "rgba(245, 158, 11, 0.5)";
+                    searchBadge.innerHTML = `
+                        <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; box-shadow: 0 0 8px #f59e0b;"></span>
+                        <span class="session-text" style="font-weight: 700;">⚠️ Session expirée</span>
+                    `;
+                    searchBadge.title = "Session YouTube expirée ou mot de passe modifié. Cliquez pour importer votre nouveau cookies.txt";
+                }
+                if (typeof showModalAlert === "function") {
+                    showModalAlert(
+                        "Session YouTube Expirée (Cookies révoqués)",
+                        `Le téléchargement de${albumTitle} a été rejeté par YouTube car votre session (cookies.txt) a expiré ou le mot de passe de votre compte a été modifié.\n\n👉 Rendez-vous dans les Paramètres (icône ⚙️) > Section Cookies pour importer votre nouveau fichier cookies.txt en 1 clic.`,
+                        "warning"
+                    );
+                }
+                if (typeof showToast === "function") {
+                    showToast(`⚠️ Session YouTube expirée : veuillez réimporter votre cookies.txt`, "warning");
+                }
+            } else if (reason === "bot_detected") {
                 if (typeof showModalAlert === "function") {
                     showModalAlert(
                         "Protection Anti-Bot YouTube Détectée",

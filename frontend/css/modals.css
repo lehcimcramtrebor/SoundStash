@@ -51,6 +51,14 @@
     transform: scale(1) translateY(0);
 }
 
+#reconstitute-modal-backdrop .modal-dialog,
+.modal-dialog.reconstitute-dialog {
+    max-width: 960px !important;
+    width: min(960px, 94vw) !important;
+    max-height: 90vh !important;
+    padding: 0 !important;
+}
+
 .modal-header {
     display: flex;
     align-items: center;

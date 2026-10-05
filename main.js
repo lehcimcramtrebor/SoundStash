@@ -1098,7 +1098,12 @@ app.whenReady().then(async () => {
 
         // 2. Définition des permissions et des en-têtes
         session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-            if (permission === 'clipboard-read' || permission === 'clipboard-sanitized-write') {
+            if (
+                permission === 'clipboard-read' || 
+                permission === 'clipboard-sanitized-write' || 
+                permission === 'speaker-selection' || 
+                permission === 'media'
+            ) {
                 return callback(true);
             }
             callback(false);
@@ -1128,7 +1133,12 @@ app.whenReady().then(async () => {
         );
 
         session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-            if (permission === 'clipboard-read' || permission === 'clipboard-sanitized-write') {
+            if (
+                permission === 'clipboard-read' || 
+                permission === 'clipboard-sanitized-write' || 
+                permission === 'speaker-selection' || 
+                permission === 'media'
+            ) {
                 return true;
             }
             return false;

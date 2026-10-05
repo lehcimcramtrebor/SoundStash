@@ -1055,6 +1055,9 @@ async function confirmDeleteCollectionItem(targetPath, itemType = "album", itemN
                     if (window.AudioPlayer.currentAlbum && window.AudioPlayer.currentAlbum.path === targetPath) {
                         window.AudioPlayer.stopAndHide();
                     }
+                    if (typeof window.AudioPlayer.renderCurrentView === "function") {
+                        window.AudioPlayer.renderCurrentView();
+                    }
                 }
                 if (typeof loadCollectionAlbumsForEditor === "function") {
                     await loadCollectionAlbumsForEditor();

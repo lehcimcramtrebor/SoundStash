@@ -549,18 +549,24 @@ class PlaylistManager:
 
     def _compute_smart_items(self, smart_type: str, criteria: Dict[str, Any], library_albums: List[Dict[str, Any]], video_indexer: Any = None) -> Tuple[List[Dict[str, Any]], str, Optional[str]]:
         """Calcule les pistes et métadonnées d'une playlist intelligente sans écriture disque."""
-        limit = int(criteria.get("limit") or 50)
+        raw_limit = criteria.get("limit")
+        try:
+            limit = int(raw_limit) if raw_limit is not None else 50
+        except (ValueError, TypeError):
+            limit = 50
+        is_unlimited = (limit <= 0)
+
         cover_url = criteria.get("cover_url")
         selected_items = []
 
-        def _extract_tracks_sample(candidate_albums: list, target_count: int = 80) -> list:
-            """Extrait ultra-rapidement un échantillon ciblé de pistes sans bloquer sur l'ensemble de la bibliothèque."""
+        def _extract_tracks_sample(candidate_albums: list, target_count: Optional[int] = 80) -> list:
+            """Extrait des pistes d'albums candidats, jusqu'à target_count ou en totalité si target_count est None."""
             sample_tracks = []
             shuffled_albs = list(candidate_albums)
             random.shuffle(shuffled_albs)
 
             for alb in shuffled_albs:
-                if len(sample_tracks) >= target_count:
+                if target_count is not None and len(sample_tracks) >= target_count:
                     break
                 if isinstance(alb, dict):
                     alb_title = alb.get("title", "") or alb.get("album", "")
@@ -588,6 +594,8 @@ class PlaylistManager:
                         alb_tracks = []
 
                 for trk in (alb_tracks or []):
+                    if target_count is not None and len(sample_tracks) >= target_count:
+                        break
                     filename = trk.get("filename") if isinstance(trk, dict) else getattr(trk, "filename", None)
                     trk_path = trk.get("path") if isinstance(trk, dict) else getattr(trk, "path", None)
                     if not trk_path and alb_path and filename:
@@ -622,7 +630,7 @@ class PlaylistManager:
 
         # 2. Application de la logique intelligente par type
         if smart_type == "top_played":
-            top_stats = playback_stats.get_top_played(limit=limit, genre=criteria.get("genre"), existing_only=True)
+            top_stats = playback_stats.get_top_played(limit=limit if not is_unlimited else 500, genre=criteria.get("genre"), existing_only=True)
             for s in top_stats:
                 is_vid = s.get("type") == "video"
                 p = s.get("path", "")
@@ -660,12 +668,16 @@ class PlaylistManager:
                         "cover_url": cov
                     })
             # Si pas assez d'historique, compléter avec un échantillon de la bibliothèque
-            if len(selected_items) < limit and library_albums:
-                sample = _extract_tracks_sample(library_albums, target_count=(limit - len(selected_items)) * 3)
+            if (is_unlimited or len(selected_items) < limit) and library_albums:
+                needed = (limit - len(selected_items)) if not is_unlimited else 500
+                sample = _extract_tracks_sample(library_albums, target_count=needed * 3 if not is_unlimited else None)
                 top_paths = {it.get("path") for it in selected_items if it.get("path")}
                 remaining = [t for t in sample if t.get("path") not in top_paths]
                 random.shuffle(remaining)
-                selected_items.extend(remaining[:limit - len(selected_items)])
+                if is_unlimited:
+                    selected_items.extend(remaining)
+                else:
+                    selected_items.extend(remaining[:limit - len(selected_items)])
 
         elif smart_type == "genres":
             target_genres = [g.strip().lower() for g in criteria.get("genres", []) if g and g.strip()]
@@ -676,18 +688,18 @@ class PlaylistManager:
                     candidate_albs.append(a)
             if not candidate_albs:
                 candidate_albs = library_albums
-            sample = _extract_tracks_sample(candidate_albs, target_count=limit * 3)
+            sample = _extract_tracks_sample(candidate_albs, target_count=None if is_unlimited else (limit * 3))
             matched = []
             for t in sample:
                 t_g = (t.get("genre") or t.get("album_genre") or "").lower()
                 if not target_genres or any(tg in t_g for tg in target_genres):
                     matched.append(t)
             random.shuffle(matched)
-            selected_items = matched[:limit]
+            selected_items = matched if is_unlimited else matched[:limit]
 
         elif smart_type == "top_genres":
             target_genres = [g.strip().lower() for g in criteria.get("genres", []) if g and g.strip()]
-            top_stats = playback_stats.get_top_played(limit=limit * 2, existing_only=True)
+            top_stats = playback_stats.get_top_played(limit=None if is_unlimited else (limit * 2), existing_only=True)
             for s in top_stats:
                 p = s.get("path", "")
                 if not p:
@@ -708,18 +720,23 @@ class PlaylistManager:
                         "duration_seconds": s.get("duration", 0),
                         "cover_url": cov
                     })
-            if len(selected_items) < limit and library_albums:
+            if (is_unlimited or len(selected_items) < limit) and library_albums:
                 candidate_albs = [a for a in library_albums if any(tg in ((a.get("genre") if isinstance(a, dict) else getattr(a, "genre", "")) or "").lower() for tg in target_genres)] or library_albums
-                sample = _extract_tracks_sample(candidate_albs, target_count=limit * 3)
+                sample = _extract_tracks_sample(candidate_albs, target_count=None if is_unlimited else (limit * 3))
                 seen_paths = {it.get("path") for it in selected_items}
                 other_matched = [t for t in sample if t.get("path") not in seen_paths]
                 random.shuffle(other_matched)
-                selected_items.extend(other_matched[:limit - len(selected_items)])
+                if is_unlimited:
+                    selected_items.extend(other_matched)
+                else:
+                    selected_items.extend(other_matched[:limit - len(selected_items)])
+            if not is_unlimited:
+                selected_items = selected_items[:limit]
 
         elif smart_type == "random_mix":
-            sample = _extract_tracks_sample(library_albums, target_count=limit * 2)
+            sample = _extract_tracks_sample(library_albums, target_count=None if is_unlimited else (limit * 2))
             random.shuffle(sample)
-            selected_items = sample[:limit]
+            selected_items = sample if is_unlimited else sample[:limit]
 
         elif smart_type == "decade":
             target_dec = int(criteria.get("decade") or 1980)
@@ -733,7 +750,7 @@ class PlaylistManager:
                     pass
             if not candidate_albs:
                 candidate_albs = library_albums
-            sample = _extract_tracks_sample(candidate_albs, target_count=limit * 3)
+            sample = _extract_tracks_sample(candidate_albs, target_count=None if is_unlimited else (limit * 3))
             dec_tracks = []
             for t in sample:
                 try:
@@ -745,16 +762,16 @@ class PlaylistManager:
             if not dec_tracks:
                 dec_tracks = sample
             random.shuffle(dec_tracks)
-            selected_items = dec_tracks[:limit]
+            selected_items = dec_tracks if is_unlimited else dec_tracks[:limit]
 
         elif smart_type == "unplayed":
-            sample = _extract_tracks_sample(library_albums, target_count=limit * 3)
+            sample = _extract_tracks_sample(library_albums, target_count=None if is_unlimited else (limit * 3))
             stats_cache = playback_stats._cache
             unplayed = [t for t in sample if t.get("path") not in stats_cache or stats_cache[t.get("path")].get("play_count", 0) == 0]
             if not unplayed:
                 unplayed = sample
             random.shuffle(unplayed)
-            selected_items = unplayed[:limit]
+            selected_items = unplayed if is_unlimited else unplayed[:limit]
 
         elif smart_type == "videos_mix" and video_indexer:
             # Clips vidéo 16:9 uniquement (exclusion des concerts)
@@ -783,12 +800,24 @@ class PlaylistManager:
                     "cover_url": v.get("thumbnail_url") or "/static/placeholder-cover.svg"
                 })
             random.shuffle(v_items)
-            selected_items = v_items[:limit]
+            selected_items = v_items if is_unlimited else v_items[:limit]
 
         # Filtrage strict de sécurité : ne conserver aucun fichier inexistant
         selected_items = [it for it in selected_items if item_file_exists(it)]
 
-        desc = criteria.get("description") or f"Playlist intelligente générée ({smart_type}) • {len(selected_items)} titres"
+        if not criteria.get("description"):
+            SMART_DESCS = {
+                "top_played": f"Les plus écoutés de votre discothèque • {len(selected_items)} titres",
+                "genres": f"Mix multi-genres • {len(selected_items)} titres",
+                "top_genres": f"Top morceaux par genre • {len(selected_items)} titres",
+                "decade": f"Voyage temporel Années {criteria.get('decade', 1980)} • {len(selected_items)} titres",
+                "unplayed": f"Titres jamais ou peu écoutés • {len(selected_items)} titres",
+                "videos_mix": f"Sélection de clips vidéo 16:9 • {len(selected_items)} vidéos",
+                "random_mix": f"Mix aléatoire de votre bibliothèque • {len(selected_items)} titres"
+            }
+            desc = SMART_DESCS.get(smart_type, f"Playlist intelligente ({smart_type}) • {len(selected_items)} titres")
+        else:
+            desc = criteria.get("description")
 
         # Déterminer la pochette par défaut selon le type si aucune n'a été spécifiée
         if not cover_url:
@@ -899,6 +928,58 @@ class PlaylistManager:
 
         logger.info(f"Smart Playlist actualisée sur place (sans doublon) : '{data['name']}' ({playlist_id}) avec {len(new_items)} pistes")
         return self.get_playlist(playlist_id, library_albums=library_albums, video_indexer=video_indexer)
+
+    def remap_album_paths(self, old_dir: str | Path, new_dir: str | Path) -> int:
+        """Remappe les chemins des pistes dans toutes les playlists personnalisées lors d'un renommage d'album."""
+        try:
+            old_str = str(Path(old_dir).resolve()).lower().rstrip("\\/")
+            new_p = Path(new_dir).resolve()
+            new_str = str(new_p).rstrip("\\/")
+        except Exception:
+            old_str = str(old_dir).lower().rstrip("\\/")
+            new_str = str(new_dir).rstrip("\\/")
+
+        if old_str == str(new_str).lower():
+            return 0
+
+        self._ensure_dir()
+        modified_playlists = 0
+
+        for p_file in self.playlists_dir.glob("*.json"):
+            try:
+                with open(p_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                items = data.get("items", [])
+                has_changed = False
+
+                for it in items:
+                    for field in ("path", "filepath", "album_path"):
+                        val = it.get(field)
+                        if val:
+                            try:
+                                norm_val = str(Path(val).resolve())
+                            except Exception:
+                                norm_val = str(val)
+
+                            if norm_val.lower().startswith(old_str):
+                                sub = norm_val[len(old_str):].lstrip("\\/")
+                                it[field] = str(new_p / sub) if field != "album_path" else str(new_p)
+                                has_changed = True
+
+                if has_changed:
+                    data["items"] = items
+                    data["updated_at"] = int(time.time())
+                    with open(p_file, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    modified_playlists += 1
+            except Exception as e:
+                logger.warning(f"Erreur remappage chemins playlist {p_file.name}: {e}")
+
+        if modified_playlists > 0:
+            logger.info(f"Playlists : Chemins d'album remappés dans {modified_playlists} playlist(s) de '{old_str}' vers '{new_str}'.")
+
+        return modified_playlists
 
 
 playlist_manager = PlaylistManager()

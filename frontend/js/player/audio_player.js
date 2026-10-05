@@ -265,6 +265,12 @@ const AudioPlayer = {
     loudnessTrebleFilter: null,
     loudnessLimiterNode: null,
 
+    // Sélection de la sortie son Windows
+    audioOutputDeviceId: "default",
+    availableAudioOutputDevices: [],
+    isAudioOutputFlyoutOpen: false,
+    currentAudioOutputTriggerBtn: null,
+
     init() {
         window.AudioPlayer = this;
         this.audio = document.getElementById("global-audio-engine");
@@ -324,6 +330,7 @@ const AudioPlayer = {
 
         window.AudioPlayer = this;
         this.bindEvents();
+        this.initAudioOutputDevices();
         this.updateSortSelectForView(this.currentView);
         this.updateAllSortSelect(false);
         this.updateVolumeUI();
@@ -677,6 +684,13 @@ const AudioPlayer = {
                 this.selectedArtistFilter = null;
                 this.selectedGenreFilter = null;
                 this.renderCurrentView();
+            });
+        }
+
+        const filterBackBtn = document.getElementById("player-filter-back-btn");
+        if (filterBackBtn) {
+            filterBackBtn.addEventListener("click", () => {
+                this.returnFromFilterToOrigin();
             });
         }
 
@@ -1243,10 +1257,14 @@ const AudioPlayer = {
             this.previousModeWasWorkshop = false;
         }
 
-        if (prevV === "albums" && view !== "albums" && this.isAlbumDetailOpen) {
+        if (prevV === "albums" && view !== "albums" && view !== "now-playing" && this.isAlbumDetailOpen) {
             this.closeAlbumDetail(false);
         }
-        if (prevV === "playlists" && view !== "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
+        if (prevV === "albums" && view !== "albums" && view !== "now-playing") {
+            this.selectedArtistFilter = null;
+            this.selectedGenreFilter = null;
+        }
+        if (prevV === "playlists" && view !== "playlists" && view !== "now-playing" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
             window.UserPlaylists.closeDetail();
         }
 
@@ -1453,6 +1471,19 @@ const AudioPlayer = {
         const alb = this.currentAlbum || {};
         const albPath = alb.path || "";
 
+        // Contenu en ligne, dossier temporaire ou lancé depuis l'Atelier : router vers now-playing
+        if (alb.is_online || alb.is_collection === false || this.previousModeWasWorkshop || String(albPath).startsWith("online:")) {
+            this.playbackOrigin = {
+                type: "now-playing",
+                view: "now-playing",
+                path: albPath,
+                title: alb.title || "",
+                artist: alb.artist || ""
+            };
+            this._playbackOriginCtxRef = this.playbackContext || null;
+            return;
+        }
+
         // Vue de lancement : si on a déjà basculé en Grand Écran, retenir la vue d'où l'on venait
         let view = this.currentView || "albums";
         if (view === "now-playing") {
@@ -1495,14 +1526,20 @@ const AudioPlayer = {
     },
 
     /**
-     * Redirige vers la section d'où la lecture en cours a été lancée (v3.3.2) :
-     * - Album      → ce seul album (détail)
-     * - Tout       → onglet Tout, morceau en cours mis en vision
-     * - Playlist   → la playlist concernée
-     * - Vidéo      → le lecteur vidéo
+     * Redirige vers la section d'où la lecture en cours a été lancée (v3.3.2 / v4.0.0) :
+     * - Album en ligne / Atelier → vue Grand Écran (now-playing) avec tracklist et scroll actif
+     * - Album collection         → ce seul album (détail) avec scroll actif
+     * - Tout                     → onglet Tout, morceau en cours mis en vision
+     * - Playlist                 → la playlist concernée avec scroll actif
+     * - Vidéo                    → réouverture du lecteur vidéo grand écran
      * Le comportement ne dépend plus de l'onglet où se trouve l'utilisateur.
      */
     navigateToCurrentlyPlaying() {
+        // 1. Fermer le tiroir de la file d'attente s'il est ouvert pour dégager la vue
+        if (this.isQueueDrawerOpen && typeof this.closeQueueDrawer === "function") {
+            this.closeQueueDrawer();
+        }
+
         const origin = this.playbackOrigin || null;
         const videoEl = document.getElementById("video-modal-player");
         const isVideoActive = Boolean(
@@ -1533,6 +1570,7 @@ const AudioPlayer = {
         const ctxAlbum = (this.playbackContext && this.playbackContext.album) || this.currentAlbum || {};
         const o = origin || (() => {
             const p = ctxAlbum.path || "";
+            if (ctxAlbum.is_online || ctxAlbum.is_collection === false || String(p).startsWith("online:")) return { type: "now-playing", view: "now-playing", path: p };
             if (String(p).startsWith("playlist:")) return { type: "playlist", view: "playlists", path: p };
             if (p === "system:all-collection" || p === "system:search-results") return { type: "all", view: "all", path: p };
             if (p && p !== "video_standalone") return { type: "album", view: "albums", path: p };
@@ -1540,6 +1578,16 @@ const AudioPlayer = {
         })();
 
         const scrollLater = (delay = 150) => setTimeout(() => this.scrollToActiveTrack(true), delay);
+
+        // Contenu Grand Écran (Album en ligne, Atelier, hors collection, etc.) : affichage dédié dans now-playing
+        if (o.type === "now-playing" || o.type === "online" || ctxAlbum.is_online || ctxAlbum.is_collection === false || String(o.path || "").startsWith("online:") || String(this.activeAlbumPath || "").startsWith("online:")) {
+            if (this.currentView !== "now-playing") {
+                this.setView("now-playing");
+            }
+            this.renderPlayerTab();
+            scrollLater(100);
+            return;
+        }
 
         switch (o.type) {
             case "all": {
@@ -1577,6 +1625,12 @@ const AudioPlayer = {
 
             case "album": {
                 const albPath = o.path || this.activeAlbumPath;
+                if (albPath && String(albPath).startsWith("online:")) {
+                    if (this.currentView !== "now-playing") this.setView("now-playing");
+                    this.renderPlayerTab();
+                    scrollLater(100);
+                    return;
+                }
                 if (albPath) {
                     const alreadyOpen = this.currentView === "albums" && this.isAlbumDetailOpen && this.detailAlbumPath === albPath;
                     if (!alreadyOpen) {
@@ -1590,9 +1644,16 @@ const AudioPlayer = {
             }
 
             case "filtered": {
-                const v = o.view && o.view !== "now-playing" ? o.view : "albums";
-                if (this.currentView !== v) this.setView(v);
-                scrollLater(150);
+                if (o.view === "albums" && (this.selectedArtistFilter || this.selectedGenreFilter)) {
+                    if (this.currentView !== "albums") this.setView("albums");
+                    scrollLater(150);
+                    return;
+                }
+                if (this.currentView !== "now-playing") {
+                    this.setView("now-playing");
+                }
+                this.renderPlayerTab();
+                scrollLater(120);
                 return;
             }
 
@@ -1607,6 +1668,7 @@ const AudioPlayer = {
         if (this.currentView !== "now-playing") {
             this.setView("now-playing");
         }
+        this.renderPlayerTab();
         scrollLater(120);
     },
 
@@ -1653,8 +1715,24 @@ const AudioPlayer = {
 
         if (isAlbumDetail) {
             bar.style.display = "flex";
-            if (backLabel) backLabel.textContent = "← Revenir aux Albums";
-            if (backBtn) backBtn.setAttribute("title", "Revenir à la grille des albums (Échap / Retour)");
+            if (backLabel) {
+                if (this.selectedArtistFilter) {
+                    backLabel.textContent = `← Revenir aux albums (${this.selectedArtistFilter})`;
+                } else if (this.selectedGenreFilter) {
+                    backLabel.textContent = `← Revenir aux albums (${this.selectedGenreFilter})`;
+                } else {
+                    backLabel.textContent = "← Revenir aux Albums";
+                }
+            }
+            if (backBtn) {
+                if (this.selectedArtistFilter) {
+                    backBtn.setAttribute("title", `Revenir aux albums de ${this.selectedArtistFilter} (Échap / Retour)`);
+                } else if (this.selectedGenreFilter) {
+                    backBtn.setAttribute("title", `Revenir aux albums du genre ${this.selectedGenreFilter} (Échap / Retour)`);
+                } else {
+                    backBtn.setAttribute("title", "Revenir à la grille des albums (Échap / Retour)");
+                }
+            }
 
             let infoText = "";
             const albumName = this.detailAlbumTitle || (this.currentAlbum && this.activeAlbumPath === this.detailAlbumPath ? this.currentAlbum.title : "");
@@ -1663,7 +1741,13 @@ const AudioPlayer = {
 
             if (albumName || artistName) {
                 const trkCountStr = count ? ` (${count} titre${count > 1 ? "s" : ""})` : "";
-                infoText = `Albums › <strong>${escapeHtml(artistName ? `${artistName} — ` : "")}${escapeHtml(albumName || "Détail")}</strong>${trkCountStr}`;
+                if (this.selectedArtistFilter) {
+                    infoText = `Artistes › <strong>${escapeHtml(this.selectedArtistFilter)}</strong> › <strong>${escapeHtml(albumName || "Détail")}</strong>${trkCountStr}`;
+                } else if (this.selectedGenreFilter) {
+                    infoText = `Genres › <strong>${escapeHtml(this.selectedGenreFilter)}</strong> › <strong>${escapeHtml(albumName || "Détail")}</strong>${trkCountStr}`;
+                } else {
+                    infoText = `Albums › <strong>${escapeHtml(artistName ? `${artistName} — ` : "")}${escapeHtml(albumName || "Détail")}</strong>${trkCountStr}`;
+                }
             } else {
                 infoText = `Albums › <strong>Détail de l'album</strong>`;
             }
@@ -1708,6 +1792,20 @@ const AudioPlayer = {
             : 0;
         this.setView(targetView);
         this.restoreScrollPosition(savedY);
+    },
+
+    returnFromFilterToOrigin() {
+        if (this.selectedArtistFilter) {
+            this.selectedArtistFilter = null;
+            this.setView("artists");
+            return true;
+        }
+        if (this.selectedGenreFilter) {
+            this.selectedGenreFilter = null;
+            this.setView("genres");
+            return true;
+        }
+        return false;
     },
 
     updateSortSelectForView(view) {
@@ -1920,6 +2018,61 @@ const AudioPlayer = {
             }
         } finally {
             this.isLoadingLibrary = false;
+        }
+    },
+
+    remapAlbumPaths(oldPath, newPath, newMeta = null) {
+        if (!oldPath || !newPath) return;
+        const normOld = String(oldPath).replace(/[\\/]+/g, "/").toLowerCase().replace(/\/+$/, "");
+        const normNew = String(newPath).replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+        if (normOld === normNew.toLowerCase()) return;
+
+        if (this.currentAlbum && this.currentAlbum.path) {
+            const curNorm = String(this.currentAlbum.path).replace(/[\\/]+/g, "/").toLowerCase().replace(/\/+$/, "");
+            if (curNorm === normOld) {
+                this.currentAlbum.path = newPath;
+                if (newMeta) {
+                    if (newMeta.artist) this.currentAlbum.artist = newMeta.artist;
+                    if (newMeta.title || newMeta.album) this.currentAlbum.title = newMeta.title || newMeta.album;
+                    if (newMeta.genre) this.currentAlbum.genre = newMeta.genre;
+                    if (newMeta.year) this.currentAlbum.year = newMeta.year;
+                    if (newMeta.cover_url) this.currentAlbum.cover_url = newMeta.cover_url;
+                }
+            }
+        }
+
+        if (Array.isArray(this.playlist)) {
+            this.playlist.forEach(t => {
+                if (t && t.path) {
+                    const tNorm = String(t.path).replace(/[\\/]+/g, "/");
+                    if (tNorm.toLowerCase().startsWith(normOld)) {
+                        const sub = tNorm.slice(normOld.length).replace(/^\/+/, "");
+                        t.path = `${normNew}/${sub}`;
+                        if (newMeta) {
+                            if (newMeta.artist) t.artist = newMeta.artist;
+                            if (newMeta.title || newMeta.album) t.album = newMeta.title || newMeta.album;
+                        }
+                    }
+                }
+            });
+        }
+
+        if (Array.isArray(this.queue)) {
+            this.queue.forEach(item => {
+                const t = item.track || item;
+                if (t && t.path) {
+                    const tNorm = String(t.path).replace(/[\\/]+/g, "/");
+                    if (tNorm.toLowerCase().startsWith(normOld)) {
+                        const sub = tNorm.slice(normOld.length).replace(/^\/+/, "");
+                        t.path = `${normNew}/${sub}`;
+                    }
+                }
+            });
+        }
+
+        if (this.albumInfoCache) {
+            this.albumInfoCache.delete(oldPath);
+            this.albumInfoCache.delete(newPath);
         }
     },
 
@@ -2457,15 +2610,31 @@ const AudioPlayer = {
         // Bandeau de filtre actif
         const banner = document.getElementById("player-active-filter-banner");
         const bannerText = document.getElementById("player-active-filter-text");
+        const filterBackBtn = document.getElementById("player-filter-back-btn");
+        const filterBackLabel = document.getElementById("player-filter-back-label");
         if (banner && bannerText) {
             if (this.selectedArtistFilter) {
                 banner.style.display = "flex";
                 bannerText.textContent = `Filtre actif : Artiste « ${this.selectedArtistFilter} »`;
+                if (filterBackBtn) {
+                    filterBackBtn.style.display = "inline-flex";
+                    filterBackBtn.title = "Revenir à la liste des Artistes (Bouton précédent souris / Échap)";
+                }
+                if (filterBackLabel) filterBackLabel.textContent = "← Revenir aux Artistes";
             } else if (this.selectedGenreFilter) {
                 banner.style.display = "flex";
                 bannerText.textContent = `Filtre actif : Genre « ${this.selectedGenreFilter} »`;
+                if (filterBackBtn) {
+                    filterBackBtn.style.display = "inline-flex";
+                    filterBackBtn.title = "Revenir à la liste des Genres (Bouton précédent souris / Échap)";
+                }
+                if (filterBackLabel) filterBackLabel.textContent = "← Revenir aux Genres";
             } else {
                 banner.style.display = "none";
+                if (filterBackBtn) filterBackBtn.style.display = "none";
+            }
+            if (typeof syncPlayerControlsHeight === "function") {
+                syncPlayerControlsHeight();
             }
         }
 
@@ -3207,6 +3376,7 @@ const AudioPlayer = {
 
         let html = "";
         genres.forEach(g => {
+            const isUnclassified = g.name.toLowerCase() === "non classé" || g.name.toLowerCase() === "unclassified";
             html += `
                 <div class="player-genre-card" data-genre="${escapeHtml(g.name)}">
                     <div class="player-genre-avatar">
@@ -3224,6 +3394,13 @@ const AudioPlayer = {
                                 <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
                             </svg>
                         </button>
+                        ${!isUnclassified ? `
+                        <button type="button" class="btn-genre-search-online" title="Rechercher des albums de genre « ${escapeHtml(g.name)} » en ligne (Albums & Non possédés)" data-genre="${escapeHtml(g.name)}">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                            </svg>
+                        </button>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -3243,6 +3420,15 @@ const AudioPlayer = {
                 if (e.target.closest(".btn-genre-shuffle")) {
                     e.stopPropagation();
                     this.playFilteredCollection({ genre: gName, shuffle: true });
+                    return;
+                }
+
+                if (e.target.closest(".btn-genre-search-online")) {
+                    e.stopPropagation();
+                    if (window.isPartyLockActive) return;
+                    if (typeof window.searchGenreOnline === "function") {
+                        window.searchGenreOnline(gName);
+                    }
                     return;
                 }
 
@@ -5265,6 +5451,11 @@ const AudioPlayer = {
             if (currentTrack) {
                 const cover = currentTrack.cover_url || (this.currentAlbum ? this.currentAlbum.cover_url : "/static/placeholder-cover.svg");
                 const albumTitle = currentTrack.album || (this.currentAlbum ? this.currentAlbum.title : "");
+                curCard.classList.remove("is-empty");
+                curCard.classList.add("clickable");
+                curCard.setAttribute("role", "button");
+                curCard.setAttribute("tabindex", "0");
+                curCard.setAttribute("title", "Aller au morceau en cours d'écoute (Raccourci: N)");
                 curCard.innerHTML = `
                     <img class="queue-item-thumb" src="${cover}" alt="Cover" onerror="window.handleCoverError(this);">
                     <div class="queue-item-info">
@@ -5280,7 +5471,33 @@ const AudioPlayer = {
                         <span class="player-equalizer-bar"></span>
                     </span>
                 `;
+                curCard.onclick = () => {
+                    if (typeof this.closeQueueDrawer === "function") {
+                        this.closeQueueDrawer();
+                    }
+                    if (typeof window.goToNowPlaying === "function") {
+                        window.goToNowPlaying();
+                    }
+                };
+                curCard.onkeydown = (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (typeof this.closeQueueDrawer === "function") {
+                            this.closeQueueDrawer();
+                        }
+                        if (typeof window.goToNowPlaying === "function") {
+                            window.goToNowPlaying();
+                        }
+                    }
+                };
             } else {
+                curCard.classList.remove("clickable");
+                curCard.classList.add("is-empty");
+                curCard.removeAttribute("role");
+                curCard.removeAttribute("tabindex");
+                curCard.removeAttribute("title");
+                curCard.onclick = null;
+                curCard.onkeydown = null;
                 curCard.innerHTML = `
                     <div class="text-muted" style="font-size: 0.85rem; padding: 6px 0;">
                         Aucun morceau en cours de lecture.
@@ -5557,6 +5774,9 @@ const AudioPlayer = {
             if (!AudioContextClass) return;
 
             this.eqAudioCtx = new AudioContextClass();
+            if (this.audioOutputDeviceId && this.audioOutputDeviceId !== "default" && typeof this.eqAudioCtx.setSinkId === "function") {
+                this.eqAudioCtx.setSinkId(this.audioOutputDeviceId).catch(() => {});
+            }
 
             if (!this.audio) {
                 this.audio = document.getElementById("global-audio-engine");
@@ -5942,6 +6162,391 @@ const AudioPlayer = {
         line.setAttribute("d", d);
         const areaD = `${d} L 600 78 L 0 78 Z`;
         area.setAttribute("d", areaD);
+    },
+
+    // =========================================================
+    // SÉLECTION DE LA SORTIE SON WINDOWS (MULTI-PÉRIPHÉRIQUES)
+    // =========================================================
+
+    initAudioOutputDevices() {
+        try {
+            const saved = localStorage.getItem("ytm_audio_output_device");
+            if (saved) {
+                this.audioOutputDeviceId = saved;
+            }
+        } catch (_) {}
+
+        // Appliquer dès l'initialisation au moteur audio principal
+        if (this.audio && this.audioOutputDeviceId && this.audioOutputDeviceId !== "default" && typeof this.audio.setSinkId === "function") {
+            this.audio.setSinkId(this.audioOutputDeviceId).catch(() => {});
+        }
+
+        // Écouteur sur le bouton de la barre inférieure (Mini-Player)
+        const miniBtn = document.getElementById("mini-player-audio-output-btn");
+        if (miniBtn) {
+            miniBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                this.toggleAudioOutputFlyout(miniBtn);
+            });
+        }
+
+        // Écouteur sur le bouton de fermeture de la popover
+        const closeBtn = document.getElementById("audio-output-flyout-close-btn");
+        if (closeBtn) {
+            closeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                this.closeAudioOutputFlyout();
+            });
+        }
+
+        // Fermeture automatique au clic à l'extérieur
+        document.addEventListener("click", (e) => {
+            if (!this.isAudioOutputFlyoutOpen) return;
+            const flyout = document.getElementById("audio-output-flyout");
+            const miniOutBtn = document.getElementById("mini-player-audio-output-btn");
+            const ambientOutBtn = document.getElementById("ambient-audio-output-btn");
+            if (flyout && !flyout.contains(e.target) && (!miniOutBtn || !miniOutBtn.contains(e.target)) && (!ambientOutBtn || !ambientOutBtn.contains(e.target))) {
+                this.closeAudioOutputFlyout();
+            }
+        });
+
+        // Fermeture automatique avec la touche Échap
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && this.isAudioOutputFlyoutOpen) {
+                this.closeAudioOutputFlyout();
+            }
+        });
+
+        // Détection à chaud du branchement / débranchement de périphériques Windows
+        if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === "function") {
+            navigator.mediaDevices.addEventListener("devicechange", async () => {
+                console.log("[AudioPlayer] Détection d'un changement matériel de périphérique audio Windows");
+                const updatedList = await this.refreshAudioOutputDevices();
+                
+                // Si le périphérique actif a été débranché et n'est plus dans la liste
+                if (this.audioOutputDeviceId !== "default") {
+                    const stillExists = updatedList.some(d => d.deviceId === this.audioOutputDeviceId);
+                    if (!stillExists) {
+                        console.warn("[AudioPlayer] Périphérique actif déconnecté, repli sur la sortie par défaut");
+                        await this.setAudioOutputDevice("default", true);
+                        if (typeof showToast === "function") {
+                            showToast("Périphérique audio déconnecté, bascule automatique sur la sortie par défaut", "info");
+                        }
+                    }
+                }
+
+                // Si le flyout est actuellement ouvert, rafraîchir la liste affichée
+                if (this.isAudioOutputFlyoutOpen) {
+                    this.renderAudioOutputDeviceList();
+                }
+            });
+        }
+
+        // Rafraîchir la liste et initialiser les icônes
+        this.refreshAudioOutputDevices();
+    },
+
+    async refreshAudioOutputDevices() {
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== "function") {
+            return [];
+        }
+        try {
+            const allDevices = await navigator.mediaDevices.enumerateDevices();
+            // Filtrer uniquement les sorties audio, exclure le doublon de canal de communication
+            const outputs = allDevices.filter(d => d.kind === "audiooutput" && d.deviceId !== "communications");
+            this.availableAudioOutputDevices = outputs;
+            this.updateAudioOutputButtonsUI();
+            return outputs;
+        } catch (err) {
+            console.warn("[AudioPlayer] Erreur enumerateDevices:", err);
+            return [];
+        }
+    },
+
+    getDeviceCategory(device) {
+        const lbl = (device && device.label ? device.label : "").toLowerCase();
+        if (/casque|headphone|headset|earphone|airpod|bud|dongle|void|wireless.*gaming/i.test(lbl)) {
+            return "headphones";
+        }
+        if (/nvidia|amd|intel|hdmi|displayport|screen|moniteur|tv|24g4/i.test(lbl)) {
+            return "screen";
+        }
+        return "speaker";
+    },
+
+    getDeviceSvgIcon(category, size = 18) {
+        if (category === "headphones") {
+            return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor"><path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1a7 7 0 0 1 14 0v1h-4v8h4c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/></svg>`;
+        }
+        if (category === "screen") {
+            return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor"><path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z"/></svg>`;
+        }
+        return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
+    },
+
+    getCleanDeviceLabel(device) {
+        let label = (device && device.label ? device.label : "").trim();
+        if (!label) {
+            if (device && device.deviceId === "default") return "Sortie système par défaut";
+            return `Périphérique audio (${(device.deviceId || "").slice(0, 6)}...)`;
+        }
+        // Éliminer préfixe "Default - "
+        label = label.replace(/^Default\s*-\s*/i, "");
+        // Éliminer suffixe d'ID matériel genre (1b1c:0a14)
+        label = label.replace(/\s*\([0-9a-fA-F]{4}:[0-9a-fA-F]{4}\)$/, "");
+        return label;
+    },
+
+    renderAudioOutputDeviceList() {
+        const container = document.getElementById("audio-output-device-list");
+        if (!container) return;
+
+        const devices = this.availableAudioOutputDevices || [];
+        const currentActiveId = this.audioOutputDeviceId || "default";
+
+        // Détecter le label du périphérique actuellement configuré comme défaut de Windows
+        const defaultDev = devices.find(d => d.deviceId === "default");
+        const defaultSubName = defaultDev ? this.getCleanDeviceLabel(defaultDev) : "Configuration audio Windows";
+        const defaultCategory = defaultDev ? this.getDeviceCategory(defaultDev) : "speaker";
+
+        let html = "";
+
+        // 1. Option "Sortie par défaut (Windows)"
+        const isDefaultActive = (currentActiveId === "default" || currentActiveId === "");
+        html += `
+            <div class="audio-output-item ${isDefaultActive ? 'active' : ''}" data-device-id="default">
+                <div class="audio-output-item-indicator"></div>
+                <div class="audio-output-item-icon">
+                    ${this.getDeviceSvgIcon(defaultCategory, 18)}
+                </div>
+                <div class="audio-output-item-text">
+                    <div class="audio-output-item-label">Par défaut (Windows)</div>
+                    <div class="audio-output-item-sub">${escapeHtml(defaultSubName)}</div>
+                </div>
+                ${isDefaultActive ? `
+                    <div class="audio-output-item-check">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+
+        // 2. Périphériques physiques réels (en excluant 'default' et 'communications')
+        const physicalDevices = devices.filter(d => d.deviceId !== "default" && d.deviceId !== "communications");
+
+        physicalDevices.forEach(dev => {
+            const isActive = (currentActiveId === dev.deviceId);
+            const category = this.getDeviceCategory(dev);
+            const cleanLabel = this.getCleanDeviceLabel(dev);
+
+            let subDesc = "Sortie audio";
+            if (category === "headphones") subDesc = "Casque / Écouteurs";
+            else if (category === "screen") subDesc = "Écran / Sortie HDMI";
+            else if (category === "speaker") subDesc = "Enceintes / Haut-parleurs";
+
+            html += `
+                <div class="audio-output-item ${isActive ? 'active' : ''}" data-device-id="${escapeHtml(dev.deviceId)}">
+                    <div class="audio-output-item-indicator"></div>
+                    <div class="audio-output-item-icon">
+                        ${this.getDeviceSvgIcon(category, 18)}
+                    </div>
+                    <div class="audio-output-item-text">
+                        <div class="audio-output-item-label" title="${escapeHtml(cleanLabel)}">${escapeHtml(cleanLabel)}</div>
+                        <div class="audio-output-item-sub">${escapeHtml(subDesc)}</div>
+                    </div>
+                    ${isActive ? `
+                        <div class="audio-output-item-check">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+
+        if (physicalDevices.length === 0 && !defaultDev) {
+            html += `
+                <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+                    Aucun périphérique de sortie audio détecté.
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
+
+        // Délégation d'événement sur les éléments de la liste
+        container.querySelectorAll(".audio-output-item").forEach(item => {
+            item.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const targetId = item.getAttribute("data-device-id");
+                if (targetId) {
+                    this.setAudioOutputDevice(targetId, true);
+                    this.closeAudioOutputFlyout();
+                }
+            });
+        });
+    },
+
+    toggleAudioOutputFlyout(triggerBtn) {
+        if (this.isAudioOutputFlyoutOpen && this.currentAudioOutputTriggerBtn === triggerBtn) {
+            this.closeAudioOutputFlyout();
+        } else {
+            this.openAudioOutputFlyout(triggerBtn);
+        }
+    },
+
+    async openAudioOutputFlyout(triggerBtn) {
+        const flyout = document.getElementById("audio-output-flyout");
+        if (!flyout) return;
+
+        this.currentAudioOutputTriggerBtn = triggerBtn;
+        this.isAudioOutputFlyoutOpen = true;
+
+        if (triggerBtn) triggerBtn.classList.add("active");
+
+        // Récupérer la liste à jour
+        await this.refreshAudioOutputDevices();
+        this.renderAudioOutputDeviceList();
+
+        flyout.style.display = "flex";
+
+        // Positionnement dynamique au-dessus du bouton déclencheur
+        if (triggerBtn) {
+            const rect = triggerBtn.getBoundingClientRect();
+            const flyoutWidth = 360;
+            const bottom = window.innerHeight - rect.top + 8;
+            let left = rect.left + (rect.width / 2) - (flyoutWidth / 2);
+
+            // Ne jamais déborder de l'écran
+            if (left < 10) left = 10;
+            if (left + flyoutWidth > window.innerWidth - 10) {
+                left = window.innerWidth - flyoutWidth - 10;
+            }
+
+            flyout.style.bottom = `${Math.round(bottom)}px`;
+            flyout.style.left = `${Math.round(left)}px`;
+        }
+
+        requestAnimationFrame(() => {
+            flyout.classList.add("active");
+        });
+    },
+
+    closeAudioOutputFlyout() {
+        const flyout = document.getElementById("audio-output-flyout");
+        if (flyout) {
+            flyout.classList.remove("active");
+            setTimeout(() => {
+                if (!this.isAudioOutputFlyoutOpen) {
+                    flyout.style.display = "none";
+                }
+            }, 180);
+        }
+
+        if (this.currentAudioOutputTriggerBtn) {
+            this.currentAudioOutputTriggerBtn.classList.remove("active");
+            this.currentAudioOutputTriggerBtn = null;
+        }
+        const miniBtn = document.getElementById("mini-player-audio-output-btn");
+        const ambientBtn = document.getElementById("ambient-audio-output-btn");
+        if (miniBtn) miniBtn.classList.remove("active");
+        if (ambientBtn) ambientBtn.classList.remove("active");
+
+        this.isAudioOutputFlyoutOpen = false;
+    },
+
+    async setAudioOutputDevice(deviceId, save = true) {
+        if (!deviceId) deviceId = "default";
+        this.audioOutputDeviceId = deviceId;
+
+        if (save) {
+            try {
+                localStorage.setItem("ytm_audio_output_device", deviceId);
+            } catch (_) {}
+        }
+
+        const targetSinkId = (deviceId === "default" ? "" : deviceId);
+
+        // 1. Appliquer à l'élément audio principal
+        if (this.audio && typeof this.audio.setSinkId === "function") {
+            try {
+                await this.audio.setSinkId(targetSinkId);
+            } catch (err) {
+                console.warn("[AudioPlayer] audio.setSinkId error:", err);
+            }
+        }
+
+        // 2. Appliquer au lecteur vidéo (si présent)
+        const video = document.getElementById("video-modal-player");
+        if (video && typeof video.setSinkId === "function") {
+            try {
+                await video.setSinkId(targetSinkId);
+            } catch (err) {
+                console.warn("[AudioPlayer] video.setSinkId error:", err);
+            }
+        }
+
+        // 3. Appliquer à l'AudioContext (si supporté par Chromium)
+        if (this.eqAudioCtx && typeof this.eqAudioCtx.setSinkId === "function") {
+            try {
+                await this.eqAudioCtx.setSinkId(targetSinkId);
+            } catch (err) {
+                console.warn("[AudioPlayer] eqAudioCtx.setSinkId error:", err);
+            }
+        }
+
+        // Trouver le libellé pour le toast
+        let activeLabel = "Par défaut (Windows)";
+        if (deviceId !== "default") {
+            const found = (this.availableAudioOutputDevices || []).find(d => d.deviceId === deviceId);
+            if (found) {
+                activeLabel = this.getCleanDeviceLabel(found);
+            }
+        }
+
+        this.updateAudioOutputButtonsUI();
+
+        if (typeof showToast === "function") {
+            showToast(`Sortie son : ${activeLabel}`, "info");
+        }
+    },
+
+    updateAudioOutputButtonsUI() {
+        const miniIcon = document.getElementById("mini-player-audio-output-icon");
+        const ambientIcon = document.getElementById("ambient-audio-output-icon");
+        const miniBtn = document.getElementById("mini-player-audio-output-btn");
+        const ambientBtn = document.getElementById("ambient-audio-output-btn");
+
+        let activeDev = null;
+        let activeCategory = "speaker";
+        let label = "Sortie par défaut";
+
+        if (this.audioOutputDeviceId && this.audioOutputDeviceId !== "default") {
+            activeDev = (this.availableAudioOutputDevices || []).find(d => d.deviceId === this.audioOutputDeviceId);
+            if (activeDev) {
+                activeCategory = this.getDeviceCategory(activeDev);
+                label = this.getCleanDeviceLabel(activeDev);
+            }
+        } else {
+            const defDev = (this.availableAudioOutputDevices || []).find(d => d.deviceId === "default");
+            if (defDev) {
+                activeCategory = this.getDeviceCategory(defDev);
+                label = `Par défaut (${this.getCleanDeviceLabel(defDev)})`;
+            }
+        }
+
+        const iconSvg = this.getDeviceSvgIcon(activeCategory, 17);
+        const ambientIconSvg = this.getDeviceSvgIcon(activeCategory, 18);
+
+        if (miniIcon) miniIcon.outerHTML = iconSvg.replace('<svg ', '<svg id="mini-player-audio-output-icon" ');
+        if (ambientIcon) ambientIcon.outerHTML = ambientIconSvg.replace('<svg ', '<svg id="ambient-audio-output-icon" ');
+
+        const titleText = `Sortie son : ${label} (Cliquer pour changer)`;
+        if (miniBtn) miniBtn.title = titleText;
+        if (ambientBtn) ambientBtn.title = titleText;
     },
 
     updatePlayStateUI() {

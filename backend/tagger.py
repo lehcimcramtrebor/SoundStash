@@ -273,12 +273,31 @@ _COMPILATION_KEYWORDS = re.compile(
     flags=re.IGNORECASE
 )
 
+# Mots-clés de nettoyage pour bandes originales et compilations (OST / Soundtracks)
+_SOUNDTRACK_NOISE_PATTERN = re.compile(
+    r'\b(original\s+motion\s+picture\s+soundtrack|music\s+from\s+the\s+motion\s+picture|original\s+soundtrack|bande\s+originale\s+du\s+film|bande\s+originale|motion\s+picture\s+soundtrack|original\s+score|soundtrack|b\.o\.?|ost|score)\b',
+    re.IGNORECASE
+)
+
+def extract_core_album_title(album: str) -> Tuple[str, bool]:
+    """
+    Extrait le titre fondamental d'un album en nettoyant les mentions de BO / OST.
+    Ex: 'Original Motion Picture Soundtrack OVER THE TOP' -> ('OVER THE TOP', True)
+    """
+    if not album:
+        return "", False
+    is_ost = bool(_SOUNDTRACK_NOISE_PATTERN.search(album))
+    cleaned = _SOUNDTRACK_NOISE_PATTERN.sub("", album)
+    cleaned = re.sub(r'[\(\)\[\]\:\-_]+', ' ', cleaned).strip()
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    return cleaned, is_ost
+
 # Cache MusicBrainz : (album_lower, artist_lower) -> {position_str: artist_credit}
 _MB_TRACK_ARTISTS_CACHE: Dict[Tuple[str, str], Optional[Dict[str, str]]] = {}
 _MB_TRACKS_CACHE: Dict[Tuple[str, str], Optional[Dict[int, Dict[str, str]]]] = {}
 
 # MusicBrainz exige ce format : AppName/version (email) — sans email, les requêtes sont rejetées
-_MB_HEADERS = {"User-Agent": "SoundStash/3.1.0 (soundstash@helmicretro.local)"}
+_MB_HEADERS = {"User-Agent": "SoundStash/4.0.0 (soundstash@helmicretro.local)"}
 
 _LAST_MB_REQUEST_TIME = 0
 
@@ -291,7 +310,7 @@ def fetch_musicbrainz_track_artists_sync(
     Interroge MusicBrainz pour récupérer les crédits d'artistes et les durées par position de piste
     d'un album donné. Retourne un dict {position_str: artist_credit} ou None si pas trouvé.
     Les résultats sont mis en cache pour éviter les appels redondants.
-    Timeout court (4s) pour ne pas bloquer l'uniformisation.
+    Intègre une recherche multicandidats tolérante aux OST, compilations et inversions de titres.
     """
     if is_empty_or_na(album) or is_empty_or_na(artist):
         return None
@@ -299,11 +318,8 @@ def fetch_musicbrainz_track_artists_sync(
     if cache_key in _MB_TRACK_ARTISTS_CACHE:
         return _MB_TRACK_ARTISTS_CACHE[cache_key]
 
-    logger.info(f"MusicBrainz lookup : '{album}' / '{artist}'")
+    logger.info(f"MusicBrainz lookup : '{album}' / '{artist}' (pistes attendues: {expected_track_count})")
     try:
-        query = urllib.parse.quote(f'release:"{album}" AND artist:"{artist}"')
-        search_url = f"https://musicbrainz.org/ws/2/release/?query={query}&fmt=json&limit=5"
-
         def mb_get(url: str):
             """Effectue un GET MusicBrainz avec retry sur 503 (rate limit)."""
             global _LAST_MB_REQUEST_TIME
@@ -327,15 +343,48 @@ def fetch_musicbrainz_track_artists_sync(
                         raise
             return {}
 
-        data = mb_get(search_url)
-        releases = data.get("releases", [])
-        if not releases:
-            # Fallback : Si artist est Various Artists ou équivalent, chercher sans contrainte d'artiste
-            if artist.lower() in {"various artists", "various", "artiste inconnu", "divers artistes", "soundtrack", "ost"}:
-                query_fallback = urllib.parse.quote(f'release:"{album}"')
-                fallback_url = f"https://musicbrainz.org/ws/2/release/?query={query_fallback}&fmt=json&limit=5"
-                data = mb_get(fallback_url)
-                releases = data.get("releases", [])
+        core_title, is_ost = extract_core_album_title(album)
+        is_va = artist.lower() in {"various artists", "various", "artiste inconnu", "divers artistes", "soundtrack", "ost"} or is_ost
+
+        # Stratégie multicandidats pour maximiser les chances de correspondance exacte
+        query_candidates = []
+        if not is_va:
+            query_candidates.append(f'release:"{album}" AND artist:"{artist}"')
+        
+        if is_va:
+            query_candidates.append(f'release:"{album}" AND (artist:"Various Artists" OR soundtrack)')
+            query_candidates.append(f'release:"{album}"')
+        else:
+            query_candidates.append(f'release:"{album}"')
+
+        if core_title and core_title.lower() != album.lower():
+            if is_va:
+                query_candidates.append(f'release:"{core_title}" AND (artist:"Various Artists" OR soundtrack)')
+                query_candidates.append(f'release:({core_title}) AND soundtrack')
+                query_candidates.append(f'release:"{core_title}"')
+            else:
+                query_candidates.append(f'release:"{core_title}" AND artist:"{artist}"')
+                query_candidates.append(f'release:"{core_title}"')
+
+        # Fallback par termes de recherche Lucene sans contrainte de guillemets stricts
+        target_text = core_title if core_title else album
+        target_clean = re.sub(r'[^\w\s]', ' ', target_text).strip()
+        if target_clean:
+            if is_va:
+                query_candidates.append(f'release:({target_clean}) AND (soundtrack OR "Various Artists")')
+            else:
+                query_candidates.append(f'release:({target_clean}) AND artist:({artist})')
+
+        releases = []
+        for q_str in query_candidates:
+            q_enc = urllib.parse.quote(q_str)
+            search_url = f"https://musicbrainz.org/ws/2/release/?query={q_enc}&fmt=json&limit=5"
+            data = mb_get(search_url)
+            cur_releases = data.get("releases", [])
+            if cur_releases:
+                releases = cur_releases
+                logger.info(f"MusicBrainz : release(s) trouvée(s) avec la requête '{q_str}'")
+                break
 
         if not releases:
             logger.info(f"MusicBrainz : aucune release trouvée pour '{album}' / '{artist}'")
@@ -355,7 +404,7 @@ def fetch_musicbrainz_track_artists_sync(
             best = max(releases, key=lambda x: x.get("score", 0))
 
         release_id = best["id"]
-        logger.info(f"MusicBrainz : release trouvée '{best.get('title')}' (id={release_id}, score={best.get('score')})")
+        logger.info(f"MusicBrainz : release retenue '{best.get('title')}' (id={release_id}, score={best.get('score')}, pistes={best.get('track-count')})")
 
         time.sleep(1.1)
         detail_url = f"https://musicbrainz.org/ws/2/release/{release_id}?inc=recordings+artist-credits&fmt=json"
@@ -1206,7 +1255,21 @@ def get_album_info(album_dir: Path | str) -> dict:
         if not re.search(r'\s*\[playlist\]\s*$', album_name, flags=re.IGNORECASE):
             album_name = f"{album_name} [Playlist]"
 
-        if valid_artists:
+        if valid_album_artists and any(a not in {"Various Artists", "Artiste inconnu"} for a in valid_album_artists):
+            top_alb_art = max(set(valid_album_artists), key=valid_album_artists.count)
+            if top_alb_art and top_alb_art not in {"Various Artists", "Artiste inconnu"}:
+                album_artist = clean_artist_name(top_alb_art)
+            elif valid_artists:
+                from collections import Counter
+                counts = Counter(valid_artists)
+                top_artist, top_count = counts.most_common(1)[0]
+                if top_count / len(valid_artists) >= 0.70:
+                    album_artist = clean_artist_name(top_artist)
+                else:
+                    album_artist = "Various Artists"
+            else:
+                album_artist = "Various Artists"
+        elif valid_artists:
             from collections import Counter
             counts = Counter(valid_artists)
             top_artist, top_count = counts.most_common(1)[0]
@@ -1417,19 +1480,34 @@ def get_missing_tracks_details(album_dir: Path) -> dict:
 
     mb_tracks = fetch_musicbrainz_release_tracks_sync(album_name, album_artist, expected_track_count=max_track)
 
+    core_album, is_ost = extract_core_album_title(album_name)
+    clean_album = core_album if core_album else album_name
+    is_va = album_artist.lower() in {"various artists", "various", "artiste inconnu", "divers artistes", "soundtrack", "ost"}
+
     missing_details = []
     for num in missing:
         mb_info = mb_tracks.get(num) if mb_tracks else None
         local_tr = local_meta_tracks.get(num)
 
         exp_title = (mb_info.get("title") if mb_info else None) or (local_tr.get("title") if local_tr else None) or f"Piste {num:02d}"
-        exp_artist = (mb_info.get("artist") if mb_info else None) or (local_tr.get("artist") if local_tr else None) or album_artist
+        exp_artist = (mb_info.get("artist") if mb_info else None) or (local_tr.get("artist") if local_tr else None) or (clean_album if is_va else album_artist)
         exp_duration = (mb_info.get("duration") if mb_info else None) or (local_tr.get("duration") if local_tr else None) or ""
 
+        # Élaboration intelligente et chirurgicale de la requête de recherche YouTube
         if exp_title and not exp_title.startswith("Piste "):
-            query = f"{exp_artist} {exp_title}".strip()
+            # Si nous avons le vrai titre identifié (ex: Gypsy Soul)
+            if exp_artist and exp_artist.lower() not in {"various artists", "various", "artiste inconnu", "divers artistes"}:
+                query = f"{exp_artist} {exp_title}".strip()
+            else:
+                query = f"{clean_album} {exp_title}".strip()
         else:
-            query = f"{album_artist} {album_name} piste {num}".strip()
+            # Si le titre n'est pas encore identifié
+            if is_ost:
+                query = f"{clean_album} soundtrack track {num}".strip()
+            elif is_va:
+                query = f"{clean_album} track {num}".strip()
+            else:
+                query = f"{album_artist} {clean_album} track {num}".strip()
 
         missing_details.append({
             "track_number": num,
@@ -1834,25 +1912,26 @@ def uniformize_album(
     # Si plus de 30 % des pistes ont un artiste distinct de final_artist,
     # l'album est une compilation → forcer Various Artists pour garder le
     # dossier unifié sous Various Artists (et éviter une scission dans les players).
-    if not is_playlist and not is_single and final_artist not in {"Various Artists", "Artiste inconnu"}:
-        # Critère 1 : mot-clé de compilation dans le nom d'album
-        if _COMPILATION_KEYWORDS.search(final_album):
-            final_artist = "Various Artists"
-        else:
-            # Critère 2 : ratio d'artistes de pistes différents de final_artist
-            piste_artists = [
-                (t.get("artist") or "").strip().lower()
-                for t in tracks
-                if not is_empty_or_na(t.get("artist"))
-            ]
-            if piste_artists:
-                main_lower = final_artist.lower()
-                different = sum(
-                    1 for a in piste_artists
-                    if a and main_lower not in a and a not in main_lower
-                )
-                if different / len(piste_artists) > 0.30:
-                    final_artist = "Various Artists"
+    # NOTE CRITIQUE : Si l'utilisateur a explicitement fourni custom_artist (édition manuelle dans l'éditeur de tags),
+    # son choix est souverain et ne doit JAMAIS être écrasé par "Various Artists".
+    has_custom_artist = bool(custom_artist and not is_empty_or_na(custom_artist))
+    if not has_custom_artist and not is_playlist and not is_single and final_artist not in {"Various Artists", "Artiste inconnu"}:
+        piste_artists = [
+            (t.get("artist") or "").strip().lower()
+            for t in tracks
+            if not is_empty_or_na(t.get("artist"))
+        ]
+        if piste_artists:
+            main_lower = final_artist.lower()
+            different = sum(
+                1 for a in piste_artists
+                if a and main_lower not in a and a not in main_lower
+            )
+            # Un album n'est une compilation Various Artists que si plus de 30% des pistes diffèrent de l'artiste principal.
+            # Même si le titre contient "Greatest Hits", "Best Of" ou "Collection", s'il s'agit d'un artiste unique,
+            # il conserve impérativement le nom de son artiste.
+            if different / len(piste_artists) > 0.30:
+                final_artist = "Various Artists"
 
     final_year = extract_4digit_year(custom_year) if custom_year else info["year"]
     final_genre = custom_genre.strip() if custom_genre and not is_empty_or_na(custom_genre) else (info.get("genre") or "")

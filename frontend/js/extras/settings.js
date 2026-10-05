@@ -371,6 +371,7 @@ function setupSettings() {
                     audio_fader_enabled: audioFaderEnabled,
                     cooldown_album: cooldownAlbum,
                     cooldown_single: cooldownSingle,
+                    auto_update_yt_dlp: document.getElementById("cfg-auto-update-yt-dlp") ? document.getElementById("cfg-auto-update-yt-dlp").checked : true,
                     auto_check_app_updates: document.getElementById("cfg-auto-check-app-updates") ? document.getElementById("cfg-auto-check-app-updates").checked : true,
                     max_audio_quality_when_signed: document.getElementById("cfg-max-audio-quality-signed") ? document.getElementById("cfg-max-audio-quality-signed").checked : true
                 })
@@ -634,6 +635,15 @@ function setupQuickDestButtons() {
         });
     }
 
+    const btnTestCookies = document.getElementById("btn-cfg-cookies-test");
+    if (btnTestCookies) {
+        btnTestCookies.addEventListener("click", async () => {
+            if (typeof window.verifyCookiesSession === "function") {
+                await window.verifyCookiesSession(false);
+            }
+        });
+    }
+
     if (btnRemoveCookies) {
         btnRemoveCookies.addEventListener("click", async () => {
             const confirmed = await showModalConfirm(
@@ -678,6 +688,7 @@ async function refreshCookiesStatus() {
     const badge = document.getElementById("cfg-cookies-status-badge");
     const details = document.getElementById("cfg-cookies-status-details");
     const btnRemove = document.getElementById("btn-cfg-cookies-remove");
+    const btnTest = document.getElementById("btn-cfg-cookies-test");
     const searchBadge = document.getElementById("search-session-status-badge");
 
     // Raccourci pour ouvrir directement le sous-onglet Système / Session depuis la recherche
@@ -698,6 +709,9 @@ async function refreshCookiesStatus() {
         if (data.exists) {
             if (badge) {
                 badge.className = "badge badge-success";
+                badge.style.background = "";
+                badge.style.color = "";
+                badge.style.borderColor = "";
                 badge.innerHTML = `🟢 Session YouTube active`;
                 badge.title = `Fichier : ${data.path}`;
             }
@@ -707,6 +721,7 @@ async function refreshCookiesStatus() {
                 details.innerHTML = `✅ Fichier <code>cookies.txt</code> actif (${data.formatted_size})${modText}. ${ytNotice} Vos requêtes de téléchargement sont signées.`;
             }
             if (btnRemove) btnRemove.style.display = "inline-flex";
+            if (btnTest) btnTest.style.display = "inline-flex";
 
             if (searchBadge) {
                 searchBadge.className = "badge badge-success";
@@ -717,11 +732,14 @@ async function refreshCookiesStatus() {
                     <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; display: inline-block; box-shadow: 0 0 6px #2ecc71;"></span>
                     <span class="session-text" style="font-weight: 600;">Session YouTube Active</span>
                 `;
-                searchBadge.title = `Session connectée active (${data.formatted_size}). Cliquez pour gérer les cookies ou la qualité.`;
+                searchBadge.title = `Session connectée active (${data.formatted_size}). Cliquez pour gérer les cookies ou tester la session.`;
             }
         } else {
             if (badge) {
                 badge.className = "badge badge-idle";
+                badge.style.background = "";
+                badge.style.color = "";
+                badge.style.borderColor = "";
                 badge.textContent = "Mode Anonyme (Aucun cookie)";
                 badge.title = "Aucun fichier cookies.txt actif dans le dossier de configuration.";
             }
@@ -729,6 +747,7 @@ async function refreshCookiesStatus() {
                 details.textContent = "Aucun fichier de session actif. SoundStash télécharge en visiteur anonyme.";
             }
             if (btnRemove) btnRemove.style.display = "none";
+            if (btnTest) btnTest.style.display = "none";
 
             if (searchBadge) {
                 searchBadge.className = "badge badge-idle";
@@ -747,6 +766,117 @@ async function refreshCookiesStatus() {
     }
 }
 window.refreshCookiesStatus = refreshCookiesStatus;
+
+async function verifyCookiesSession(silent = false) {
+    const btnTest = document.getElementById("btn-cfg-cookies-test");
+    const badge = document.getElementById("cfg-cookies-status-badge");
+    const details = document.getElementById("cfg-cookies-status-details");
+    const searchBadge = document.getElementById("search-session-status-badge");
+
+    if (btnTest && !silent) {
+        btnTest.disabled = true;
+        btnTest.innerHTML = `⏳ Test en direct...`;
+    }
+
+    try {
+        const res = await fetch("/api/cookies/verify", { method: "POST" });
+        if (!res.ok) throw new Error("Erreur serveur lors de la vérification");
+        const data = await res.json();
+
+        if (data.status === "valid") {
+            if (badge) {
+                badge.className = "badge badge-success";
+                badge.style.background = "";
+                badge.style.color = "";
+                badge.style.borderColor = "";
+                badge.innerHTML = `🟢 Session YouTube active & connectée`;
+            }
+            if (details) {
+                details.innerHTML = `✅ Vos identifiants Google/YouTube sont acceptés en direct par les serveurs de YouTube. Vos téléchargements sont signés et protégés.`;
+            }
+            if (searchBadge) {
+                searchBadge.className = "badge badge-success";
+                searchBadge.style.background = "rgba(46, 204, 113, 0.15)";
+                searchBadge.style.color = "#2ecc71";
+                searchBadge.style.borderColor = "rgba(46, 204, 113, 0.4)";
+                searchBadge.innerHTML = `
+                    <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; display: inline-block; box-shadow: 0 0 6px #2ecc71;"></span>
+                    <span class="session-text" style="font-weight: 600;">Session YouTube Active</span>
+                `;
+                searchBadge.title = `Session connectée vérifiée avec succès auprès de YouTube. Vos téléchargements sont signés.`;
+            }
+            if (!silent && typeof showToast === "function") {
+                showToast("✅ Session YouTube 100% valide et connectée !", "success");
+            }
+        } else if (data.status === "expired") {
+            if (badge) {
+                badge.className = "badge badge-warning";
+                badge.style.background = "rgba(245, 158, 11, 0.20)";
+                badge.style.color = "#f59e0b";
+                badge.style.borderColor = "rgba(245, 158, 11, 0.5)";
+                badge.innerHTML = `⚠️ Session expirée (À renouveler)`;
+            }
+            if (details) {
+                details.innerHTML = `⚠️ <strong style="color: #f59e0b;">Session expirée ou révoquée par Google</strong> : vos cookies ne sont plus acceptés par YouTube (suite à un changement de mot de passe ou à expiration). Veuillez réimporter un nouveau fichier <code>cookies.txt</code> ci-dessus.`;
+            }
+            if (searchBadge) {
+                searchBadge.className = "badge badge-warning";
+                searchBadge.style.background = "rgba(245, 158, 11, 0.20)";
+                searchBadge.style.color = "#f59e0b";
+                searchBadge.style.borderColor = "rgba(245, 158, 11, 0.5)";
+                searchBadge.innerHTML = `
+                    <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; box-shadow: 0 0 8px #f59e0b;"></span>
+                    <span class="session-text" style="font-weight: 700;">⚠️ Session expirée</span>
+                `;
+                searchBadge.title = `Session expirée ou mot de passe changé ! Cliquez pour importer votre nouveau cookies.txt dans les Paramètres.`;
+            }
+            if (!silent) {
+                if (typeof showModalAlert === "function") {
+                    showModalAlert(
+                        "Session YouTube Expirée",
+                        "Google a invalidé ou révoqué cette session (suite à un changement de mot de passe de votre compte ou à l'expiration des cookies).\n\nPour continuer à télécharger sans blocage, réexportez un nouveau fichier cookies.txt depuis votre navigateur et réimportez-le dans les Paramètres.",
+                        "warning"
+                    );
+                }
+            } else if (typeof showToast === "function") {
+                showToast("⚠️ Votre session YouTube (cookies.txt) a expiré. Pensez à la réimporter dans les Paramètres.", "warning");
+            }
+        } else if (data.status === "no_cookies" || data.status === "anonymous") {
+            await refreshCookiesStatus();
+            if (!silent && typeof showToast === "function") {
+                showToast("Mode Anonyme actif (aucun cookie utilisateur connecté).", "info");
+            }
+        } else {
+            if (!silent && typeof showToast === "function") {
+                showToast(data.message || "Impossible de vérifier la session auprès de YouTube.", "warning");
+            }
+        }
+    } catch (err) {
+        console.warn("[Cookies] Erreur vérification session en direct:", err);
+        if (!silent && typeof showToast === "function") {
+            showToast("Erreur réseau lors de la vérification : " + err.message, "danger");
+        }
+    } finally {
+        if (btnTest && !silent) {
+            btnTest.disabled = false;
+            btnTest.innerHTML = `🔄 Tester la session`;
+        }
+    }
+}
+window.verifyCookiesSession = verifyCookiesSession;
+
+// Vérification automatique et discrète en arrière-plan au démarrage (après 4s) si des cookies sont présents
+setTimeout(async () => {
+    try {
+        const res = await fetch("/api/cookies/status");
+        if (res.ok) {
+            const data = await res.json();
+            if (data.exists && data.has_youtube_auth) {
+                verifyCookiesSession(true);
+            }
+        }
+    } catch (_) {}
+}, 4000);
 
 async function loadConfiguration() {
     try {
@@ -1654,6 +1784,22 @@ async function applySelectedCover() {
                         alb.mtime = Math.floor(cacheBuster / 1000);
                     }
                 });
+            }
+
+            // 3b. Mettre à jour dans la liste des genres par lots (Onglet Genres par lots)
+            if (window.genreBatchAlbums && Array.isArray(window.genreBatchAlbums)) {
+                window.genreBatchAlbums.forEach(alb => {
+                    if (isSameAlbumPath(alb.path, canonicalPath)) {
+                        alb.has_cover = true;
+                        alb.cover_url = newCoverSrc;
+                        alb.mtime = Math.floor(cacheBuster / 1000);
+                    }
+                });
+            }
+
+            // 3c. Invalider le cache des playlists pour rafraîchir les collages de pochettes
+            if (typeof UserPlaylists !== "undefined" && UserPlaylists.playlistCache) {
+                UserPlaylists.playlistCache.clear();
             }
 
             // Mettre à jour immédiatement les éléments existants dans le DOM de la galerie

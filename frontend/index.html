@@ -11,7 +11,7 @@
             document.documentElement.setAttribute("data-theme", savedTheme);
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=3.3.8">
+    <link rel="stylesheet" href="/static/style.css?v=4.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1277,7 +1277,13 @@
 
                     <!-- Filtre actif contextuel (ex: Artiste ou Genre filtré) -->
                     <div id="player-active-filter-banner" class="player-filter-banner" style="display: none;">
-                        <span id="player-active-filter-text">Filtre actif : Artiste</span>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" id="player-filter-back-btn" class="btn btn-secondary player-context-back-btn" title="Revenir aux Artistes (Bouton précédent de la souris / Échap)" style="display: none; height: 32px; padding: 0 12px; font-size: 0.82rem;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                                <span id="player-filter-back-label">← Revenir aux Artistes</span>
+                            </button>
+                            <span id="player-active-filter-text">Filtre actif : Artiste</span>
+                        </div>
                         <div class="player-filter-banner-actions" style="display: flex; align-items: center; gap: 8px;">
                             <button type="button" id="player-filter-play-all-btn" class="btn btn-sm btn-primary" title="Lire tous les morceaux de ce filtre" style="display: inline-flex; align-items: center; gap: 6px;">
                                 <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
@@ -1287,7 +1293,7 @@
                                 <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
                                 <span>Aléatoire</span>
                             </button>
-                            <button type="button" id="player-clear-filter-btn" class="btn btn-sm btn-secondary">✕ Tout réafficher</button>
+                            <button type="button" id="player-clear-filter-btn" class="btn btn-sm btn-secondary" title="Supprimer le filtre et rester dans les Albums">✕ Tout réafficher</button>
                         </div>
                     </div>
 
@@ -1437,7 +1443,7 @@
                                     <div class="all-album-cover-box playlist-cover-box" id="playlist-hero-cover-wrap" style="cursor: pointer;" title="Cliquer pour changer l'illustration de la playlist">
                                         <img id="playlist-hero-cover" class="all-album-cover-img" src="/static/placeholder-cover.png" alt="Pochette Playlist" referrerpolicy="no-referrer">
                                         <span class="playlist-mixed-badge" id="playlist-hero-mixed-badge" style="display: none;">Mixte</span>
-                                        <span class="badge badge-info" id="playlist-hero-smart-badge" style="display: none; position: absolute; top: 8px; left: 8px; font-size: 0.72rem; padding: 2px 7px; border-radius: 8px; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(6px); border: 1px solid var(--accent); color: #fff;">Smart</span>
+                                        <span class="playlist-smart-badge" id="playlist-hero-smart-badge" style="display: none;">✨ Smart Playlist</span>
                                     </div>
 
                                     <div class="all-album-meta-info playlist-sidebar-meta">
@@ -1901,6 +1907,9 @@
                                     <button type="button" id="btn-cfg-cookies-import" class="btn btn-sm btn-primary" title="Sélectionner et importer votre fichier cookies.txt">
                                         📥 Importer cookies.txt
                                     </button>
+                                    <button type="button" id="btn-cfg-cookies-test" class="btn btn-sm btn-secondary" style="display: none;" title="Vérifier en direct auprès de YouTube si votre session est toujours active et valide">
+                                        🔄 Tester la session
+                                    </button>
                                     <button type="button" id="btn-cfg-cookies-open-folder" class="btn btn-sm btn-secondary" title="Ouvrir le dossier de configuration dans l'explorateur Windows">
                                         📁 Dossier
                                     </button>
@@ -2080,7 +2089,7 @@
                                         Mise à Jour de l'Application SoundStash
                                     </h3>
                                     <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
-                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v3.3.8</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
+                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v4.0.0</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
                                     </p>
                                 </div>
                                 <button type="button" id="btn-check-app-update" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
@@ -2290,7 +2299,7 @@
                     <div>
                         <div style="font-size: 0.8rem; color: var(--text-muted);">Version actuelle / Nouvelle version</div>
                         <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; margin-top: 2px;">
-                            <span id="app-update-current-ver" style="color: var(--text-muted);">v3.3.8</span>
+                            <span id="app-update-current-ver" style="color: var(--text-muted);">v3.4.0</span>
                             <span style="color: var(--accent);">➔</span>
                             <span id="app-update-target-ver" style="color: #10b981;">v...</span>
                         </div>
@@ -2615,6 +2624,11 @@
                 <svg id="mini-icon-vol-off" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style="display: none;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27l4.73 4.73H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
             </button>
             <input type="range" id="mini-player-volume-slider" class="mini-volume-slider" min="0" max="1" step="0.01" value="0.85">
+            <button type="button" id="mini-player-audio-output-btn" class="mini-btn" title="Sortie son Windows (Périphérique de lecture)" aria-label="Sortie son Windows" style="position: relative;">
+                <svg id="mini-player-audio-output-icon" viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
+                    <path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1a7 7 0 0 1 14 0v1h-4v8h4c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/>
+                </svg>
+            </button>
             <button type="button" id="mini-player-eq-btn" class="mini-btn" title="Égaliseur audio DSP (Raccourci: E)" style="position: relative;">
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
                 <span class="eq-active-dot" id="mini-player-eq-dot" style="display: none;"></span>
@@ -3034,7 +3048,7 @@
                     <!-- Critères spécifiques au type -->
                     <div id="smart-criteria-genres-box" style="display: none; margin-bottom: 12px; background: var(--bg-hover, rgba(255,255,255,0.03)); padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
                         <label style="font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 6px; color: var(--text);">
-                            Sélectionnez un ou plusieurs genres :
+                            Sélectionnez un ou plusieurs genres de votre collection :
                         </label>
                         <div id="smart-genres-tags" class="smart-genres-container">
                             <span class="text-muted" style="font-size: 0.8rem;">Chargement des genres...</span>
@@ -3059,7 +3073,8 @@
                         <label for="smart-pl-limit-select" style="font-size: 0.85rem; font-weight: 600; color: var(--text); margin: 0;">
                             Nombre de titres à inclure :
                         </label>
-                        <select id="smart-pl-limit-select" class="form-control form-select" style="width: 140px; font-size: 0.85rem;">
+                        <select id="smart-pl-limit-select" class="form-control form-select" style="width: 175px; font-size: 0.85rem;">
+                            <option value="0">Illimité (Tous les titres)</option>
                             <option value="15">15 titres</option>
                             <option value="25" selected>25 titres</option>
                             <option value="50">50 titres</option>
@@ -3598,6 +3613,11 @@
                         <svg id="ambient-icon-vol-off" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style="display: none;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27l4.73 4.73H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
                     </button>
                     <input type="range" id="ambient-volume-slider" class="ambient-volume-slider" min="0" max="1" step="0.01" value="0.85">
+                    <button type="button" id="ambient-audio-output-btn" class="ambient-btn" title="Sortie son Windows (Périphérique de lecture)" aria-label="Sortie son Windows" style="position: relative;">
+                        <svg id="ambient-audio-output-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                            <path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1a7 7 0 0 1 14 0v1h-4v8h4c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/>
+                        </svg>
+                    </button>
                     <button type="button" id="ambient-eq-btn" class="ambient-btn" title="Égaliseur audio DSP (Raccourci: E)" style="position: relative;">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
                         <span class="eq-active-dot" id="ambient-eq-dot" style="display: none;"></span>
@@ -3778,17 +3798,25 @@
                         <span>✏️</span>
                         <span>Atelier vs Lecteur</span>
                     </button>
+                    <button type="button" class="guide-nav-item" data-guide-target="guide-sec-reconstitution">
+                        <span>🧩</span>
+                        <span>Reconstitution d'Album</span>
+                    </button>
                     <button type="button" class="guide-nav-item" data-guide-target="guide-sec-partylock">
                         <span>🎉</span>
                         <span>Mode Soirée &amp; PIN</span>
                     </button>
                     <button type="button" class="guide-nav-item" data-guide-target="guide-sec-ambient">
                         <span>🌆</span>
-                        <span>Mode Ambiance &amp; Vidéo</span>
+                        <span>Mode Ambiance &amp; Périphériques</span>
                     </button>
                     <button type="button" class="guide-nav-item" data-guide-target="guide-sec-playlists">
                         <span>📑</span>
-                        <span>Playlists Mixtes</span>
+                        <span>Playlists &amp; Smart Playlists</span>
+                    </button>
+                    <button type="button" class="guide-nav-item" data-guide-target="guide-sec-navigation">
+                        <span>🖱️</span>
+                        <span>Navigation &amp; Ergonomie</span>
                     </button>
                     <button type="button" class="guide-nav-item" data-guide-target="guide-sec-shortcuts">
                         <span>⌨️</span>
@@ -3879,9 +3907,33 @@
                         <p>Accessible via l'icône d'égaliseur sur la barre flottante, le lecteur focus ou le Mode Ambiance (raccourci <code>E</code>). Propose 10 presets d'élite (Bass Boost, Rock, Électro, Vocal, etc.) et un mode Personnalisé avec mémorisation instantanée.</p>
                     </section>
 
-                    <!-- SECTION 5 -->
+                    <!-- SECTION 5 : RECONSTITUTION D'ALBUM -->
+                    <section class="guide-section" id="guide-sec-reconstitution">
+                        <h2>🧩 5. Reconstitution d'Album Complète &amp; Détection OST / BO</h2>
+                        <p>SoundStash analyse automatiquement la cohérence de vos albums et repère les pistes manquantes, pistes orphelines ou indexations incomplètes :</p>
+
+                        <div class="guide-grid-2">
+                            <div class="guide-card" style="border-color: rgba(137, 180, 250, 0.35);">
+                                <div class="guide-card-title" style="color: var(--accent, #89b4fa);">🔍 Modale Dédiée (960px)</div>
+                                <p style="font-size:0.85rem; color:#94a3b8;">Affiche la comparaison directe entre les pistes présentes sur votre disque et la discographie officielle issue de l'API. Chaque piste manquante dispose d'un bouton de recherche et téléchargement direct.</p>
+                            </div>
+                            <div class="guide-card" style="border-color: rgba(16, 185, 129, 0.35);">
+                                <div class="guide-card-title" style="color: #10b981;">🎬 Moteur Titre OST / Soundtrack</div>
+                                <p style="font-size:0.85rem; color:#94a3b8;">Pour les bandes originales de films et jeux vidéo, le moteur extrait automatiquement le cœur du titre d'album (en nettoyant les suffixes <em>Original Soundtrack</em>, <em>OST</em>, <em>Score</em>) pour interroger le web avec une précision chirurgicale.</p>
+                            </div>
+                        </div>
+
+                        <h3>Remplacement &amp; Retag Automatique</h3>
+                        <ul>
+                            <li><strong>Remplacement ciblé :</strong> si une piste d'album est introuvable ou de mauvaise qualité, recherchez un substitut YouTube officiel en 1 clic.</li>
+                            <li><strong>Conservation des tags :</strong> le fichier téléchargé hérite automatiquement du numéro de piste, de l'artiste officiel et du nom de l'album d'origine.</li>
+                            <li><strong>Régénération instantanée :</strong> après complétion, l'album est automatiquement consolidé dans votre collection ou dans l'atelier sans redémarrage.</li>
+                        </ul>
+                    </section>
+
+                    <!-- SECTION 6 -->
                     <section class="guide-section" id="guide-sec-partylock">
-                        <h2>🎉 5. Mode Soirée &amp; Protection par Code PIN</h2>
+                        <h2>🎉 6. Mode Soirée &amp; Protection par Code PIN</h2>
                         <p>Le <strong>Mode Soirée (Party Lock)</strong> transforme SoundStash en véritable juke-box interactif et sécurisé pour vos fêtes, soirées entre amis ou environnements publics :</p>
 
                         <div class="guide-callout guide-callout-warning">
@@ -3896,9 +3948,9 @@
                         </ul>
                     </section>
 
-                    <!-- SECTION 6 -->
+                    <!-- SECTION 7 -->
                     <section class="guide-section" id="guide-sec-ambient">
-                        <h2>🌆 6. Mode Ambiance &amp; Centre de Commande Élite</h2>
+                        <h2>🌆 7. Mode Ambiance &amp; Périphériques Audio Windows 11</h2>
                         <p>Le <strong>Mode Ambiance</strong> (raccourci <code>T</code>) transforme votre écran en un visualiseur audio et vidéo spectaculaire au look rétro-futuriste :</p>
                         
                         <h3>4 Univers Rétro d'Élite</h3>
@@ -3908,6 +3960,14 @@
                             <li>🏙️ <strong>Night City Filaire :</strong> métropole cyberpunk 3D filaire cyan avec gratte-ciels pulsant au rythme des fréquences audio.</li>
                             <li>📡 <strong>Radar CRT Phosphore :</strong> balayage radar militaire vert phosphore avec grille polaire et ondulation analogique.</li>
                             <li>🧱 <strong>Puits Tetris Rétro :</strong> puits matriciel rétro avec briques lumineuses et réactivité sonore dynamique.</li>
+                        </ul>
+
+                        <h3>🎧 Sélecteur de Sortie Son Windows 11 en Direct</h3>
+                        <p>Basculez instantanément votre son entre votre casque, vos enceintes Hi-Fi ou votre téléviseur sans couper la lecture :</p>
+                        <ul>
+                            <li>Accessible depuis la barre de lecture principale (icône casque/enceinte) et depuis le dock du Mode Ambiance.</li>
+                            <li>Menu flottant affichant les icônes de périphériques reconnus avec détection automatique du matériel par défaut.</li>
+                            <li>Zéro micro-coupure : le flux audio bascule de manière continue sur le nouveau récepteur.</li>
                         </ul>
 
                         <h3>Centre de Commande &amp; Cadenas de Maintien (Dock Pin)</h3>
@@ -3921,20 +3981,34 @@
                         </ul>
                     </section>
 
-                    <!-- SECTION 7 -->
+                    <!-- SECTION 8 -->
                     <section class="guide-section" id="guide-sec-playlists">
-                        <h2>📑 7. Playlists Utilisateur Mixtes (Audio + Vidéo)</h2>
+                        <h2>📑 8. Playlists Mixtes &amp; Smart Playlists Intelligentes</h2>
                         <p>Créez des playlists personnalisées mélangeant indifféremment des morceaux audio et des clips vidéo :</p>
                         <ul>
-                            <li>Ajout omniprésent via les boutons <code>[ ➕ Playlist ]</code> (sur les pistes, les albums entiers ou le Hub Vidéo).</li>
-                            <li>Enchaînement fluide : la fin d'un clip vidéo déclenche automatiquement le morceau audio ou clip suivant de la liste.</li>
-                            <li>Gestion simplifiée : suppression directe d'une playlist via l'icône corbeille <code>[ 🗑️ ]</code> sur sa tuile dans la grille.</li>
+                            <li><strong>Ajout omniprésent :</strong> via les boutons <code>[ ➕ Playlist ]</code> (sur les pistes, les albums entiers ou le Hub Vidéo).</li>
+                            <li><strong>Enchaînement fluide :</strong> la fin d'un clip vidéo déclenche automatiquement le morceau audio ou clip suivant de la liste.</li>
+                            <li><strong>Smart Playlists Illimitées :</strong> générez des listes intelligentes basées sur un genre ou une décennie sans bridage artificiel (sélection jusqu'à toutes les pistes disponibles).</li>
+                            <li><strong>Filtrage strict multi-genres :</strong> seuls les tags de genre réellement présents dans votre collection sont suggérés, évitant les listes vides.</li>
+                            <li><strong>Auto-guérison en direct :</strong> suppression automatique des références de fichiers déplacés ou effacés lors des synchronisations disque.</li>
                         </ul>
                     </section>
 
-                    <!-- SECTION 8 -->
+                    <!-- SECTION 9 -->
+                    <section class="guide-section" id="guide-sec-navigation">
+                        <h2>🖱️ 9. Navigation Hiérarchique &amp; Ergonomie Souris</h2>
+                        <p>SoundStash intègre un système de pile de navigation intelligente pour des allers-retours naturels :</p>
+                        <ul>
+                            <li><strong>Bouton Retour Contextuel :</strong> lorsque vous consultez un album depuis un filtre Artiste ou Genre, le bouton de retour indique précisément sa destination : <code>← Revenir aux albums (Artiste)</code>.</li>
+                            <li><strong>Bouton Précédent Souris (Bouton 4 / X1) :</strong> permet de remonter l'historique de consultation (revenir de l'album vers la liste, ou fermer le tiroir d'atelier / file d'attente / égaliseur).</li>
+                            <li><strong>Bouton « 🎧 En cours » Sanctuarisé :</strong> mémorise précisément votre vue d'origine. Consulter la lecture en cours puis cliquer sur Retour vous ramène exactement là où vous étiez sans réinitialiser vos filtres.</li>
+                            <li><strong>Synchronisation Windows Explorer en Temps Réel :</strong> déposer, renommer ou supprimer un album directement dans Windows met à jour l'interface instantanément via WebSocket sans avoir à recharger l'application (F5).</li>
+                        </ul>
+                    </section>
+
+                    <!-- SECTION 10 -->
                     <section class="guide-section" id="guide-sec-shortcuts">
-                        <h2>⌨️ 8. Raccourcis Clavier &amp; Astuces</h2>
+                        <h2>⌨️ 10. Raccourcis Clavier &amp; Astuces</h2>
                         <table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 10px;">
                             <tr style="border-bottom: 1px solid var(--border-card); text-align: left;">
                                 <th style="padding: 8px 12px; color: var(--text-muted);">Touche</th>
@@ -4079,49 +4153,73 @@
         </div>
     </div>
 
+    <!-- Volet Volant Sélecteur de Sortie Son Windows (Style Windows 11 / SoundStash Néon) -->
+    <div id="audio-output-flyout" class="audio-output-flyout" style="display: none;" role="dialog" aria-label="Sélection de la sortie son">
+        <div class="audio-output-flyout-header">
+            <div class="audio-output-flyout-title-box">
+                <div class="audio-output-flyout-icon-badge">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="audio-output-flyout-title">Sortie son</div>
+                    <div class="audio-output-flyout-subtitle">Périphérique de sortie</div>
+                </div>
+            </div>
+            <button type="button" class="audio-output-flyout-close" id="audio-output-flyout-close-btn" title="Fermer (Échap)">&times;</button>
+        </div>
+        <div class="audio-output-device-list" id="audio-output-device-list">
+            <!-- Rendu dynamique des périphériques audiooutput -->
+        </div>
+        <div class="audio-output-flyout-footer">
+            <span class="audio-output-footer-hint">Bascule instantanée sans interruption</span>
+        </div>
+    </div>
+
     <!-- Conteneur Toast Notifications (Premier Plan Absolu Z-Index 350000 via CSS) -->
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Socle JavaScript Modulaire Core -->
-    <script src="/static/js/core/icons.js?v=3.3.8"></script>
-    <script src="/static/js/core/utils.js?v=3.3.8"></script>
-    <script src="/static/js/core/modals.js?v=3.3.8"></script>
-    <script src="/static/js/core/websocket.js?v=3.3.8"></script>
-    <script src="/static/js/core/app_updater.js?v=3.3.8"></script>
+    <script src="/static/js/core/icons.js?v=4.0.0"></script>
+    <script src="/static/js/core/utils.js?v=4.0.0"></script>
+    <script src="/static/js/core/modals.js?v=4.0.0"></script>
+    <script src="/static/js/core/websocket.js?v=4.0.0"></script>
+    <script src="/static/js/core/app_updater.js?v=4.0.0"></script>
 
     <!-- Modules Autonomes : Mode Ambiance & Synthwave -->
-    <script src="/static/js/ambient/synthwave_canvas.js?v=3.3.8"></script>
-    <script src="/static/js/ambient/ambient_manager.js?v=3.3.8"></script>
+    <script src="/static/js/ambient/synthwave_canvas.js?v=4.0.0"></script>
+    <script src="/static/js/ambient/ambient_manager.js?v=4.0.0"></script>
 
     <!-- Modules Autonomes : Playlists Utilisateur -->
-    <script src="/static/js/playlists/user_playlists.js?v=3.3.8"></script>
+    <script src="/static/js/playlists/user_playlists.js?v=4.0.0"></script>
 
     <!-- Modules Autonomes : Configuration, Veille & Sécurité -->
-    <script src="/static/js/extras/settings.js?v=3.3.8"></script>
-    <script src="/static/js/extras/sleep_timer.js?v=3.3.8"></script>
-    <script src="/static/js/extras/party_lock.js?v=3.3.8"></script>
-    <script src="/static/js/extras/user_guide.js?v=3.3.8"></script>
+    <script src="/static/js/extras/settings.js?v=4.0.0"></script>
+    <script src="/static/js/extras/sleep_timer.js?v=4.0.0"></script>
+    <script src="/static/js/extras/party_lock.js?v=4.0.0"></script>
+    <script src="/static/js/extras/user_guide.js?v=4.0.0"></script>
 
     <!-- Modules Métier : Atelier de Recherche & Téléchargement -->
-    <script src="/static/js/workshop/workbench.js?v=3.3.8"></script>
-    <script src="/static/js/workshop/search.js?v=3.3.8"></script>
-    <script src="/static/js/workshop/download.js?v=3.3.8"></script>
+    <script src="/static/js/workshop/workbench.js?v=4.0.0"></script>
+    <script src="/static/js/workshop/search.js?v=4.0.0"></script>
+    <script src="/static/js/workshop/download.js?v=4.0.0"></script>
 
     <!-- Modules Métier : Éditeur de Tags & Reconstitution -->
-    <script src="/static/js/editor/reconstitute.js?v=3.3.8"></script>
-    <script src="/static/js/editor/tag_editor.js?v=3.3.8"></script>
+    <script src="/static/js/editor/reconstitute.js?v=4.0.0"></script>
+    <script src="/static/js/editor/tag_editor.js?v=4.0.0"></script>
 
     <!-- Modules Métier : Discothèque & Corbeille -->
-    <script src="/static/js/library/library_manager.js?v=3.3.8"></script>
+    <script src="/static/js/library/library_manager.js?v=4.0.0"></script>
 
     <!-- Modules Métier : Lecteur Audio, Égaliseur & Raccourcis -->
-    <script src="/static/js/player/audio_player.js?v=3.3.8"></script>
-    <script src="/static/js/player/shortcuts.js?v=3.3.8"></script>
+    <script src="/static/js/player/audio_player.js?v=4.0.0"></script>
+    <script src="/static/js/player/shortcuts.js?v=4.0.0"></script>
 
     <!-- Modules Métier : Lecteur Vidéo Clip & Moteur Audio Vidéo -->
-    <script src="/static/js/video/video_player.js?v=3.3.8"></script>
+    <script src="/static/js/video/video_player.js?v=4.0.0"></script>
 
     <!-- Orchestrateur Principal -->
-    <script src="/static/app.js?v=3.3.8"></script>
+    <script src="/static/app.js?v=4.0.0"></script>
 </body>
 </html>

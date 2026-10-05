@@ -1343,6 +1343,84 @@ function setupSearch() {
 
         showToast(`Recherche des albums non possédés pour « ${trimmed} » (Artiste strict)...`, "info");
     };
+
+    window.searchGenreOnline = (genreName) => {
+        if (!genreName || !genreName.trim()) return;
+        const trimmed = genreName.trim();
+        if (trimmed.toLowerCase() === "non classé" || trimmed.toLowerCase() === "unclassified") {
+            if (typeof showToast === "function") {
+                showToast("Ce genre n'est pas répertorié pour la recherche en ligne.", "warning");
+            }
+            return;
+        }
+        if (window.isPartyLockActive) return;
+
+        // 1. Basculer vers l'onglet Recherche (quitte proprement le Mode Lecteur)
+        switchTab("tab-search");
+
+        // 2. Renseigner le champ de recherche
+        queryInput.value = trimmed;
+        clearBtn.style.display = "block";
+        try {
+            localStorage.setItem("ytm_search_query", trimmed);
+        } catch (e) {}
+
+        // 3. Synchroniser le menu déroulant des genres si le genre y figure
+        if (searchGenreSelect) {
+            let matchedOption = false;
+            for (let i = 0; i < searchGenreSelect.options.length; i++) {
+                const opt = searchGenreSelect.options[i];
+                if (opt.value && (opt.value.toLowerCase() === trimmed.toLowerCase() || opt.text.toLowerCase().includes(trimmed.toLowerCase()))) {
+                    searchGenreSelect.value = opt.value;
+                    matchedOption = true;
+                    break;
+                }
+            }
+            if (!matchedOption) {
+                searchGenreSelect.value = "";
+            }
+        }
+
+        // 4. Définir le filtre sur Album (pour cibler les albums officiels du genre)
+        currentFilter = "album";
+        if (searchTypeSelect) searchTypeSelect.value = "album";
+        try {
+            localStorage.setItem("ytm_search_filter", "album");
+        } catch (e) {}
+
+        // 5. Réinitialiser les sous-filtres d'albums sur "Tous"
+        currentAlbumSubfilter = "all";
+        if (albumSubfilterPills) {
+            albumSubfilterPills.forEach(p => {
+                p.classList.toggle("active", p.getAttribute("data-subfilter") === "all");
+            });
+        }
+        try {
+            localStorage.setItem("ytm_album_subfilter", "all");
+        } catch (e) {}
+
+        // 6. Désactiver le mode Artiste Strict (inapplicable à la recherche d'un genre)
+        strictArtistFilterActive = false;
+        currentArtistLock = "";
+        if (btnStrictArtist) {
+            btnStrictArtist.classList.remove("active");
+            btnStrictArtist.style.display = "none";
+        }
+        if (albumSubfiltersGroup) {
+            albumSubfiltersGroup.style.display = "inline-flex";
+        }
+
+        // 7. Activer le filtre "Masquer déjà possédés" pour cibler les nouveaux albums
+        hideOwnedFilterActive = true;
+        if (btnFilterHideOwned) {
+            btnFilterHideOwned.classList.add("active");
+        }
+
+        // 8. Déclencher la recherche
+        performSearch(trimmed, "album");
+
+        showToast(`Recherche des albums pour le genre « ${trimmed} » (Non possédés)...`, "info");
+    };
 }
 
 

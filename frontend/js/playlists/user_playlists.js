@@ -829,7 +829,7 @@ const UserPlaylists = {
         if (pl.is_smart) {
             if (refreshBtn) refreshBtn.style.display = "inline-flex";
             if (smartBadge) {
-                smartBadge.style.display = "inline-block";
+                smartBadge.style.display = "inline-flex";
                 const SMART_LABELS = {
                     "top_played": "Top les plus écoutés",
                     "genres": "Mix Multi-Genres",
@@ -839,7 +839,9 @@ const UserPlaylists = {
                     "videos_mix": "100% Vidéos Clips",
                     "random_mix": "Blind-Test Aléatoire"
                 };
-                smartBadge.textContent = `✨ Smart Playlist • ${SMART_LABELS[pl.smart_type] || "Automatisée"}`;
+                const smartTypeLabel = SMART_LABELS[pl.smart_type] || "Automatisée";
+                smartBadge.textContent = "✨ Smart Playlist";
+                smartBadge.title = `Smart Playlist automatisée : ${smartTypeLabel}`;
             }
         } else {
             if (refreshBtn) refreshBtn.style.display = "none";
@@ -1117,10 +1119,10 @@ async function fetchPresetCovers() {
     return [];
 }
 
-async function fetchLibraryGenres() {
-    if (cachedLibraryGenres) return cachedLibraryGenres;
+async function fetchLibraryGenres(forceRefresh = false) {
+    if (cachedLibraryGenres && !forceRefresh) return cachedLibraryGenres;
     try {
-        const res = await fetch("/api/genres/list");
+        const res = await fetch("/api/genres/list?t=" + Date.now());
         if (res.ok) {
             const data = await res.json();
             cachedLibraryGenres = data.genres || [];
@@ -1129,7 +1131,7 @@ async function fetchLibraryGenres() {
     } catch (e) {
         console.warn("Erreur chargement genres:", e);
     }
-    return [];
+    return cachedLibraryGenres || [];
 }
 
 function setCreatePlaylistMode(mode) {
@@ -1160,11 +1162,31 @@ function updateSmartCriteriaVisibility() {
     const genresBox = document.getElementById("smart-criteria-genres-box");
     const decadeBox = document.getElementById("smart-criteria-decade-box");
     const nameInput = document.getElementById("smart-pl-name-input");
+    const limitSelect = document.getElementById("smart-pl-limit-select");
     if (!typeSelect) return;
 
     const val = typeSelect.value;
     if (genresBox) genresBox.style.display = (val === "genres" || val === "top_genres") ? "block" : "none";
     if (decadeBox) decadeBox.style.display = (val === "decade") ? "block" : "none";
+
+    // Gestion cohérente et intelligente de la limite par défaut selon la nature de la playlist
+    if (limitSelect) {
+        // Types où "Illimité" est la norme absolue et naturelle
+        const UNLIMITED_DEFAULTS = ["genres", "decade", "unplayed", "videos_mix"];
+        if (UNLIMITED_DEFAULTS.includes(val)) {
+            limitSelect.value = "0"; // Illimité (Tous les titres)
+        } else if (val === "top_played" || val === "top_genres") {
+            // Pour les classements "Top Hits", l'illimité n'est pas cohérent : défaut = 25
+            if (limitSelect.value === "0") {
+                limitSelect.value = "25";
+            }
+        } else if (val === "random_mix") {
+            // Mix aléatoire / Blind-test : défaut = 50 (avec option Illimité disponible)
+            if (limitSelect.value === "0") {
+                limitSelect.value = "50";
+            }
+        }
+    }
 
     if (nameInput) {
         const DEFAULT_NAMES = {
@@ -1220,13 +1242,13 @@ async function renderCreatePresetCovers(category = "all") {
     });
 }
 
-async function renderSmartGenres() {
+async function renderSmartGenres(forceRefresh = false) {
     const container = document.getElementById("smart-genres-tags");
     if (!container) return;
 
-    const genres = await fetchLibraryGenres();
+    const genres = await fetchLibraryGenres(forceRefresh);
     if (!genres || genres.length === 0) {
-        container.innerHTML = `<span class="text-muted" style="font-size: 0.8rem;">Aucun genre disponible.</span>`;
+        container.innerHTML = `<span class="text-muted" style="font-size: 0.8rem;">Aucun genre répertorié dans votre collection.</span>`;
         return;
     }
 
@@ -1247,9 +1269,13 @@ async function renderSmartGenres() {
             }
             const typeSelect = document.getElementById("smart-pl-type-select");
             const nameInput = document.getElementById("smart-pl-name-input");
-            if (typeSelect && (typeSelect.value === "genres" || typeSelect.value === "top_genres") && selectedSmartGenres.size > 0 && nameInput) {
-                const arr = Array.from(selectedSmartGenres).slice(0, 3);
-                nameInput.value = (typeSelect.value === "top_genres" ? "Top " : "Mix ") + arr.join(" + ");
+            if (typeSelect && (typeSelect.value === "genres" || typeSelect.value === "top_genres") && nameInput) {
+                if (selectedSmartGenres.size > 0) {
+                    const arr = Array.from(selectedSmartGenres).slice(0, 3);
+                    nameInput.value = (typeSelect.value === "top_genres" ? "Top " : "Mix ") + arr.join(" + ");
+                } else {
+                    nameInput.value = typeSelect.value === "top_genres" ? "💎 Top Titres par Genre" : "🔀 Mix Multi-Genres";
+                }
             }
         });
     });
@@ -1300,7 +1326,7 @@ async function openCreatePlaylistModal() {
     if (nameInput) setTimeout(() => nameInput.focus(), 60);
 
     await renderCreatePresetCovers("all");
-    await renderSmartGenres();
+    await renderSmartGenres(true);
     updateSmartCriteriaVisibility();
 }
 

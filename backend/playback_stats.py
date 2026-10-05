@@ -99,7 +99,7 @@ class PlaybackStatsManager:
             tracks = valid_tracks
 
         tracks.sort(key=lambda t: (t.get("play_count", 0), t.get("last_played", 0)), reverse=True)
-        return tracks[:limit]
+        return tracks[:limit] if (limit and limit > 0) else tracks
 
     def prune_missing_files(self) -> int:
         """Nettoie l'historique des écoutes en supprimant les entrées de fichiers n'existant plus sur le disque."""
@@ -121,6 +121,50 @@ class PlaybackStatsManager:
             self._save()
             logger.info(f"Playback stats : {len(keys_to_remove)} piste(s) supprimée(s) du disque retirée(s) de l'historique.")
         return len(keys_to_remove)
+
+    def remap_album_paths(self, old_dir: str | Path, new_dir: str | Path) -> int:
+        """Remappe les chemins des pistes dans l'historique lors d'un renommage de dossier d'album."""
+        try:
+            old_str = str(Path(old_dir).resolve()).lower().rstrip("\\/")
+            new_p = Path(new_dir).resolve()
+            new_str = str(new_p).rstrip("\\/")
+        except Exception:
+            old_str = str(old_dir).lower().rstrip("\\/")
+            new_str = str(new_dir).rstrip("\\/")
+
+        if old_str == str(new_str).lower():
+            return 0
+
+        updated_count = 0
+        new_cache = {}
+        for k, v in self._cache.items():
+            orig_p = v.get("path")
+            if orig_p:
+                try:
+                    norm_orig = str(Path(orig_p).resolve())
+                except Exception:
+                    norm_orig = str(orig_p)
+
+                if norm_orig.lower().startswith(old_str):
+                    sub_path = norm_orig[len(old_str):].lstrip("\\/")
+                    remapped_path = str(new_p / sub_path)
+                    v["path"] = remapped_path
+                    try:
+                        new_k = str(Path(remapped_path).resolve()).lower()
+                    except Exception:
+                        new_k = remapped_path.lower()
+                    new_cache[new_k] = v
+                    updated_count += 1
+                    continue
+
+            new_cache[k] = v
+
+        if updated_count > 0:
+            self._cache = new_cache
+            self._save()
+            logger.info(f"Playback stats : {updated_count} piste(s) remappée(s) de '{old_str}' vers '{new_str}'.")
+
+        return updated_count
 
     def get_stats_summary(self) -> Dict[str, Any]:
         """Retourne un résumé global des écoutes."""
