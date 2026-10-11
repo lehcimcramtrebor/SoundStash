@@ -1,16 +1,188 @@
-# 🎵 SoundStash v4.0.0
+# 🎵 SoundStash v5.0.1
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
 [![Electron](https://img.shields.io/badge/Electron-33.2.1-47848F.svg)](https://www.electronjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com/)
-[![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](https://www.python.org/)
+[![Python](https://python.org/)](https://python.org/)
 [![Tests](https://img.shields.io/badge/Tests-152%2F152%20passed-brightgreen.svg)]()
 [![Audio](https://img.shields.io/badge/Audio-Hi--Res%20%7C%20Lossless%20%7C%2010--Band%20EQ-orange.svg)]()
 
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v5.0.1
+
+### 🔊 Nouveau Visualiseur Audio « Cyber Subwoofer » 3D (Mode Ambiance)
+- **Modèle physique réactif & noble** : Subwoofer 3D incliné avec perspective ~ -18°, châssis métallique gunmetal/chrome, 8 boulons hexagonaux, suspension en caoutchouc toroïdale et membrane conique concave avec 6 anneaux concentriques nets.
+- **Dôme central ultra-brillant** : Dust cap avec reflet spéculaire courbé élégant et débattement mécanique fluide calé sur les basses et percussions.
+- **Réactivité acoustique calibrée** : Piston mécanique fluide (~20-25 px sur les drops) animé par la combinaison des attaques percussives (`kick` et transitoires) et de la pression des sous-basses (`20 Hz - 350 Hz`).
+- **Ondes de choc & Lasers d'horizon** : Génération d'ondes de choc néon concentriques sur les frappes rythmiques franches, triple faisceau laser traversant l'horizon avec oscilloscope temps réel connecté à `waveform`.
+- **Tours LED spectrales & Étoiles diamant** : 32 colonnes spectrales (16 gauche + 16 droite) avec *peak hold*, étoiles de diamant spéculaires à 4 branches sur la couronne et nuée stellaire 3D de 90 particules.
+- **Stabilisation & Protection Anti-Flood** : Optimisation des écouteurs de recherche et dédoublonnage strict des toasts de notification.
+
+---
+
+## 🚀 Nouveautés v5.0.0
+
+### 📦 Atelier d'Exportation Multimédia Hautes Performances (Multi-threading)
+- **Exportation universelle audio & vidéo** : Exportez tout ou partie de votre collection vers n'importe quel dossier ou support externe (clé USB, smartphone, baladeur audiophile).
+- **Parallélisation multi-cœurs (jusqu'à 12 threads simultanés)** : L'export tire parti de l'intégralité du processeur (`ThreadPoolExecutor` à concurrence dynamique), garantissant des transferts et transcodages ultra-rapides sans goulot d'étranglement.
+- **Transcodage audio & préservation de qualité** :
+  - **Mode copie brute** : conservation intégrale des conteneurs (`.m4a`, `.flac`, `.opus`, `.mp3`) et métadonnées d'origine.
+  - **Mode conversion FFmpeg haute fidélité** : conversion vers MP3 (128 / 192 / 256 / 320 kbps), AAC, OGG Vorbis, FLAC (lossless) et OPUS avec tags injectés.
+- **Hiérarchies de dossiers personnalisables** :
+  - `Artiste / Album / Titre` (organisation hiérarchique classique).
+  - `Artiste - Album / Titre` (regroupement par dossier d'album).
+  - À plat `Artiste - Album - Titre` (idéal pour autoradios et lecteurs sans navigation arborescente).
+- **Séparation automatique & Playlists M3U8** :
+  - Répartition nette en sous-dossiers dédiés `Audio/` et `Vidéo/`.
+  - Génération automatique d'une playlist universelle `Playlist_Export.m3u8` encodée en UTF-8 avec directives `#EXTINF`.
+- **Sélecteur interactif d'albums et pistes avec panier persistant** :
+  - Recherche instantanée par nom d'artiste, album ou piste.
+  - Dépliage accordéon des albums pour cocher ou décocher des pistes individuelles à la volée.
+  - Sélecteur de vidéos intégré.
+  - Sauvegarde et restauration automatique du panier de sélection (`export_selected_items.json`) pour ne jamais perdre son travail de sélection.
+- **Estimation de stockage en temps réel & Progression WebSocket** :
+  - Calcul dynamique de l'espace disque requis et de l'espace disponible sur la destination avec alerte visuelle en cas de saturation.
+  - Barre de progression fluide en temps réel avec statistiques (pistes traitées, vitesse, temps restant estimé).
+
+### 🛠️ Refonte Ergonomique de l'Atelier
+- **Fusion et lisibilité accrue** : Réorganisation des sous-onglets de l'Atelier pour une productivité maximale.
+- **Accès direct « Tags par lot »** : Accès direct au taggage groupé sans intermédiaire redondant.
+- **Cohérence stylistique et fluidité** : Interface modernisée avec icônes contextuelles, boutons d'action rapide et retour visuel instantané.
+
+---
+
+## 🚀 Nouveautés v4.2.3
+
+### ⚡ Détection Magique de l'Année Officielle Intégrée au Téléchargement
+- **Recherche automatique au téléchargement** : chaque album téléchargé déclenche désormais la recherche de sa véritable date de sortie studio originale via MusicBrainz `release-group` (`first-release-date`) avec repli ultra-rapide sur l'API iTunes.
+- **Fin des années d'upload YouTube erronées** : les années parasites (dates de rééditions numériques, remasters tardifs ou uploads YouTube de 2015/2017/2021) sont automatiquement remplacées par la première parution historique.
+- **Écriture physique réelle Kid3** : application instantanée et pérenne sur chaque piste physique en session directe par flux (`set date` + `set year` pour les conteneurs QuickTime `.m4a`/AAC et tags ID3 `.mp3`). Synchronisation instantanée du fichier `.album_meta.json` et de l'indexothèque.
+
+### 🏷️ Onglet « Tags par Lot » & Édition Rapide Multi-Champs
+- **Évolution de l'onglet** : l'ancien sous-onglet « Genres par lot » devient **« Tags par lot »** et permet d'appliquer simultanément ou séparément l'**Artiste**, le **Genre** et l'**Année** sur une sélection d'albums.
+- **Bouton Magique Unitaire `⚡` & Détection Groupée** : bouton éclair sur chaque ligne d'album et bouton d'action par lot `⚡ Années officielles` pour corriger rapidement sa collection sans ressaisir manuellement.
+- **Ergonomie & Espacement** : élargissement des colonnes Genres et Année, masquage des steppers natifs de Chromium (spin-buttons) pour éliminer toute troncature du 4e chiffre (ex: `2020` 100% visible).
+
+### 🛡️ Verrouillage Hermétique du Scroll Arrière-Plan dans l'Atelier
+- **Arrière-plan sanctuaire immobile** : au survol et à l'ouverture de l'Atelier, le lecteur audio et la discothèque en arrière-plan ne bougent plus d'un millimètre (`overflow: hidden` sur `body` et `html` + `overscroll-behavior: contain`).
+- **Capture intelligente de molette** : le contenu interne de l'Atelier (recherches, tableaux, logs) défile avec une fluidité totale, mais dès que les extrémités sont atteintes ou que la souris survole l'en-tête/les zones statiques, la propagation de l'événement `wheel` est immédiatement neutralisée.
+- **Mémorisation de position** : la position exacte de scroll de la collection est sauvegardée et restaurée au pixel près à la fermeture de l'Atelier.
+
+---
+
+### 🎯 Dissociation Intelligente des Albums Homonymes par Artiste
+- **Élimination des faux positifs « Déjà dans ma collection »** : le moteur de reconnaissance (`SmartMatcher`) vérifie désormais strictement la compatibilité d'artiste avant de comparer les titres d'albums. Deux albums portant le même nom mais composés par des artistes distincts (ex. *Metropolis* de *Marvel83'* vs *Metropolis* de *Timecop1983*) ne sont plus jamais confondus.
+- **Score déterministe** : lorsque les artistes sont identifiés et sans lien de parenté, le score de similarité est immédiatement verrouillé à `0.0`. L'album recherché s'affiche comme neuf et téléchargeable directement en un clic.
+- **Préservation des variantes légitimes** : prise en charge native des collaborations (*Marvel83' & Timecop1983*), des variantes typographiques (*AC/DC* / *AC DC*), des chaînes YouTube thématiques (*- Topic*, *- Thème*) et des compilations multi-artistes (*Various Artists*).
+- **Sécurisation des dossiers temporaires et des prévisualisations** : la vérification empêche également les fausses alertes de « pistes manquantes » dans la modale d'album et les collisions dans le répertoire temporaire.
+
+### ⚡ Résilience & Déblocage du Moteur de Téléchargement
+- **Correction d'un blocage silencieux de file** : résolution d'une collision de portée de variable interne (`UnboundLocalError`) liée à la vérification de session YouTube dans `backend/downloader.py`.
+- **Tolérance aux pannes renforcée** : sécurisation intégrale de la boucle de file d'attente avec journalisation complète des traces d'erreurs (`exc_info=True`) et notification temps réel via WebSocket pour éviter tout gel du worker d'arrière-plan.
+
+---
+
+## 🚀 Nouveautés v4.2.1
+
+### ⚡ Visibilité & Clarté de la File de Téléchargement (Batch)
+- **Affichage permanent du téléchargement en cours** : le panneau de la file d'attente ne disparaît plus quand il n'y a qu'un seul téléchargement. Il met désormais en valeur la tâche active avec un badge `⚡ En cours` et son titre, éliminant tout doute sur le lancement de l'opération.
+- **Libellés de notification intelligents** : le message de confirmation distingue désormais clairement un téléchargement qui démarre immédiatement (*« « Album » en cours de téléchargement ! »*) d'un album mis en attente après un autre (*« « Album » ajouté à la file d'attente ! »*).
+- **Annulation directe depuis la file** : bouton d'annulation rapide directement présent sur l'élément en cours dans la file d'attente.
+
+### 🛡️ Réconciliation Dynamique des Boutons de Téléchargement
+- **Élimination définitive du blocage « En file d'attente »** : les boutons du Lecteur Audio, de la modale d'album et des cartes de recherche vérifient désormais en temps réel l'état effectif de la file WebSocket. Si un téléchargement s'achève ou est annulé, le bouton est automatiquement dégrisé et redevient immédiatement cliquable.
+- **Repli automatique anti-expiration des cookies (Fallback transparent)** : si vos cookies YouTube expirent en plein téléchargement, SoundStash tente automatiquement et sans interruption un repli en accès standard anonyme (pour récupérer les pistes publiques sans planter), tout en avertissant l'utilisateur de renouveler sa session pour la haute fidélité.
+
+---
+
+## 🚀 Nouveautés v4.2.0
+
+### 🎧 Sanctuarisation Intégrale de la Lecture dans l'Onglet « Tout »
+- **Clic sur une piste non-destructif** : cliquer sur un titre dans le catalogue ou la recherche dense lance immédiatement l'écoute sans restreindre la file au seul album cliqué. La collection intégrale demeure active en toile de fond.
+- **Respect absolu des options utilisateur (Aléatoire & Répétition)** :
+  - **Aléatoire préservé** : si le mode Aléatoire (`🔀`) est actif, le titre cliqué est joué puis la lecture continue de brasser aléatoirement l'ensemble de votre discothèque.
+  - **Séquentiel continu** : si l'Aléatoire est désactivé, la lecture avance naturellement piste par piste, puis enchaîne automatiquement avec l'album suivant du catalogue sans coupure.
+  - **Répétition intacte** : les modes Répéter (`🔁` Tout / `🔂` Titre) ne sont plus jamais écrasés ni réinitialisés par un clic ou par l'activation du shuffle.
+- **Métadonnées fidèles** : l'album d'origine réel de chaque morceau s'affiche en grand sur la barre persistante et dans le mode Ambiance (remplaçant le libellé générique « Toute la Collection »).
+
+### 🌌 Restauration Déterministe de la Lecture en Cours (« N ») & Mode Ambiance
+- **Retour direct sur l'écran d'écoute** : à la fermeture du Mode Ambiance (bouton fermer ou raccourci clavier), votre vue de lecture en cours (« En cours d'écoute » ou détail d'album) est instantanément réancrée avec recentrage automatique de la piste active.
+- **Touche `N` universelle** : utilisable directement depuis le Mode Ambiance pour quitter instantanément le visualiseur plein écran et basculer sur les détails du titre en cours.
+- **Navigation arrière protégée** : les boutons souris précédent / retour arrière ne ferment plus les détails d'albums en sourdine pendant le visionnage du visualiseur Synthwave.
+
+### 🏷️ Détection Fine des Genres Musicaux (Apple Music / iTunes)
+- **Élimination du tag générique « Music »** : correction automatique des tags hérités des imports YouTube (qui classent tout arbitrairement sous la catégorie unique « Music »).
+- **Interrogation automatique de l'API Apple Music / iTunes** : identification précise et intelligente des véritables styles musicaux (*Synthwave, Heavy Metal, French Pop, Progressive Rock, Trip Hop, etc.*) lors de la récupération et de l'uniformisation d'albums.
+
+### 🎛️ Centre de Commandes Standard Flottant Permanent
+- **Visibilité permanente de la barre de lecture** : le centre de commandes inférieur (`#persistent-player-bar`) reste désormais présent en continu, même à l'arrêt ou au démarrage de l'application, prêt à lancer la musique en 1 clic.
+- **Sanctuarisation du Mode Ambiance** : masquage propre et automatique de la barre standard en Mode Ambiance pour laisser place nette au dock immersif dédié.
+
+### 📐 Finitions Visuelles & Ergonomie du Cadre
+- **Zéro distorsion au survol** : suppression du zoom/décalage sur le bouton « En cours d'écoute » qui tronquait ses arrondis et sa bordure supérieure.
+- **Marges respirantes sur les playlists** : harmonisation des tuiles de playlists avec 12px de marge interne élégante (identique aux albums).
+- **Fin naturelle du cadre de contenu** : suppression des grands rectangles noirs vides sous les listes courtes (Clips, Genres, Artistes).
+- **Cadre supérieur compact et stable** : hauteur fixe de 173px sans renvoi à la ligne en mode fenêtré, et largeur minimale portée à 1100px sanctuarisant la disposition spacieuse à 5 colonnes.
+
+---
+
+## ✨ Nouveautés v4.1.2
+
+### 🔀 Logique de Lecture & Aléatoire Perfectionnée dans l'Onglet « Tout »
+- **Matrice Aléatoire & Répétition claire et intuitive** :
+  - **Aléatoire désactivé (`🔀` OFF)** : lecture séquentielle stricte (piste suivante dans la liste).
+  - **Aléatoire activé (`🔀` ON)** : brasse l'ensemble de la discothèque (équivalent direct à « Aléatoire collection »).
+  - **Rester dans l'album en cours grâce à la Répétition (`🔁`)** :
+    - **`🔁` Activé + `🔀` OFF** : boucle sur l'album en cours en lecture séquentielle ordonnée (repart à la piste 1 à la fin).
+    - **`🔁` Activé + `🔀` ON** : lecture aléatoire confinée strictement à l'intérieur de cet album.
+    - **`🔂` Répéter 1** : rejoue la même piste en boucle.
+- **Enchaînement séquentiel automatique entre albums** :
+  - Si la répétition est désactivée (`repeatMode: "none"`), la fin d'un album enchaîne directement avec l'album suivant selon le tri actif du catalogue.
+- **Application immédiate de tous les tris du catalogue** :
+  - Réactivité instantanée de l'intégralité des modes de tri de l'onglet « Tout » (Artiste, Album, Genre, Année, Nombre de pistes, etc.) avec réordonnancement immédiat du DOM sans blocage.
+
+---
+
+## ✨ Nouveautés v4.1.1
+
+### 🎬 Envoi de Vidéos vers la File d'Attente (Clips & Concerts)
+- **Options complètes de file d'attente sur les vidéos** : boutons dédiés « Lire ensuite (priorité) » et « + File (Ajouter à la file d'attente) » intégrés directement sur chaque carte de clip vidéo, concert et résultat de recherche vidéo.
+- **Enchaînement et lecture mixte fluide** : les vidéos en file d'attente s'intercalent naturellement avec vos pistes audio, ouvrent automatiquement la vidéo et enchaînent avec la suite de votre écoute sans interruption.
+
+### ✋ Réorganisation des Playlists par Glisser-Déposer (Drag & Drop)
+- **Poignée de saisie à barres (`☰`) à droite de chaque piste** : déplacez vos titres à la souris pour réorganiser l'ordre exact de vos playlists personnalisées.
+- **Indicateurs visuels dynamiques** : surbrillance immédiate de la position cible (ligne d'insertion supérieure ou inférieure) et mise à jour 0ms de l'affichage avec renumérotation automatique.
+- **Sauvegarde et synchronisation instantanée** : le nouvel ordre est immédiatement enregistré et propagé en direct dans le lecteur si la playlist est en cours d'écoute.
+
+### 📑 Actions Playlists dans l'Onglet « Tout » (Catalogue Intégral) & Envoi d'Albums
+- **Envoi de morceaux vers une playlist depuis l'onglet « Tout »** : bouton dédié `+ Playlist` sur chaque piste individuelle de tous les blocs d'albums et lignes de recherche denses du catalogue continu.
+- **Envoi d'albums entiers vers une playlist en 1 clic** : bouton `+ Playlist` sur la barre latérale de chaque album du catalogue complet pour injecter instantanément l'intégralité de ses pistes.
+- **Synchronisation temps réel universelle (Zéro Ctrl+F5)** :
+  - **Mise à jour immédiate de la vue détail de playlist** (tableau DOM, compteurs, durées cumulées, badges audio/vidéo).
+  - **Mise à jour en continu de la grille des cartes de playlists** et du badge de décompte du sous-onglet.
+  - **Synchronisation en direct du lecteur audio et de la file d'attente** : si la playlist modifiée est activement jouée, sa liste interne, le panneau de lecture (`PlayerTab`) et le tiroir latéral (`QueueDrawer`) sont rafraîchis en temps réel sans interrompre le morceau en cours d'écoute.
+
+---
+
+## ✨ Nouveautés v4.1.0
+
+### 🔍 Recherche Globale Unifiée & Intelligente
+- **Moteur de recherche unifié et transversal** : accessible depuis n'importe quel onglet du lecteur via la barre de recherche supérieure ou les raccourcis `/` et `Ctrl+F`.
+- **Résultats multi-catégories instantanés** : agrégation en temps réel de tous vos médias musicaux et audiovisuels :
+  - **⭐ Meilleur résultat (Top Match)** : mise en avant dynamique du résultat le plus pertinent sous forme de carte grand format interactive.
+  - **🎵 Titres** : recherche stricte par nom de morceau pour éviter la pollution par les artistes ou noms d'albums, avec jaquette compacte (44×44px), métadonnées complètes et bouton d'action directe.
+  - **💿 Albums** : grille carrée d'albums correspondants avec lecture d'album en 1 clic.
+  - **🎬 Clips & Concerts** : vignettes 16:9 avec badges de durée et de type, lancement direct sans quitter l'interface.
+  - **🎤 Artistes** : cartes d'artistes avec compteur d'albums et accès direct à la discographie.
+  - **🏷️ Genres & 📑 Playlists** : exploration rapide de vos classifications et sélections personnalisées.
+- **Filtres par pilules réactives** : basculez en un clic entre `[Tout]`, `[Titres]`, `[Albums]`, `[Clips & Concerts]`, `[Artistes]`, `[Genres]` et `[Playlists]`.
+- **Navigation non-destructive** : mémorisation de l'onglet et de la position de scroll précédents. Sortie instantanée via la touche `Échap`, la croix `✕` ou le bouton contextuel `← Revenir`.
 
 ---
 

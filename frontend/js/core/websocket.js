@@ -72,6 +72,7 @@ function setupWebSocket() {
                 if (data) {
                     window.currentDownloadQueue = data.queue || [];
                     window.currentDownloadingItem = data.current || null;
+                    renderQueue(data.queue, data.current, data.is_downloading);
                     if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
                         AudioPlayer.updateOnlineDownloadButtons();
                     }
@@ -121,6 +122,11 @@ function scheduleBadgeReset(delay = 5000) {
 // Réception & Dispatch des Événements WebSocket
 // ===================================================
 function handleWsEvent(data) {
+    if (data.type === "export_progress") {
+        window.dispatchEvent(new CustomEvent("ws_export_progress", { detail: data.data }));
+        return;
+    }
+
     if (data.type === "covers_restore_progress" || data.type === "covers_restore_completed") {
         window.dispatchEvent(new CustomEvent("covers_restore_event", { detail: data }));
         return;
@@ -155,8 +161,13 @@ function handleWsEvent(data) {
     }
 
     if (data.type === "library_updated") {
-        if (typeof AudioPlayer !== "undefined" && AudioPlayer.loadLibraryData) {
-            AudioPlayer.loadLibraryData(true);
+        if (typeof AudioPlayer !== "undefined") {
+            if (typeof AudioPlayer.invalidateAlbumCache === "function") {
+                AudioPlayer.invalidateAlbumCache();
+            }
+            if (AudioPlayer.loadLibraryData) {
+                AudioPlayer.loadLibraryData(true);
+            }
         }
         if (typeof loadLibrary === "function") {
             loadLibrary();
@@ -346,6 +357,9 @@ function handleWsEvent(data) {
             if (typeof updateTempTabBadge === "function") updateTempTabBadge();
             if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
             if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+                if (AudioPlayer.currentAlbum && AudioPlayer.currentAlbum.online_item) {
+                    AudioPlayer.currentAlbum.online_item.status = null;
+                }
                 AudioPlayer.updateOnlineDownloadButtons();
             }
             badge.className = "badge badge-finished";
@@ -357,25 +371,47 @@ function handleWsEvent(data) {
             startBtn.disabled = false;
             cancelBtn.style.display = "none";
             scheduleBadgeReset(5000);
+        } else if (status === "warning") {
+            const reason = data.reason;
+            if (reason === "cookies_expired") {
+                localStorage.setItem("soundstash_yt_session_status", "expired");
+                if (typeof window.updateSessionBadgesUI === "function") {
+                    window.updateSessionBadgesUI("expired");
+                }
+            }
+            if (typeof showToast === "function") {
+                showToast(msg || "Avertissement", "warning");
+            }
         } else if (status === "error") {
             const remaining = data.remaining_in_queue || 0;
             const reason = data.reason;
             const albumTitle = data.album_title ? ` « ${data.album_title} »` : "";
 
             if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
+            if (typeof AudioPlayer !== "undefined" && typeof AudioPlayer.updateOnlineDownloadButtons === "function") {
+                if (AudioPlayer.currentAlbum && AudioPlayer.currentAlbum.online_item) {
+                    AudioPlayer.currentAlbum.online_item.status = null;
+                }
+                AudioPlayer.updateOnlineDownloadButtons();
+            }
 
             if (reason === "cookies_expired") {
-                const searchBadge = document.getElementById("search-session-status-badge");
-                if (searchBadge) {
-                    searchBadge.className = "badge badge-warning";
-                    searchBadge.style.background = "rgba(245, 158, 11, 0.20)";
-                    searchBadge.style.color = "#f59e0b";
-                    searchBadge.style.borderColor = "rgba(245, 158, 11, 0.5)";
-                    searchBadge.innerHTML = `
-                        <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; box-shadow: 0 0 8px #f59e0b;"></span>
-                        <span class="session-text" style="font-weight: 700;">⚠️ Session expirée</span>
-                    `;
-                    searchBadge.title = "Session YouTube expirée ou mot de passe modifié. Cliquez pour importer votre nouveau cookies.txt";
+                localStorage.setItem("soundstash_yt_session_status", "expired");
+                if (typeof window.updateSessionBadgesUI === "function") {
+                    window.updateSessionBadgesUI("expired");
+                } else {
+                    const searchBadge = document.getElementById("search-session-status-badge");
+                    if (searchBadge) {
+                        searchBadge.className = "badge badge-warning";
+                        searchBadge.style.background = "rgba(245, 158, 11, 0.20)";
+                        searchBadge.style.color = "#f59e0b";
+                        searchBadge.style.borderColor = "rgba(245, 158, 11, 0.5)";
+                        searchBadge.innerHTML = `
+                            <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; box-shadow: 0 0 8px #f59e0b;"></span>
+                            <span class="session-text" style="font-weight: 700;">⚠️ Session expirée</span>
+                        `;
+                        searchBadge.title = "Session YouTube expirée ou mot de passe modifié. Cliquez pour importer votre nouveau cookies.txt";
+                    }
                 }
                 if (typeof showModalAlert === "function") {
                     showModalAlert(
@@ -422,7 +458,8 @@ function handleWsEvent(data) {
             updateProgress(data.progress);
         }
     } else if (data.type === "tag_result") {
-        appendLogLine(`[Kid3] Uniformisation terminée pour ${data.tracks ? data.tracks.length : 0} pistes.`);
+        const yrText = data.year ? ` (Année officielle : ${data.year})` : "";
+        appendLogLine(`[Kid3] Uniformisation terminée pour ${data.tracks ? data.tracks.length : 0} pistes${yrText}.`);
     } else if (data.type === "cover_extraction_progress") {
         if (data.extracted % 5 === 0 || data.extracted === data.total) {
             if (typeof showToast === "function") {
@@ -459,10 +496,20 @@ function renderQueue(queue = [], current = null, isDownloading = false) {
     const list = document.getElementById("queue-items-list");
     if (!container || !list) return;
 
-    const totalQueued = queue.length;
-    if (badgeCount) badgeCount.textContent = totalQueued;
+    const hasCurrent = Boolean(current && (isDownloading || current.status === "downloading"));
+    const totalCount = queue.length + (hasCurrent ? 1 : 0);
 
-    if (totalQueued === 0) {
+    if (badgeCount) {
+        if (hasCurrent && queue.length === 0) {
+            badgeCount.textContent = "1 en cours";
+        } else if (hasCurrent) {
+            badgeCount.textContent = `${totalCount} (${queue.length} en attente)`;
+        } else {
+            badgeCount.textContent = queue.length;
+        }
+    }
+
+    if (totalCount === 0) {
         container.style.display = "none";
         list.innerHTML = "";
         return;
@@ -473,16 +520,47 @@ function renderQueue(queue = [], current = null, isDownloading = false) {
 
     const esc = typeof escapeHtml === "function" ? escapeHtml : (window.escapeHtml || (s => s));
 
+    if (hasCurrent) {
+        const currentTitle = current.title || current.custom_album || current.url || "Téléchargement en cours";
+        const currentFmt = current.format ? current.format.toUpperCase() : "M4A";
+        const currentQual = current.quality || "128K";
+        const activeDiv = document.createElement("div");
+        activeDiv.className = "queue-item queue-item-current";
+        activeDiv.style.borderLeft = "3px solid var(--accent, #89b4fa)";
+        activeDiv.style.background = "rgba(137, 180, 250, 0.08)";
+        activeDiv.innerHTML = `
+            <div class="queue-item-info">
+                <span class="queue-item-badge" style="background: var(--accent, #89b4fa); color: #11111b; font-weight: 700; border-radius: 4px; padding: 2px 6px;">⚡ En cours</span>
+                <span class="queue-item-url" title="${esc(currentTitle)}" style="font-weight: 600;">${esc(currentTitle)}</span>
+            </div>
+            <div class="queue-item-actions">
+                <span class="text-muted" style="font-size: 0.75rem;">${esc(currentFmt)} · ${esc(currentQual)}</span>
+                <button type="button" class="btn-remove-queue" title="Annuler ce téléchargement" style="color: var(--danger, #f38ba8);">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                </button>
+            </div>
+        `;
+        activeDiv.querySelector(".btn-remove-queue").addEventListener("click", async () => {
+            const cancelBtn = document.getElementById("cancel-download-btn");
+            if (cancelBtn) cancelBtn.click();
+            else await fetch("/api/queue/cancel-current", { method: "POST" });
+        });
+        list.appendChild(activeDiv);
+    }
+
     queue.forEach((item, idx) => {
         const div = document.createElement("div");
         div.className = "queue-item";
+        const itemTitle = item.title || item.custom_album || item.url || "En attente";
+        const itemFmt = item.format ? item.format.toUpperCase() : "M4A";
+        const itemQual = item.quality || "128K";
         div.innerHTML = `
             <div class="queue-item-info">
-                <span class="queue-item-badge">#${idx + 1}</span>
-                <span class="queue-item-url" title="${esc(item.url)}">${esc(item.url)}</span>
+                <span class="queue-item-badge">#${idx + 1 + (hasCurrent ? 1 : 0)}</span>
+                <span class="queue-item-url" title="${esc(itemTitle)}">${esc(itemTitle)}</span>
             </div>
             <div class="queue-item-actions">
-                <span class="text-muted" style="font-size: 0.75rem;">${item.format ? item.format.toUpperCase() : "M4A"} · ${item.quality || "128K"}</span>
+                <span class="text-muted" style="font-size: 0.75rem;">${esc(itemFmt)} · ${esc(itemQual)}</span>
                 <button type="button" class="btn-remove-queue" data-id="${esc(item.id)}" title="Retirer de la file">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                 </button>

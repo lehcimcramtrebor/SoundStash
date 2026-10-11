@@ -24,7 +24,8 @@ from backend.config import (
     YTM_BAT_PATH, YTM_OGG_BAT_PATH, TEMP_DOWNLOAD_DIR, DEFAULT_EXPORT_DIR,
     DESKTOP_EXPORT_DIR, DOWNLOADS_EXPORT_DIR, MUSIC_EXPORT_DIR, PREVIEW_CACHE_DIR,
     DEFAULT_VIDEO_EXPORT_DIR, DESKTOP_VIDEO_EXPORT_DIR, DOWNLOADS_VIDEO_EXPORT_DIR, VIDEOS_SYSTEM_EXPORT_DIR,
-    COOKIES_FILE, get_effective_cookies_file,
+    COOKIES_FILE, COOKIES_STATUS_FILE, get_effective_cookies_file, CONFIG_DIR,
+    save_cached_cookies_verification, load_cached_cookies_verification,
     save_config, APP_VERSION
 )
 from backend.downloader import download_manager
@@ -41,7 +42,7 @@ from backend.ytm_client import (
     extract_ytm_browse_id, browse_ytm_innertube, search_ytm_innertube, search_ytm_continuation,
     browse_artist_discography
 )
-from backend.genre_service import detect_genre
+from backend.genre_service import detect_genre, clean_term_for_search
 from backend.logger import get_logger, get_log_info, clear_log_file
 from backend.library_indexer import (
     library_indexer, smart_matcher, normalize_text, DISC_SUBFOLDER_RE, COVER_NAMES,
@@ -67,6 +68,7 @@ from backend.app_updater import (
     launch_installer,
     open_release_in_browser
 )
+from backend.exporter import export_manager, get_default_desktop_export_dir
 from backend.cover_restorer import (
     repair_album_cover,
     start_restoration_task,
@@ -192,6 +194,22 @@ def dispatch_cover_restoration(payload: dict):
     except Exception as e:
         logger.debug(f"Erreur dispatch_cover_restoration: {e}")
 
+def dispatch_export_progress(payload: dict):
+    global main_loop
+    try:
+        if main_loop and main_loop.is_running():
+            asyncio.run_coroutine_threadsafe(ws_manager.broadcast(payload), main_loop)
+        else:
+            try:
+                curr_loop = asyncio.get_running_loop()
+                if curr_loop.is_running():
+                    asyncio.run_coroutine_threadsafe(ws_manager.broadcast(payload), curr_loop)
+            except RuntimeError:
+                pass
+    except Exception as e:
+        logger.debug(f"Erreur dispatch_export_progress: {e}")
+
+export_manager.set_broadcast_callback(dispatch_export_progress)
 
 def silence_winerror_10054(loop, context):
     """
@@ -302,6 +320,7 @@ class ExportRequest(BaseModel):
     is_playlist: Optional[bool] = None
     is_concert: Optional[bool] = None
     conflict_policy: Optional[str] = None
+    custom_album_type: Optional[str] = None
 
 class ExportAllRequest(BaseModel):
     target_base_dir: Optional[str] = None
@@ -460,6 +479,16 @@ class BatchGenreRequest(BaseModel):
     albums: List[str]
     genre: str
 
+class BatchTagsRequest(BaseModel):
+    albums: List[str]
+    artist: Optional[str] = None
+    genre: Optional[str] = None
+    year: Optional[str] = None
+
+class DetectYearRequest(BaseModel):
+    album: str
+    artist: Optional[str] = None
+
 # Routes
 
 @app.get("/")
@@ -571,8 +600,9 @@ async def update_configuration(req: UpdateConfigRequest):
     save_config(config)
     return {"success": True, "config": config.dict()}
 
+
 @app.get("/api/cookies/status")
-async def get_cookies_status_endpoint():
+async def get_cookies_status_endpoint(check: bool = False):
     """Vérifie l'état et la validité du fichier de cookies de session YouTube."""
     target = get_effective_cookies_file()
     if not target or not target.is_file():
@@ -582,7 +612,10 @@ async def get_cookies_status_endpoint():
             "size_bytes": 0,
             "formatted_size": "0 B",
             "modified_at": None,
-            "has_youtube_auth": False
+            "has_youtube_auth": False,
+            "is_expired": False,
+            "verified_status": "no_cookies",
+            "verification": {"status": "no_cookies", "valid": False, "message": "Aucun fichier cookies configuré (Mode anonyme)."}
         }
 
     try:
@@ -600,6 +633,19 @@ async def get_cookies_status_endpoint():
             if b < 1024 * 1024: return f"{b / 1024:.1f} Ko"
             return f"{b / (1024 * 1024):.1f} Mo"
 
+        cached = load_cached_cookies_verification()
+        is_cache_current = (
+            cached.get("mtime") == stat.st_mtime and
+            cached.get("size") == size_bytes and
+            cached.get("status") is not None
+        )
+
+        if check or not is_cache_current:
+            loop = asyncio.get_event_loop()
+            cached = await loop.run_in_executor(None, check_youtube_session_validity, target)
+
+        is_expired = (cached.get("status") == "expired")
+
         return {
             "exists": True,
             "path": str(target),
@@ -607,7 +653,10 @@ async def get_cookies_status_endpoint():
             "size_bytes": size_bytes,
             "formatted_size": _fmt_size(size_bytes),
             "modified_at": modified_at,
-            "has_youtube_auth": has_yt
+            "has_youtube_auth": has_yt,
+            "is_expired": is_expired,
+            "verified_status": cached.get("status"),
+            "verification": cached
         }
     except Exception as e:
         logger.warning(f"Erreur inspection cookies {target}: {e}")
@@ -615,7 +664,10 @@ async def get_cookies_status_endpoint():
             "exists": True,
             "path": str(target),
             "error": str(e),
-            "has_youtube_auth": False
+            "has_youtube_auth": False,
+            "is_expired": False,
+            "verified_status": "unknown",
+            "verification": {"status": "error", "valid": None, "message": str(e)}
         }
 
 def check_youtube_session_validity(cookies_path: Path) -> dict:
@@ -623,7 +675,8 @@ def check_youtube_session_validity(cookies_path: Path) -> dict:
     import urllib.request
     import http.cookiejar
     if not cookies_path or not cookies_path.is_file() or cookies_path.stat().st_size == 0:
-        return {"status": "no_cookies", "valid": False, "message": "Aucun fichier cookies configuré (Mode anonyme)."}
+        res = {"status": "no_cookies", "valid": False, "message": "Aucun fichier cookies configuré (Mode anonyme)."}
+        return res
     try:
         cj = http.cookiejar.MozillaCookieJar(str(cookies_path))
         cj.load(ignore_discard=True, ignore_expires=True)
@@ -642,32 +695,49 @@ def check_youtube_session_validity(cookies_path: Path) -> dict:
         
         q = '"'
         if f'{q}LOGGED_IN{q}:true' in html or f'{q}LOGGED_IN{q}: true' in html:
-            return {"status": "valid", "valid": True, "message": "Session YouTube active et connectée."}
+            res = {"status": "valid", "valid": True, "message": "Session YouTube active et connectée."}
         elif f'{q}LOGGED_IN{q}:false' in html or f'{q}LOGGED_IN{q}: false' in html:
             if has_auth_cookies:
-                return {
+                res = {
                     "status": "expired",
                     "valid": False,
                     "message": "Session expirée ou révoquée par Google (mot de passe modifié ou cookies expirés)."
                 }
             else:
-                return {
+                res = {
                     "status": "anonymous",
                     "valid": False,
                     "message": "Le fichier cookies ne contient aucune session connectée."
                 }
         else:
-            return {"status": "unknown", "valid": None, "message": "Réponse YouTube indéterminée."}
+            res = {"status": "unknown", "valid": None, "message": "Réponse YouTube indéterminée."}
     except Exception as e:
         logger.warning(f"Vérification session cookies YouTube échouée: {e}")
-        return {"status": "error", "valid": None, "message": f"Erreur de communication avec YouTube: {e}"}
+        res = {"status": "error", "valid": None, "message": f"Erreur de communication avec YouTube: {e}"}
+
+    # Sauvegarde dans le cache local
+    try:
+        mtime = cookies_path.stat().st_mtime if (cookies_path and cookies_path.is_file()) else 0
+        size = cookies_path.stat().st_size if (cookies_path and cookies_path.is_file()) else 0
+        save_cached_cookies_verification({
+            "status": res.get("status"),
+            "valid": res.get("valid"),
+            "message": res.get("message"),
+            "checked_at": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "mtime": mtime,
+            "size": size
+        })
+    except Exception:
+        pass
+
+    return res
 
 @app.get("/api/cookies/verify")
 @app.post("/api/cookies/verify")
 async def verify_cookies_session_endpoint():
     """Vérifie en direct auprès des serveurs YouTube si le cookie est accepté ou révoqué."""
     target = get_effective_cookies_file()
-    if not target:
+    if not target or not target.is_file() or target.stat().st_size == 0:
         return {"status": "no_cookies", "valid": False, "message": "Aucun fichier cookies configuré (Mode anonyme)."}
     loop = asyncio.get_event_loop()
     res = await loop.run_in_executor(None, check_youtube_session_validity, target)
@@ -697,11 +767,15 @@ async def upload_cookies_endpoint(req: CookiesUploadRequest):
         config.cookies_file = str(COOKIES_FILE)
         save_config(config)
 
-        logger.info(f"Fichier cookies.txt enregistré avec succès dans {COOKIES_FILE} ({len(text_content)} car.)")
+        # Vérification immédiate du nouveau fichier téléversé
+        verify_res = check_youtube_session_validity(COOKIES_FILE)
+
+        logger.info(f"Fichier cookies.txt enregistré avec succès dans {COOKIES_FILE} ({len(text_content)} car.) - Statut: {verify_res.get('status')}")
         return {
             "success": True,
             "message": "Fichier cookies.txt importé et configuré avec succès !",
-            "path": str(COOKIES_FILE)
+            "path": str(COOKIES_FILE),
+            "verification": verify_res
         }
     except HTTPException:
         raise
@@ -719,6 +793,12 @@ async def delete_cookies_endpoint():
             deleted = True
         except Exception as e:
             logger.warning(f"Impossible de supprimer {COOKIES_FILE}: {e}")
+
+    if COOKIES_STATUS_FILE.is_file():
+        try:
+            COOKIES_STATUS_FILE.unlink()
+        except Exception:
+            pass
 
     if config.cookies_file:
         config.cookies_file = None
@@ -1999,8 +2079,9 @@ async def detect_genre_endpoint(
     genre = await detect_genre(artist=artist, title_or_album=title, is_album=is_album)
     return {"success": True, "genre": genre}
 
+@app.get("/api/audio/album-info")
 @app.get("/api/album/info")
-async def get_album_details(path: str = Query(...)):
+async def get_album_details(path: str = Query(...), force: bool = Query(False)):
     if not path.strip():
         raise HTTPException(status_code=400, detail="Chemin d'album requis")
     album_p = Path(path)
@@ -2011,8 +2092,8 @@ async def get_album_details(path: str = Query(...)):
             album_p = v_dir / path
         elif config.library_dir and (Path(config.library_dir) / path).exists():
             album_p = Path(config.library_dir) / path
-        elif config.temp_dir and (Path(config.temp_dir) / path).exists():
-            album_p = Path(config.temp_dir) / path
+        elif config.temp_download_dir and (Path(config.temp_download_dir) / path).exists():
+            album_p = Path(config.temp_download_dir) / path
 
     if not album_p.exists():
         # Repli intelligent : chercher si le dossier a été renommé ou existe sous une variante dans le même dossier parent
@@ -2025,6 +2106,11 @@ async def get_album_details(path: str = Query(...)):
                     break
         if not album_p.exists():
             raise HTTPException(status_code=404, detail="Dossier ou fichier introuvable")
+
+    if force:
+        from backend.tagger import invalidate_album_cache
+        invalidate_album_cache(album_p)
+
     return get_album_info(album_p)
 
 @app.post("/api/album/retag")
@@ -2039,8 +2125,8 @@ async def retag_album(req: RetagRequest):
             album_p = v_dir / req.album_dir
         elif config.library_dir and (Path(config.library_dir) / req.album_dir).exists():
             album_p = Path(config.library_dir) / req.album_dir
-        elif config.temp_dir and (Path(config.temp_dir) / req.album_dir).exists():
-            album_p = Path(config.temp_dir) / req.album_dir
+        elif config.temp_download_dir and (Path(config.temp_download_dir) / req.album_dir).exists():
+            album_p = Path(config.temp_download_dir) / req.album_dir
     if not album_p.exists():
         raise HTTPException(status_code=404, detail="Dossier ou fichier introuvable")
     
@@ -2055,11 +2141,13 @@ async def retag_album(req: RetagRequest):
         clean_titles=req.clean_titles,
         custom_tracks=req.custom_tracks,
         is_playlist=req.is_playlist,
-        custom_album_type=req.custom_album_type
+        custom_album_type=req.custom_album_type,
+        allow_dedup=False
     )
     if res.get("success"):
-        clear_editor_draft(album_p)
         new_album_dir = Path(res.get("album_dir", album_p))
+        clear_editor_draft(album_p)
+        clear_editor_draft(new_album_dir)
         invalidate_album_cache(album_p)
         invalidate_album_cache(new_album_dir)
         try:
@@ -2347,7 +2435,8 @@ async def export_album_endpoint(req: ExportRequest):
             custom_tracks=req.custom_tracks,
             is_playlist=req.is_playlist,
             is_concert=req.is_concert,
-            conflict_policy=req.conflict_policy
+            conflict_policy=req.conflict_policy,
+            custom_album_type=req.custom_album_type
         )
         # Actualiser immédiatement la bibliothèque et supprimer le dossier source si demandé
         if res.get("success"):
@@ -2520,6 +2609,8 @@ async def get_cover_image(request: Request, path: str = Query(...)):
     if target.exists() and target.is_file():
         m_type = "image/png" if target.suffix.lower() == ".png" else "image/jpeg"
         return _serve_cover_file(request, target, m_type)
+    if target.exists() and target.is_dir():
+        return await get_local_album_cover_endpoint(request, path=str(target))
     raise HTTPException(status_code=404, detail="Image de couverture introuvable")
 
 # Cache mémoire simple pour les pochettes proxy (jusqu'à 300 images)
@@ -2960,11 +3051,221 @@ async def open_logs_folder_endpoint():
 class MusicBrainzLookupRequest(BaseModel):
     album: str
     artist: str
+    expected_track_count: Optional[int] = None
+
+class MusicBrainzReleaseDetailRequest(BaseModel):
+    release_id: str
+    album_fallback: Optional[str] = ""
+    artist_fallback: Optional[str] = ""
+
+@app.post("/api/musicbrainz/search")
+async def musicbrainz_search_releases(req: MusicBrainzLookupRequest):
+    """
+    Recherche les éditions (releases) d'un album sur MusicBrainz avec score, pays, date et nombre de pistes.
+    Permet à l'utilisateur de choisir l'édition souhaitée si nécessaire.
+    """
+    headers = {"User-Agent": f"SoundStash/{APP_VERSION} (contact@soundstash.local)"}
+    search_url = "https://musicbrainz.org/ws/2/release/"
+    core_album = clean_term_for_search(req.album) or req.album
+    clean_art = clean_term_for_search(req.artist) or req.artist
+    
+    core_album = core_album.strip()
+    clean_art = clean_art.strip()
+    core_album_safe = core_album.replace('"', '').strip()
+    clean_art_safe = clean_art.replace('"', '').strip()
+    logger.info(f"[MusicBrainz Search] Requête reçue : album='{req.album}' -> '{core_album_safe}', artiste='{req.artist}' -> '{clean_art_safe}', pistes={req.expected_track_count}")
+
+    # Stratégie multicandidats inspirée de tagger.py
+    query_candidates = []
+    if core_album_safe and clean_art_safe:
+        query_candidates.append(f'release:"{core_album_safe}" AND artist:"{clean_art_safe}"')
+    if core_album_safe:
+        query_candidates.append(f'release:"{core_album_safe}"')
+    if clean_art_safe and not core_album_safe:
+        query_candidates.append(f'artist:"{clean_art_safe}"')
+
+    # Recherche souple par termes simples (sans guillemets stricts)
+    target_clean = re.sub(r'[^\w\s]', ' ', core_album_safe).strip()
+    art_clean = re.sub(r'[^\w\s]', ' ', clean_art_safe).strip()
+    if target_clean and art_clean:
+        query_candidates.append(f'release:({target_clean}) AND artist:({art_clean})')
+    elif target_clean:
+        query_candidates.append(f'release:({target_clean})')
+
+    try:
+        releases = []
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for q_str in query_candidates:
+                params = {
+                    "query": q_str,
+                    "fmt": "json",
+                    "limit": 8
+                }
+                try:
+                    r = await client.get(search_url, params=params, headers=headers)
+                    if r.status_code == 200:
+                        cur_releases = r.json().get("releases", [])
+                        if cur_releases:
+                            releases = cur_releases
+                            logger.info(f"[MusicBrainz Search] {len(releases)} édition(s) trouvée(s) avec : '{q_str}'")
+                            break
+                except Exception as q_err:
+                    logger.warning(f"[MusicBrainz Search] Erreur requête '{q_str}' : {q_err}")
+
+            if not releases:
+                logger.info(f"[MusicBrainz Search] Aucune édition trouvée pour '{core_album}' / '{clean_art}'")
+                return {"success": False, "message": f"Aucun album trouvé sur MusicBrainz pour « {core_album} »."}
+
+            candidate_list = []
+            for rel in releases:
+                date_str = rel.get("date") or ""
+                year_str = date_str[:4] if len(date_str) >= 4 else ""
+                media_list = rel.get("media", [])
+                medium_count = len(media_list)
+                trk_count = rel.get("track-count") or sum(m.get("track-count", 0) for m in media_list)
+                
+                # Artiste principal du release
+                rel_artists = rel.get("artist-credit", [])
+                rel_artist_str = ""
+                for c in rel_artists:
+                    if isinstance(c, dict):
+                        name = c.get("name") or c.get("artist", {}).get("name", "")
+                        rel_artist_str += name + c.get("joinphrase", "")
+                
+                candidate_list.append({
+                    "id": rel.get("id"),
+                    "title": rel.get("title", ""),
+                    "artist": rel_artist_str.strip() or req.artist,
+                    "date": date_str,
+                    "year": year_str,
+                    "country": rel.get("country", ""),
+                    "status": rel.get("status", "Official"),
+                    "score": rel.get("score", 0),
+                    "track_count": trk_count,
+                    "medium_count": medium_count,
+                    "disambiguation": rel.get("disambiguation", "")
+                })
+
+            # Trier par correspondance avec expected_track_count si fourni, puis par score
+            if req.expected_track_count and req.expected_track_count > 0:
+                candidate_list.sort(key=lambda x: (
+                    abs(x["track_count"] - req.expected_track_count) if x["track_count"] > 0 else 999,
+                    -int(x["score"] or 0)
+                ))
+            else:
+                candidate_list.sort(key=lambda x: -int(x["score"] or 0))
+
+            return {
+                "success": True,
+                "releases": candidate_list
+            }
+    except httpx.TimeoutException:
+        return {"success": False, "message": "Délai d'attente MusicBrainz dépassé."}
+    except Exception as e:
+        return {"success": False, "message": f"Erreur de recherche MusicBrainz: {str(e)}"}
+
+@app.post("/api/musicbrainz/release-detail")
+async def musicbrainz_release_detail(req: MusicBrainzReleaseDetailRequest):
+    """
+    Récupère le détail complet d'une édition MusicBrainz :
+    - Album et Artiste
+    - Année
+    - Pistes ordonnées et numérotées à la suite (Multi-CD aplatis : 1, 2, ... N)
+    - Titres officiels, artistes individuels et featurings
+    - Détection complémentaire du Genre musical
+    """
+    headers = {"User-Agent": f"SoundStash/{APP_VERSION} (contact@soundstash.local)"}
+    detail_url = f"https://musicbrainz.org/ws/2/release/{req.release_id}"
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            r = await client.get(
+                detail_url,
+                params={"inc": "recordings+artist-credits+release-groups+genres", "fmt": "json"},
+                headers=headers
+            )
+            r.raise_for_status()
+            detail = r.json()
+
+        release_title = detail.get("title", "") or req.album_fallback
+        date_str = detail.get("date") or ""
+        year_str = date_str[:4] if len(date_str) >= 4 else ""
+
+        # Extraction de l'artiste d'album principal
+        album_artist_str = ""
+        for c in detail.get("artist-credit", []):
+            if isinstance(c, dict):
+                name = c.get("name") or c.get("artist", {}).get("name", "")
+                album_artist_str += name + c.get("joinphrase", "")
+        album_artist_str = album_artist_str.strip() or req.artist_fallback
+
+        # Aplatissement continu multi-disques (Medium 1, Medium 2, ... -> 1..N)
+        tracks = []
+        track_credits = {}
+        position_offset = 0
+
+        for medium in detail.get("media", []):
+            for trk in medium.get("tracks", []):
+                pos = trk.get("position", 0) + position_offset
+                rec = trk.get("recording", {})
+                track_title = trk.get("title") or rec.get("title", "")
+                
+                # Crédits artistes de la piste
+                credits = trk.get("artist-credit", []) or rec.get("artist-credit", [])
+                trk_artist = ""
+                for c in credits:
+                    if isinstance(c, dict):
+                        name = c.get("name") or c.get("artist", {}).get("name", "")
+                        trk_artist += name + c.get("joinphrase", "")
+                trk_artist = trk_artist.strip() or album_artist_str
+
+                # Durée
+                length_ms = trk.get("length") or rec.get("length") or 0
+                dur_str = ""
+                if length_ms > 0:
+                    total_sec = round(length_ms / 1000)
+                    dur_str = f"{total_sec // 60}:{total_sec % 60:02d}"
+
+                track_item = {
+                    "position": pos,
+                    "track_number": f"{pos:02d}",
+                    "title": track_title.strip(),
+                    "artist": trk_artist,
+                    "duration": dur_str
+                }
+                tracks.append(track_item)
+                track_credits[str(pos)] = trk_artist
+
+            # Décalage continu pour le disque suivant
+            position_offset += medium.get("track-count", len(medium.get("tracks", [])))
+
+        # Détection du genre musical via le service SoundStash (Apple Music / Cache)
+        detected_genre = ""
+        try:
+            detected_genre = await detect_genre(album_artist_str, release_title, is_album=True) or ""
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "release_id": req.release_id,
+            "title": release_title,
+            "artist": album_artist_str,
+            "year": year_str,
+            "genre": detected_genre,
+            "tracks": tracks,
+            "track_credits": track_credits,
+            "total_tracks": len(tracks)
+        }
+    except httpx.TimeoutException:
+        return {"success": False, "message": "Délai d'attente MusicBrainz dépassé."}
+    except Exception as e:
+        logger.error(f"Erreur musicbrainz_release_detail: {e}", exc_info=True)
+        return {"success": False, "message": f"Erreur lors de la récupération des détails : {str(e)}"}
 
 @app.post("/api/musicbrainz/lookup")
 async def musicbrainz_lookup(req: MusicBrainzLookupRequest):
     """
-    Interroge MusicBrainz pour obtenir les crédits d'artistes par piste d'un album.
+    Rétro-compatibilité : Interroge MusicBrainz pour obtenir les crédits d'artistes par piste d'un album.
     Retourne un dict { position: artist_credit_string } pour chaque piste trouvée.
     """
     headers = {"User-Agent": "SoundStash/3.0.1 (contact@soundstash.local)"}
@@ -2976,7 +3277,6 @@ async def musicbrainz_lookup(req: MusicBrainzLookupRequest):
     }
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Étape 1 : chercher la release
             r = await client.get(search_url, params=params, headers=headers)
             r.raise_for_status()
             data = r.json()
@@ -2984,17 +3284,14 @@ async def musicbrainz_lookup(req: MusicBrainzLookupRequest):
             if not releases:
                 return {"success": False, "message": "Aucun album trouvé sur MusicBrainz."}
 
-            # Prendre la release avec le score le plus élevé
             best = max(releases, key=lambda x: x.get("score", 0))
             release_id = best["id"]
 
-            # Étape 2 : récupérer les crédits de piste de cette release
             detail_url = f"https://musicbrainz.org/ws/2/release/{release_id}"
             r2 = await client.get(detail_url, params={"inc": "recordings+artist-credits", "fmt": "json"}, headers=headers)
             r2.raise_for_status()
             detail = r2.json()
 
-        # Construire la map position -> artiste
         track_credits = {}
         position_offset = 0
         for medium in detail.get("media", []):
@@ -3010,8 +3307,6 @@ async def musicbrainz_lookup(req: MusicBrainzLookupRequest):
                         artist_str += name + joinphrase
                 if artist_str:
                     track_credits[str(pos)] = artist_str.strip()
-            # Pour les albums multi-disques, les positions peuvent se réinitialiser par medium
-            # On utilise l'offset pour les rendre globales
             position_offset += medium.get("track-count", 0)
 
         return {
@@ -3022,6 +3317,8 @@ async def musicbrainz_lookup(req: MusicBrainzLookupRequest):
         }
     except httpx.TimeoutException:
         return {"success": False, "message": "Délai d'attente MusicBrainz dépassé."}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 # ==========================================
 # Endpoints de Collection Musicale, Gap Finder & Curation
 # ==========================================
@@ -3154,6 +3451,7 @@ async def get_library_albums(source: str = Query("library")):
                                             "path": sub_p_str,
                                             "tracks_count": len(sub_audio),
                                             "has_cover": has_cov,
+                                            "cover_url": _build_cover_url(sub_p_str),
                                             "year": sub_tags.get("year"),
                                             "genre": sub_tags.get("genre"),
                                             "source": "temp"
@@ -3181,6 +3479,7 @@ async def get_library_albums(source: str = Query("library")):
                             "path": p_str,
                             "tracks_count": len(audio_files),
                             "has_cover": has_cov,
+                            "cover_url": _build_cover_url(p_str),
                             "year": inf_year,
                             "genre": inf_genre,
                             "source": "temp"
@@ -3189,11 +3488,36 @@ async def get_library_albums(source: str = Query("library")):
     def _classify_type(title: str, path: str, track_count: int) -> str:
         return classify_album_type(title=title, path=path, track_count=track_count)
 
+    v_dir = None
+    try:
+        from backend.video_indexer import video_indexer
+        v_dir_obj = video_indexer.get_video_dir()
+        if v_dir_obj and v_dir_obj.exists():
+            v_dir = str(v_dir_obj.resolve()).lower()
+    except Exception:
+        pass
+
     if source in ("library", "all"):
         for alb in library_indexer.albums:
             alb_p_str = str(Path(alb.path).resolve())
             if alb_p_str in seen_paths:
                 continue
+
+            # Exclure de la collection musicale tout élément vidéo ou situé dans la vidéothèque
+            p_lower = alb_p_str.lower()
+            if p_lower.endswith((".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v")):
+                continue
+            if v_dir and (p_lower.startswith(v_dir) or p_lower == v_dir):
+                continue
+            try:
+                p_p = Path(alb.path)
+                if p_p.is_dir():
+                    media_files = [f for f in p_p.iterdir() if f.is_file() and not f.name.startswith(".")]
+                    if media_files and all(f.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"} for f in media_files):
+                        continue
+            except Exception:
+                pass
+
             seen_paths.add(alb_p_str)
             alb_title = getattr(alb, "album", "") or getattr(alb, "title", "")
             alb_tracks = getattr(alb, "track_count", 0)
@@ -3214,6 +3538,9 @@ async def get_library_albums(source: str = Query("library")):
     for item in albums_data:
         if "album_type" not in item:
             item["album_type"] = _classify_type(item.get("title", ""), item.get("path", ""), item.get("tracks_count", 0))
+
+    if source == "library":
+        albums_data = [a for a in albums_data if a.get("album_type") not in ("video", "clip")]
 
     albums_data.sort(key=lambda a: ((a["artist"] or "").lower(), (a["title"] or "").lower()))
     return {
@@ -3268,6 +3595,77 @@ async def batch_genre_endpoint(req: BatchGenreRequest):
     }
 
 
+@app.post("/api/albums/batch-tags")
+async def batch_tags_endpoint(req: BatchTagsRequest):
+    """
+    Applique les tags communs (artiste, genre, année) à une liste d'albums (ou playlists) par lot ou à l'unité.
+    """
+    clean_artist = (req.artist or "").strip() if req.artist else None
+    clean_genre = (req.genre or "").strip() if req.genre else None
+    clean_year = (req.year or "").strip() if req.year else None
+
+    if not clean_artist and not clean_genre and not clean_year:
+        raise HTTPException(status_code=400, detail="Au moins un tag (artiste, genre ou année) doit être renseigné.")
+    if not req.albums:
+        raise HTTPException(status_code=400, detail="Aucun album fourni.")
+
+    from backend.tagger import apply_tags_to_album, invalidate_album_cache
+
+    updated_count = 0
+    total_tracks_updated = 0
+    errors = []
+
+    for alb_path in req.albums:
+        res = apply_tags_to_album(alb_path, artist=clean_artist, genre=clean_genre, year=clean_year)
+        if res.get("success"):
+            updated_count += 1
+            total_tracks_updated += res.get("tracks_updated", 0)
+            try:
+                invalidate_album_cache(alb_path)
+                library_indexer.add_or_update_album(alb_path)
+            except Exception:
+                pass
+        else:
+            errors.append({"album": alb_path, "error": res.get("message", "Erreur inconnue")})
+
+    if updated_count > 0:
+        try:
+            dispatch_library_updated()
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "artist": clean_artist,
+        "genre": clean_genre,
+        "year": clean_year,
+        "updated_albums_count": updated_count,
+        "total_tracks_updated": total_tracks_updated,
+        "errors": errors
+    }
+
+
+@app.post("/api/album/detect-year")
+async def detect_album_year_endpoint(req: DetectYearRequest):
+    """
+    Détecte automatiquement l'année officielle originale de sortie d'un album via iTunes et MusicBrainz.
+    """
+    if not req.album or not req.album.strip():
+        raise HTTPException(status_code=400, detail="Nom d'album requis.")
+
+    from backend.tagger import detect_original_release_year
+    detected_year = detect_original_release_year(req.album, req.artist)
+    if not detected_year:
+        return {"success": False, "message": "Aucune année officielle trouvée."}
+
+    return {
+        "success": True,
+        "album": req.album,
+        "artist": req.artist,
+        "year": detected_year
+    }
+
+
 @app.get("/api/library/catalog")
 async def get_library_catalog(source: str = Query("library")):
     """
@@ -3307,6 +3705,10 @@ async def get_library_catalog(source: str = Query("library")):
                     alb_title = tags_meta.get("album") or folder_alb
                     inf_year = tags_meta.get("year")
                     inf_genre = tags_meta.get("genre")
+                    try:
+                        inf_mtime = item.stat().st_mtime
+                    except Exception:
+                        inf_mtime = None
                     from backend.library_indexer import extract_album_tracks_fast
                     fast_tracks = extract_album_tracks_fast(item)
                     track_dur_map = {tr.filename: tr.duration_str for tr in fast_tracks}
@@ -3343,6 +3745,7 @@ async def get_library_catalog(source: str = Query("library")):
                             "cover_url": _build_cover_url(p_str, mtime=inf_mtime),
                             "year": inf_year,
                             "genre": inf_genre,
+                            "mtime": inf_mtime or 0.0,
                             "source": "temp",
                             "tracks": alb_tracks
                         })
@@ -3538,10 +3941,39 @@ async def resolve_export_destination_endpoint(req: ResolveExportDestinationReque
         raise HTTPException(status_code=404, detail="Dossier d'album source introuvable.")
     info = get_album_info(p)
     tracks = info.get("tracks", [])
-    is_video = any(Path(t["filepath"]).suffix.lower() in {".mp4", ".mkv", ".webm"} for t in tracks)
+    is_video = (
+        any(Path(t["filepath"]).suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"} for t in tracks)
+        or info.get("album_type") == "video"
+        or "[vidéo]" in p.name.lower() or "[video]" in p.name.lower()
+    )
     is_pl = info.get("is_playlist", False)
     clean_art = clean_artist_name(info["album_artist"] or ("Various Artists" if is_pl else "Artiste Inconnu"))
     album_name = info["album_name"] or p.name
+
+    if is_video:
+        from backend.config import DEFAULT_VIDEO_EXPORT_DIR
+        video_root = Path(config.video_export_dir or getattr(config, "video_library_dir", "") or DEFAULT_VIDEO_EXPORT_DIR)
+        san_art = sanitize_folder_name(clean_art)
+        is_concert_dest = (
+            "[concert]" in str(p).lower()
+            or "concert" in album_name.lower()
+            or any(t.get("duration", 0) >= 600 for t in tracks)
+        )
+        if is_concert_dest:
+            target_dest = video_root / san_art / "Concerts"
+        else:
+            target_dest = video_root / san_art
+
+        return {
+            "dest_dir": str(target_dest.resolve()),
+            "artist_folder": san_art,
+            "album_folder": "Concerts" if is_concert_dest else "Vidéos",
+            "is_video": True,
+            "is_smart": False,
+            "conflict": False,
+            "display_path": f"{target_dest.name} ({'Concerts' if is_concert_dest else 'Clips Vidéo'})"
+        }
+
     is_single = (album_name == "Singles & Rips")
 
     policy = req.conflict_policy or getattr(config, "smart_export_conflict_policy", "merge")
@@ -3750,6 +4182,7 @@ async def synchronize_videos_endpoint():
     res = synchronize_videos()
     return res
 
+@app.get("/api/status")
 @app.get("/api/system/busy-status")
 async def get_system_busy_status():
     """Vérifie si des opérations critiques d'écriture de fichiers sont activement en cours."""
@@ -4173,7 +4606,7 @@ async def get_library_genres_endpoint():
         g = alb.get("genre") if isinstance(alb, dict) else getattr(alb, "genre", None)
         if g and str(g).strip():
             genre_name = str(g).strip()
-            if genre_name.lower() not in {"inconnu", "unknown", "na", "non classé", "non classe"}:
+            if genre_name.lower() not in {"inconnu", "unknown", "na", "non classé", "non classe", "music", "musique"}:
                 genres.add(genre_name)
 
     # Récupérer également les genres de morceaux existants enregistrés dans les stats
@@ -4184,12 +4617,85 @@ async def get_library_genres_endpoint():
                 g = s.get("genre")
                 if g and str(g).strip():
                     genre_name = str(g).strip()
-                    if genre_name.lower() not in {"inconnu", "unknown", "na", "non classé", "non classe"}:
+                    if genre_name.lower() not in {"inconnu", "unknown", "na", "non classé", "non classe", "music", "musique"}:
                         genres.add(genre_name)
     except Exception:
         pass
 
     return {"genres": sorted(list(genres), key=lambda s: unicodedata.normalize('NFKD', s).lower())}
+
+# =========================================================================
+# MODULE 5.0.0 : EXPORTATION DE MÉDIAS (AUDIO & VIDÉO) & CONVERSION
+# =========================================================================
+
+class ExportEstimateRequest(BaseModel):
+    items: List[dict] = []
+    export_all_library: bool = False
+    destination_dir: str = ""
+
+class ExportStartRequest(BaseModel):
+    export_name: str = "Export SoundStash"
+    destination_dir: str = ""
+    audio_mode: str = "copy"  # copy | convert
+    audio_format: str = "mp3"  # mp3, aac, ogg, flac, opus
+    audio_bitrate: str = "320k"
+    video_mode: str = "copy"  # copy | extract_audio
+    folder_structure: str = "artist_album_track"  # artist_album_track | artist_album_combined | flat
+    copy_cover_art: bool = True
+    generate_playlist: bool = True
+    items: List[dict] = []
+    export_all_library: bool = False
+
+class ExportOpenFolderRequest(BaseModel):
+    folder_path: str
+
+@app.get("/api/export/default-dest")
+def get_export_default_destination(name: str = ""):
+    dest_path = get_default_desktop_export_dir(name)
+    desktop_dir = Path.home() / "Desktop"
+    return {
+        "desktop": str(desktop_dir),
+        "default_folder_name": dest_path.name,
+        "default_full_path": str(dest_path)
+    }
+
+@app.post("/api/export/estimate")
+def estimate_export(req: ExportEstimateRequest):
+    return export_manager.estimate_selection(
+        items=req.items,
+        export_all_library=req.export_all_library,
+        destination_dir=req.destination_dir
+    )
+
+@app.post("/api/export/start")
+def start_export_job(req: ExportStartRequest):
+    res = export_manager.start_export(req.dict())
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("detail", "Erreur lors du lancement de l'exportation"))
+    return res
+
+@app.get("/api/export/status")
+def get_export_status():
+    return export_manager.get_status()
+
+@app.post("/api/export/cancel")
+def cancel_export_job():
+    cancelled = export_manager.cancel_export()
+    return {"success": cancelled}
+
+@app.post("/api/export/open-folder")
+def open_export_folder(req: ExportOpenFolderRequest):
+    p = Path(req.folder_path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Dossier d'exportation introuvable sur le disque.")
+    try:
+        if sys.platform == "win32":
+            os.startfile(str(p))
+        else:
+            subprocess.Popen(["xdg-open", str(p)])
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur d'ouverture du dossier : {e}")
 
 @app.websocket("/ws/logs")
 async def websocket_logs_endpoint(websocket: WebSocket):

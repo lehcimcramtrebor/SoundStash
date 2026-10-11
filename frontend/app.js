@@ -321,12 +321,13 @@ function updateHeaderNowPlayingButton() {
         )
     );
 
-    // Une vidéo est active si la modale est ouverte, ou en arrière-plan, ou si la piste courante de la playlist est une vidéo
-    const isVideo = Boolean(isModalOpen || isVideoBg || isCurrentTrackVideo);
+    // Une vidéo est active si la modale est ouverte, ou en arrière-plan avec vidéo chargée
+    const isVideoModalActive = Boolean(isModalOpen || (isVideoBg && vPlayer && vPlayer.src));
+    const isVideo = Boolean(isVideoModalActive || (isCurrentTrackVideo && ((vPlayer && !vPlayer.paused) || (ap && ap.isPlaying))));
 
-    // Un audio simple est actif si ce n'est pas une vidéo et qu'un album/playlist avec piste courante audio existe
+    // Un audio simple est actif si ce n'est pas une vidéo active et qu'un album/playlist avec piste courante audio existe
     const isAudio = Boolean(
-        !isVideo &&
+        !isVideoModalActive &&
         ap &&
         ap.currentAlbum &&
         ap.playlist &&
@@ -393,36 +394,20 @@ window.goToNowPlaying = function() {
     const vPlayer = document.getElementById("video-modal-player");
     const backdrop = document.getElementById("video-modal-backdrop");
     const isModalOpen = Boolean(backdrop && backdrop.classList.contains("active") && backdrop.style.display !== "none");
-    const isVideoBg = Boolean(window.isVideoPlayingInBackground && vPlayer && !vPlayer.paused);
+    const isVideoBg = Boolean(window.isVideoPlayingInBackground && vPlayer && !vPlayer.paused && vPlayer.src);
+    const isVideoLoadedBg = Boolean(window.isVideoPlayingInBackground && window.currentModalVideoItem && vPlayer && vPlayer.src);
+    const isVideoActiveInBackground = Boolean(isVideoBg || isVideoLoadedBg);
 
-    const ap = window.AudioPlayer;
-    const currentTrack = (ap && ap.playlist && ap.currentIndex >= 0 && ap.currentIndex < ap.playlist.length)
-        ? ap.playlist[ap.currentIndex]
-        : null;
+    // 1. Si la modale vidéo est déjà ouverte à l'écran, ne rien faire
+    if (isModalOpen) return;
 
-    const isCurrentTrackVideo = Boolean(
-        currentTrack && (
-            currentTrack.type === "video" ||
-            currentTrack.is_video ||
-            (currentTrack.filepath && /\.(mp4|mkv|webm)$/i.test(currentTrack.filepath)) ||
-            (currentTrack.path && /\.(mp4|mkv|webm)$/i.test(currentTrack.path))
-        )
-    );
-
-    const isVideo = Boolean(isModalOpen || isVideoBg || isCurrentTrackVideo);
-
-    // 1. Si une vidéo est active
-    if (isVideo) {
-        // Si l'utilisateur est déjà sur la modale vidéo affichée, ne rien faire
-        if (isModalOpen) return;
-
-        // Ré-ouvrir la vidéo immédiatement
-        if (window.reopenVideoModal) {
-            window.reopenVideoModal();
-            return;
-        }
+    // 2. Si une vidéo est active / chargée en arrière-plan, ré-ouvrir la modale vidéo immédiatement
+    if (isVideoActiveInBackground && window.reopenVideoModal && window.currentModalVideoItem && vPlayer && vPlayer.src) {
+        window.reopenVideoModal();
+        return;
     }
 
+    const ap = window.AudioPlayer;
     if (!ap) return;
 
     // Fermer le tiroir de la file d'attente s'il est ouvert pour dégager la vue

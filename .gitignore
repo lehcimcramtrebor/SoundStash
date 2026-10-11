@@ -42,6 +42,8 @@ yt_dlp_update_state.json
 # Configuration locale personnelle (chemins absolus)
 config.json
 playback_stats.json
+cookies_status.json
+export_selected_items.json
 /playlists/
 .cache/
 

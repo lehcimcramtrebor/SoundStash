@@ -384,6 +384,19 @@ const AmbientVisualizer = {
             return;
         }
 
+        // Mémoriser l'état de consultation avant d'entrer en mode ambiance
+        this._wasViewingPlayback = Boolean(
+            isVideoActive ||
+            (player && (
+                player.currentView === "now-playing" ||
+                (player.currentView === "albums" && player.isAlbumDetailOpen) ||
+                (player.currentView === "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) ||
+                (player.currentView === "all")
+            ))
+        );
+        this._originViewBeforeAmbient = player ? player.currentView : null;
+        this._originAlbumPathBeforeAmbient = (player && player.isAlbumDetailOpen) ? player.detailAlbumPath : null;
+
         this.isActive = true;
         document.body.classList.add("ambient-mode-active");
         if (this.isDockPinned) {
@@ -445,6 +458,30 @@ const AmbientVisualizer = {
         }
         if (typeof window.updateScreenWakeLock === "function") {
             window.updateScreenWakeLock();
+        }
+
+        // Restauration fluide de la vue de lecture / navigation au retour sur l'interface principale
+        if (window.AudioPlayer) {
+            const ap = window.AudioPlayer;
+            const isAudioPlaying = Boolean(ap.isPlaying && ap.currentAlbum);
+            if (this._wasViewingPlayback || isAudioPlaying) {
+                if (typeof window.goToNowPlaying === "function") {
+                    window.goToNowPlaying();
+                }
+            } else if (this._originViewBeforeAmbient && ap.currentView !== this._originViewBeforeAmbient) {
+                ap.setView(this._originViewBeforeAmbient);
+            }
+            if (typeof ap.updateScrollBounds === "function") {
+                ap.updateScrollBounds();
+            }
+            if (typeof syncPlayerControlsHeight === "function") {
+                syncPlayerControlsHeight();
+            }
+            setTimeout(() => {
+                if (typeof ap.scrollToActiveTrack === "function") {
+                    ap.scrollToActiveTrack(true);
+                }
+            }, 120);
         }
     },
 

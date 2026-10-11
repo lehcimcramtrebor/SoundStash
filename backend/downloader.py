@@ -7,9 +7,13 @@ import uuid
 import time
 import tempfile
 import atexit
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
-from backend.config import YTM_BAT_PATH, YTM_OGG_BAT_PATH, YT_DLP_PATH, FFMPEG_PATH, TEMP_DOWNLOAD_DIR, config, get_effective_cookies_file
+from backend.config import (
+    YTM_BAT_PATH, YTM_OGG_BAT_PATH, YT_DLP_PATH, FFMPEG_PATH, TEMP_DOWNLOAD_DIR,
+    config, get_effective_cookies_file, save_cached_cookies_verification
+)
 from backend.tagger import (
     uniformize_album, get_album_info, consolidate_album_cover,
     AUDIO_EXTENSIONS, safe_rmtree, is_empty_or_na, is_playlist_url, sanitize_folder_name,
@@ -160,7 +164,17 @@ class DownloadManager:
                 set_download_lock_state(True, f"Téléchargement : {task_title}")
                 await self.broadcast_queue()
 
-                await self._execute_download(task)
+                try:
+                    await self._execute_download(task)
+                except Exception as task_err:
+                    logger.error(f"Erreur inattendue lors de l'exécution du téléchargement pour {task_title} : {task_err}", exc_info=True)
+                    task["status"] = "error"
+                    task["error"] = str(task_err)
+                    await self.broadcast("status", {
+                        "status": "error",
+                        "message": f"Erreur lors du téléchargement : {task_err}",
+                        "task_id": task.get("id")
+                    })
 
                 self.current_task = None
                 if self.queue:
@@ -198,6 +212,8 @@ class DownloadManager:
         auto_retag = task["auto_retag"]
         naming_pattern = task["naming_pattern"]
         clean_titles = task["clean_titles"]
+        skip_cookies = bool(task.get("_skip_cookies"))
+        effective_cookies = None if skip_cookies else get_effective_cookies_file()
 
         self.current_album_dir = None
         base_temp_dir = Path(config.temp_download_dir)
@@ -286,9 +302,10 @@ class DownloadManager:
             ]
             cmd_args += ['--embed-metadata', '--write-thumbnail', '--convert-thumbnails', 'jpg']
             cmd_args += ['--parse-metadata', '%(title)s:%(artist)s - %(title)s']
-            cmd_args += ['--parse-metadata', '%(channel,uploader)s:%(artist)s']
+            cmd_args += ['--parse-metadata', '%(artist,channel,uploader)s:%(artist)s']
+            cmd_args += ['--parse-metadata', '%(artist,channel,uploader)s:%(album_artist)s']
             
-            out_tmpl_video = f'{temp_dir}/%(artist,uploader)s - %(title)s [Vidéo]/%(autonumber)02d %(artist,uploader)s - %(title)s.%(ext)s' if batch_file_path else f'{temp_dir}/%(artist,uploader)s - %(title)s [Vidéo]/%(artist,uploader)s - %(title)s.%(ext)s'
+            out_tmpl_video = f'{temp_dir}/%(artist,channel,uploader)s - %(title)s [Vidéo]/%(autonumber)02d %(title)s.%(ext)s' if batch_file_path else f'{temp_dir}/%(artist,channel,uploader)s - %(title)s [Vidéo]/%(title)s.%(ext)s'
             cmd_args += ['-o', out_tmpl_video]
             
             if extra_args:
@@ -317,7 +334,6 @@ class DownloadManager:
                 cmd_args += ['--ffmpeg-location', FFMPEG_PATH]
             
             # Détection de session connectée (cookies) : bascule automatique en haute fidélité (256K max)
-            effective_cookies = get_effective_cookies_file()
             raw_quality = (audio_quality or getattr(config, "default_quality", "auto")).lower()
             if raw_quality in ["auto", "max", "best", ""]:
                 if effective_cookies and getattr(config, "max_audio_quality_when_signed", True):
@@ -386,8 +402,7 @@ class DownloadManager:
                 safe_artist = sanitize_folder_name(clean_artist_name(task['custom_artist']))
                 cmd_args += ['--parse-metadata', f'{safe_artist}:%(album_artist)s']
 
-        # Injection automatique des cookies de session YouTube si configurés
-        effective_cookies = get_effective_cookies_file()
+        # Injection automatique des cookies de session YouTube si configurés et non désactivés
         if effective_cookies:
             cmd_args += ['--cookies', str(effective_cookies)]
             logger.info(f"Authentification YouTube active via cookies : '{effective_cookies.name}'")
@@ -532,12 +547,61 @@ class DownloadManager:
                     # Échec total sans aucun fichier téléchargé
                     album_display_title = task.get("title") or task.get("custom_album") or ""
                     if cookie_expired:
+                        if not task.get("_cookies_fallback_tried") and effective_cookies:
+                            task["_cookies_fallback_tried"] = True
+                            task["_skip_cookies"] = True
+                            logger.warning(f"Cookies de session YouTube expirés. Repli automatique en accès public standard pour : {url}")
+                            await self.broadcast("log", {
+                                "text": "[SoundStash] ⚠️ Cookies expirés rejetés par YouTube. Nouvelle tentative automatique en accès anonyme standard...",
+                                "progress": None,
+                                "task_id": task["id"]
+                            })
+                            try:
+                                _ck = get_effective_cookies_file()
+                                _mtime = _ck.stat().st_mtime if (_ck and _ck.is_file()) else 0
+                                _size = _ck.stat().st_size if (_ck and _ck.is_file()) else 0
+                                save_cached_cookies_verification({
+                                    "status": "expired",
+                                    "valid": False,
+                                    "message": "Session expirée ou révoquée par Google (mot de passe modifié ou cookies expirés).",
+                                    "checked_at": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                                    "mtime": _mtime,
+                                    "size": _size
+                                })
+                            except Exception:
+                                pass
+                            await self.broadcast("status", {
+                                "status": "warning",
+                                "reason": "cookies_expired",
+                                "message": "Votre session YouTube (cookies.txt) a expiré. Poursuite du téléchargement en accès standard.",
+                                "task_id": task["id"]
+                            })
+                            for d in temp_dir.iterdir():
+                                if d.is_dir() and d.name not in {"_external", "_Hors_Analyse"}:
+                                    if not any(f.suffix.lower() in ALL_MEDIA_EXTENSIONS for f in d.iterdir() if f.is_file()):
+                                        safe_rmtree(d)
+                                return await self._execute_download(task)
+
                         logger.error(f"Échec total du téléchargement : Session YouTube (cookies.txt) expirée ou rejetée | url={url}")
                         err_reason = "cookies_expired"
                         err_msg = (
                             "Votre session YouTube (cookies.txt) a expiré ou votre mot de passe a changé. "
                             "Veuillez réimporter votre nouveau fichier cookies.txt dans les Paramètres pour réactiver vos téléchargements."
                         )
+                        try:
+                            _ck = get_effective_cookies_file()
+                            _mtime = _ck.stat().st_mtime if (_ck and _ck.is_file()) else 0
+                            _size = _ck.stat().st_size if (_ck and _ck.is_file()) else 0
+                            save_cached_cookies_verification({
+                                "status": "expired",
+                                "valid": False,
+                                "message": "Session expirée ou révoquée par Google (mot de passe modifié ou cookies expirés).",
+                                "checked_at": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                                "mtime": _mtime,
+                                "size": _size
+                            })
+                        except Exception:
+                            pass
                     elif bot_detected:
                         logger.error(f"Échec total du téléchargement : Détection anti-bot YouTube ('Sign in to confirm you're not a bot') | url={url}")
                         err_reason = "bot_detected"
@@ -704,7 +768,7 @@ class DownloadManager:
                 if auto_retag:
                     await self.broadcast("status", {
                         "status": "tagging",
-                        "message": f"Uniformisation des tags (Kid3) dans le dossier temporaire : {album_dir.name}...",
+                        "message": f"Uniformisation des tags & Année officielle (Kid3) : {album_dir.name}...",
                         "task_id": task["id"]
                     })
                     uniformize_res = uniformize_album(
@@ -715,11 +779,20 @@ class DownloadManager:
                         naming_pattern=naming_pattern,
                         clean_titles=clean_titles,
                         is_playlist=task_is_playlist,
-                        origin_album=task.get("origin_album")
+                        origin_album=task.get("origin_album"),
+                        custom_album_type="video" if is_video else None,
+                        allow_dedup=True
                     )
                     if uniformize_res.get("success") and uniformize_res.get("album_dir"):
                         album_dir = Path(uniformize_res["album_dir"])
                         self.current_album_dir = album_dir
+                        if uniformize_res.get("year"):
+                            await self.broadcast("log", {
+                                "text": f"⚡ [SoundStash] Année officielle originale automatiquement appliquée : {uniformize_res['year']}",
+                                "progress": None
+                            })
+                            if task.get("ytm_info"):
+                                task["ytm_info"]["year"] = uniformize_res["year"]
                     await self.broadcast("tag_result", uniformize_res)
 
                 # Sécurité supplémentaire si le dossier s'appelle encore NA
@@ -727,7 +800,9 @@ class DownloadManager:
                     info_check = get_album_info(album_dir)
                     tracks_check = info_check.get("tracks", [])
                     if tracks_check:
-                        if len(tracks_check) == 1:
+                        if is_video:
+                            target_safe_name = f"{info_check['album_artist']} - {tracks_check[0]['title']} [Vidéo]"
+                        elif len(tracks_check) == 1:
                             target_safe_name = f"{info_check['album_artist']} - {tracks_check[0]['title']} [AUDIO RIP]"
                         elif task_is_playlist:
                             target_safe_name = info_check['album_name'] if info_check['album_artist'] in {"Various Artists", "Artiste inconnu"} else f"{info_check['album_artist']} - {info_check['album_name']}"

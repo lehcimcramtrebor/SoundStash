@@ -324,6 +324,8 @@ class VideoIndexer:
                             title_name,
                             flags=re.IGNORECASE
                         ).strip()
+                        # Nettoyer les numérotations de piste résiduelles (ex: '01 In this river')
+                        title_clean = re.sub(r'^\s*\d{1,3}(?:\s*[\.\-_]\s*|\s+)', '', title_clean).strip()
 
                         # Récupération ou extraction des métadonnées
                         if cache_key in disk_cache:
@@ -350,16 +352,39 @@ class VideoIndexer:
                         vid_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(rel))
 
                         # Détection du type de vidéo (Clip vs Concert / Live)
+                        # 1. Vérifier la présence d'une surcharge manuelle explicite (.type ou .album_type)
+                        manual_video_type = None
+                        type_file_candidates = [
+                            f_path.with_suffix(".type"),
+                            f_path.parent / (f_path.name + ".type"),
+                            f_path.parent / ".album_type"
+                        ]
+                        for tfc in type_file_candidates:
+                            if tfc.exists():
+                                try:
+                                    t_val = tfc.read_text(encoding="utf-8").strip().lower()
+                                    if t_val in ("clip", "video", "concert"):
+                                        manual_video_type = "clip" if t_val in ("clip", "video") else "concert"
+                                        break
+                                except Exception:
+                                    pass
+
                         is_in_concert_subfolder = any(p.lower() in ("concerts", "concert", "live", "lives") for p in rel.parts[:-1])
                         dur_sec = v_meta.get("duration", 0.0)
-                        has_concert_duration = dur_sec >= 600.0  # >= 10 minutes (la durée met la puce à l'oreille : un clip ne fait pas 10 min)
                         has_concert_keywords = bool(re.search(
-                            r"\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b",
+                            r"\b(concert|full\s+concert|concert\s+complet|festival|tour|spectacle|recital|unplugged)\b",
                             f"{f_path.stem} {' '.join(rel.parts)}",
                             re.IGNORECASE
                         ))
-                        is_concert = is_in_concert_subfolder or has_concert_duration or has_concert_keywords
-                        video_type = "concert" if is_concert else "clip"
+                        # Si durée >= 15 min (900s) et mot-clé ou sous-dossier, ou durée >= 25 min (1500s)
+                        has_concert_duration = dur_sec >= 1500.0 or (dur_sec >= 900.0 and has_concert_keywords)
+
+                        if manual_video_type:
+                            video_type = manual_video_type
+                            is_concert = (video_type == "concert")
+                        else:
+                            is_concert = is_in_concert_subfolder or has_concert_duration or has_concert_keywords
+                            video_type = "concert" if is_concert else "clip"
 
                         video_obj = {
                             "id": vid_id,

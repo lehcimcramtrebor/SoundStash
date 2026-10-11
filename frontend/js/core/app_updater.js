@@ -5,7 +5,7 @@
  */
 
 window.AppUpdater = {
-    currentVersion: "3.3.6",
+    currentVersion: "5.0.1",
     latestRelease: null,
     isChecking: false,
     isDownloading: false,
@@ -381,7 +381,7 @@ window.AppUpdater = {
         try {
             // Vérification de sécurité : vérifier si un téléchargement est en cours
             try {
-                const checkRes = await fetch("/api/status");
+                const checkRes = await fetch("/api/system/busy-status");
                 if (checkRes.ok) {
                     const statusData = await checkRes.json();
                     if (statusData.is_downloading) {

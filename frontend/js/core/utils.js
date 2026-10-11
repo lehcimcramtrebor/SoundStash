@@ -15,6 +15,12 @@ function triggerBackNavigation() {
     if (now - lastBackNavigationTime < 250) return false; // Anti-rebond
     lastBackNavigationTime = now;
 
+    // 00. Si le Mode Ambiance est actif : le quitter en priorité absolue sans altérer la vue sous-jacente
+    if (window.AmbientVisualizer && window.AmbientVisualizer.isActive) {
+        window.AmbientVisualizer.exit();
+        return true;
+    }
+
     // 0a. Si le tiroir Atelier est ouvert : le replier en priorité vers le lecteur
     if (typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen && typeof closeWorkshopDrawer === "function") {
         if (typeof isReconstituteModalOpen === "function" && isReconstituteModalOpen()) return false;
@@ -105,6 +111,9 @@ function syncPlayerControlsHeight() {
     const h = card.getBoundingClientRect().height || card.offsetHeight || 136;
     if (h > 0) {
         document.documentElement.style.setProperty("--player-controls-height", `${Math.round(h)}px`);
+    }
+    if (window.AudioPlayer && typeof window.AudioPlayer.updateScrollBounds === "function") {
+        window.AudioPlayer.updateScrollBounds();
     }
 }
 window.syncPlayerControlsHeight = syncPlayerControlsHeight;
@@ -250,6 +259,9 @@ function getBadgeInfoForType(type) {
             return { label: "SINGLE", class: "badge-single", emoji: "⚡", title: "Singles & EPs" };
         case "rip":
             return { label: "RIP AUDIO", class: "badge-rip", emoji: "🎙️", title: "Rips Audio vidéo" };
+        case "video":
+        case "clip":
+            return { label: "CLIP VIDÉO", class: "badge-video", emoji: "🎬", title: "Clips et vidéos musicales" };
         case "playlist":
             return { label: "LISTE", class: "badge-playlist", emoji: "📑", title: "Listes de lecture importées" };
         case "concert":
@@ -268,13 +280,15 @@ function updateEditorTypeToggleUI(mode, isManual = false) {
     const ripBtn = document.getElementById("toggle-type-rip-btn");
     const plBtn = document.getElementById("toggle-type-playlist-btn");
     const concertBtn = document.getElementById("toggle-type-concert-btn");
+    const videoBtn = document.getElementById("toggle-type-video-btn");
 
     const isAuto = !isManual;
     const isPlaylist = mode === true || mode === "playlist";
     const isSingle = mode === "single";
     const isRip = mode === "rip";
     const isConcert = mode === "concert";
-    const isAlbum = mode === "album" || (!isPlaylist && !isSingle && !isRip && !isConcert);
+    const isVideo = mode === "video" || mode === "clip";
+    const isAlbum = mode === "album" || (!isPlaylist && !isSingle && !isRip && !isConcert && !isVideo);
 
     if (autoBtn) autoBtn.classList.toggle("active", isAuto);
     if (albumBtn) albumBtn.classList.toggle("active", isManual && isAlbum);
@@ -282,5 +296,10 @@ function updateEditorTypeToggleUI(mode, isManual = false) {
     if (ripBtn) ripBtn.classList.toggle("active", isManual && isRip);
     if (plBtn) plBtn.classList.toggle("active", isManual && isPlaylist);
     if (concertBtn) concertBtn.classList.toggle("active", isManual && isConcert);
+    if (videoBtn) videoBtn.classList.toggle("active", isManual && isVideo);
+
+    if (typeof window.updateEditorVideoModeUI === "function") {
+        window.updateEditorVideoModeUI();
+    }
 }
 window.updateEditorTypeToggleUI = updateEditorTypeToggleUI;

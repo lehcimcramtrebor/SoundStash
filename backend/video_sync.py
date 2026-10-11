@@ -94,6 +94,8 @@ def clean_video_title(raw_title: str) -> str:
         flags=re.IGNORECASE
     )
     cleaned = re.sub(r'\s*\[(?:1080p|720p|4k|2160p|hd)\]', '', cleaned, flags=re.IGNORECASE)
+    # Retirer les numérotations de piste résiduelles (ex: '01 In this river', '01. Titre', '01 - Titre')
+    cleaned = re.sub(r'^\s*\d{1,3}(?:\s*[\.\-_]\s*|\s+)', '', cleaned).strip()
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned or raw_title.strip()
 

@@ -369,9 +369,21 @@ function setupSearch() {
 
         const status = item ? item.status : null;
 
-        // 1. Si en cours de téléchargement ou en file d'attente -> bloqué
-        if (status === "downloading" || status === "queued") {
+        // 1. Si en cours de téléchargement ou en file d'attente -> bloqué UNIQUEMENT si réellement actif
+        const currentQueue = window.currentDownloadQueue || [];
+        const currentDl = window.currentDownloadingItem;
+        const targetUrl = (url || (item && item.url) || "").trim();
+        const isActuallyQueued = targetUrl && currentQueue.some(q => q.url && q.url.trim() === targetUrl);
+        const isActuallyDownloading = targetUrl && currentDl && currentDl.url && (currentDl.url.trim() === targetUrl);
+
+        if ((status === "downloading" && isActuallyDownloading) || (status === "queued" && isActuallyQueued)) {
             return;
+        }
+        if (item && !isActuallyQueued && !isActuallyDownloading && (item.status === "queued" || item.status === "downloading")) {
+            item.status = null;
+            item.statusLabel = null;
+            item.statusBadgeClass = null;
+            updateCardStatusBadge(item);
         }
 
         // 2. Si déjà présent dans le dossier temporaire -> confirmation explicite d'écrasement
@@ -1468,7 +1480,17 @@ function setupAlbumPreview() {
         if (downloadAllBtn.disabled) return;
 
         const status = currentPreviewAlbum.status;
-        if (status === "downloading" || status === "queued") return;
+        const currentQueue = window.currentDownloadQueue || [];
+        const currentDl = window.currentDownloadingItem;
+        const targetUrl = (currentPreviewAlbum.url || "").trim();
+        const isActuallyQueued = targetUrl && currentQueue.some(q => q.url && q.url.trim() === targetUrl);
+        const isActuallyDownloading = targetUrl && currentDl && currentDl.url && (currentDl.url.trim() === targetUrl);
+
+        if ((status === "downloading" && isActuallyDownloading) || (status === "queued" && isActuallyQueued)) return;
+
+        if (!isActuallyQueued && !isActuallyDownloading && (currentPreviewAlbum.status === "queued" || currentPreviewAlbum.status === "downloading")) {
+            currentPreviewAlbum.status = null;
+        }
 
         if (status === "temp") {
             const confirmed = await showModalConfirm(
@@ -1527,13 +1549,18 @@ function setupAlbumPreview() {
 
             const data = await res.json();
             if (data.success) {
-                currentPreviewAlbum.status = "queued";
-                currentPreviewAlbum.statusLabel = "⏳ En file";
-                currentPreviewAlbum.statusBadgeClass = "badge-status-queued";
+                const startedImmediately = (data.queue_count === 0);
+                currentPreviewAlbum.status = startedImmediately ? "downloading" : "queued";
+                currentPreviewAlbum.statusLabel = startedImmediately ? "⚡ En cours" : "⏳ En file";
+                currentPreviewAlbum.statusBadgeClass = startedImmediately ? "badge-status-downloading" : "badge-status-queued";
                 if (typeof window.updateCardStatusBadge === "function") {
                     window.updateCardStatusBadge(currentPreviewAlbum);
                 }
-                showToast(`"${currentPreviewAlbum.title}" ajouté à la file d'attente !`, "Voir la file", () => {
+                const toastMsg = startedImmediately
+                    ? `"${currentPreviewAlbum.title}" en cours de téléchargement !`
+                    : `"${currentPreviewAlbum.title}" ajouté à la file d'attente !`;
+                const toastAction = startedImmediately ? "Voir la progression" : "Voir la file";
+                showToast(toastMsg, toastAction, () => {
                     switchTab("tab-download");
                 });
                 closePreview();
@@ -1603,6 +1630,18 @@ async function openAlbumPreview(album) {
 
     if (downloadAllBtn) {
         resetConfirmOverrideState(downloadAllBtn);
+        const currentQueue = window.currentDownloadQueue || [];
+        const currentDl = window.currentDownloadingItem;
+        const albumUrl = (album.url || "").trim();
+        const isActuallyQueued = albumUrl && currentQueue.some(q => q.url && q.url.trim() === albumUrl);
+        const isActuallyDownloading = albumUrl && currentDl && currentDl.url && (currentDl.url.trim() === albumUrl);
+
+        if (album.status === "queued" && !isActuallyQueued) {
+            album.status = isActuallyDownloading ? "downloading" : null;
+        } else if (album.status === "downloading" && !isActuallyDownloading) {
+            album.status = isActuallyQueued ? "queued" : null;
+        }
+
         if (album.status === "downloading") {
             downloadAllBtn.disabled = true;
             downloadAllBtn.classList.add("btn-dl-state-disabled");

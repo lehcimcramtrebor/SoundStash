@@ -319,9 +319,25 @@ window.showExportConflictModal = showExportConflictModal;
 // =========================================================
 // Notifications Toast Universelles (Premier plan absolu)
 // =========================================================
+let _lastToastMessage = null;
+let _lastToastTime = 0;
+
 function showToast(message, arg2 = null, arg3 = null, arg4 = null) {
     const container = document.getElementById("toast-container");
     if (!container) return;
+
+    // Protection anti-inondation / dédoublonnage strict (évite les rafales de notifications identiques)
+    const now = Date.now();
+    if (message && message === _lastToastMessage && (now - _lastToastTime < 1200)) {
+        return;
+    }
+    _lastToastMessage = message;
+    _lastToastTime = now;
+
+    // Plafonnement du nombre de toasts visibles simultanés (évite de masquer l'interface)
+    while (container.children.length >= 4) {
+        container.firstElementChild.remove();
+    }
 
     let type = "info";
     let actionLabel = null;

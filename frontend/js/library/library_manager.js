@@ -295,6 +295,7 @@ async function loadLibrary() {
                             <button class="btn btn-secondary btn-sm btn-listen-temp" data-path="${escapeHtml(album.path)}" title="Écouter cet album dans le Lecteur Audio">▶ Écouter</button>
                         `}
                         <button class="btn btn-primary btn-sm btn-edit" data-path="${escapeHtml(album.path)}">Éditer / Tags</button>
+                        <button class="btn btn-secondary btn-sm btn-temp-export-cart" title="Ajouter cet album ou vidéo au panier d'export de l'Atelier">📦 Exporter</button>
                         <button class="btn btn-secondary btn-sm btn-folder" data-path="${escapeHtml(album.path)}" title="Ouvrir le dossier">Dossier</button>
                         <button class="btn btn-danger btn-sm btn-delete-temp" data-path="${escapeHtml(album.path)}" title="Supprimer du temporaire">Supprimer</button>
                     </div>
@@ -303,6 +304,9 @@ async function loadLibrary() {
                 const watchBtn = card.querySelector(".btn-watch-concert-temp, .btn-watch-temp");
                 if (watchBtn) {
                     watchBtn.addEventListener("click", async () => {
+                        if (typeof window.captureAudioStateBeforeVideo === "function") {
+                            window.captureAudioStateBeforeVideo();
+                        }
                         try {
                             const res = await fetch(`/api/album/info?path=${encodeURIComponent(album.path)}`);
                             if (res.ok) {
@@ -334,6 +338,22 @@ async function loadLibrary() {
                     listenBtn.addEventListener("click", () => {
                         AudioPlayer.loadAlbum(album.path, 0, false);
                         switchTab("tab-player");
+                    });
+                }
+
+                const tempCartBtn = card.querySelector(".btn-temp-export-cart");
+                if (tempCartBtn) {
+                    tempCartBtn.addEventListener("click", () => {
+                        if (typeof window.addToExportCart === "function") {
+                            window.addToExportCart({
+                                type: isVideo ? "video" : "album",
+                                path: album.path,
+                                title: album.name,
+                                artist: album.artist || "Artiste",
+                                album: album.name,
+                                tracks_count: album.track_count || 1
+                            });
+                        }
                     });
                 }
 
@@ -481,6 +501,7 @@ async function loadExternalTempAlbums() {
                         <button class="btn btn-secondary btn-sm btn-ext-listen" title="Écouter dans le lecteur audio">▶ Écouter</button>
                     `}
                     <button class="btn btn-primary btn-sm btn-ext-edit" title="Éditer les tags dans l'onglet Éditeur">✏️ Éditeur / Tags</button>
+                    <button class="btn btn-secondary btn-sm btn-ext-export-cart" title="Ajouter cet album ou vidéo au panier d'export de l'Atelier">📦 Exporter</button>
                     <button class="btn btn-secondary btn-sm btn-ext-export-lib" ${album.is_ready_for_library ? '' : 'style="opacity: 0.65;"'} title="${album.is_ready_for_library ? 'Exporter vers la bibliothèque musicale' : 'Artiste et Titre requis pour exporter vers la bibliothèque'}">💿 Bibliothèque</button>
                     <button class="btn btn-secondary btn-sm btn-ext-export-custom" title="Exporter manuellement vers n'importe quel dossier (Clé USB, Bureau, etc.)">💾 Export Manuel...</button>
                     <button class="btn btn-secondary btn-sm btn-ext-folder" title="Ouvrir le dossier source">📁 Dossier</button>
@@ -491,6 +512,9 @@ async function loadExternalTempAlbums() {
             const extWatchBtn = card.querySelector(".btn-ext-watch");
             if (extWatchBtn) {
                 extWatchBtn.addEventListener("click", async () => {
+                    if (typeof window.captureAudioStateBeforeVideo === "function") {
+                        window.captureAudioStateBeforeVideo();
+                    }
                     try {
                         const res = await fetch(`/api/album/info?path=${encodeURIComponent(album.path)}`);
                         if (res.ok) {
@@ -522,6 +546,22 @@ async function loadExternalTempAlbums() {
                 extListenBtn.addEventListener("click", () => {
                     AudioPlayer.loadAlbum(album.path, 0, false);
                     switchTab("tab-player");
+                });
+            }
+
+            const extCartBtn = card.querySelector(".btn-ext-export-cart");
+            if (extCartBtn) {
+                extCartBtn.addEventListener("click", () => {
+                    if (typeof window.addToExportCart === "function") {
+                        window.addToExportCart({
+                            type: isVideo ? "video" : "album",
+                            path: album.path,
+                            title: album.title || album.name,
+                            artist: album.artist || "Artiste",
+                            album: album.title || album.name,
+                            tracks_count: album.track_count || 1
+                        });
+                    }
                 });
             }
 
@@ -1073,9 +1113,26 @@ async function confirmDeleteCollectionItem(targetPath, itemType = "album", itemN
                 ensureLibraryTagSuggestions(true);
             } else if (itemType === "video") {
                 if (window.AudioPlayer) {
-                    window.AudioPlayer.videosCatalog = (window.AudioPlayer.videosCatalog || []).filter(v => v.path !== targetPath && v.rel_path !== targetPath);
+                    window.AudioPlayer.videosCatalog = (window.AudioPlayer.videosCatalog || []).filter(v => v.filepath !== targetPath && v.path !== targetPath && v.rel_path !== targetPath);
                     if (window.AudioPlayer.currentView === "videos") {
                         window.AudioPlayer.renderVideosGrid();
+                    }
+                    if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") {
+                        window.AudioPlayer.loadAndRenderVideosCatalog(true);
+                    }
+                    if (typeof window.AudioPlayer.loadAndRenderConcertsCatalog === "function") {
+                        window.AudioPlayer.loadAndRenderConcertsCatalog(true);
+                    }
+                }
+                if (typeof loadVideoLibraryForEditor === "function") {
+                    await loadVideoLibraryForEditor(true);
+                }
+                if (typeof isPathEqualOrDescendant === "function" && isPathEqualOrDescendant(currentAlbumPath, targetPath)) {
+                    resetEditorState("Vidéo supprimée", "Choisissez une autre vidéo");
+                    const vSelect = document.getElementById("editor-videos-select");
+                    if (vSelect && vSelect.options.length > 1) {
+                        vSelect.selectedIndex = 1;
+                        await loadAlbumInEditor(vSelect.value, "videos");
                     }
                 }
             } else if (itemType === "track") {

@@ -152,7 +152,7 @@ body.ambient-mode-active .synthwave-canvas {
 .app-container {
     max-width: 1140px;
     margin: 0 auto;
-    padding: 24px 20px 96px 20px;
+    padding: 8px 20px 96px 20px;
     position: relative;
     z-index: 1;
     transition: max-width 0.25s ease-out;
@@ -161,28 +161,28 @@ body.ambient-mode-active .synthwave-canvas {
 @media (min-width: 1400px) {
     .app-container {
         max-width: min(1480px, 94vw);
-        padding: 30px 28px 110px 28px;
+        padding: 8px 28px 110px 28px;
     }
 }
 
 @media (min-width: 1700px) {
     .app-container {
         max-width: min(1780px, 95vw);
-        padding: 34px 34px 120px 34px;
+        padding: 8px 34px 120px 34px;
     }
 }
 
 @media (min-width: 2000px) {
     .app-container {
         max-width: min(2240px, 96vw);
-        padding: 36px 40px 120px 40px;
+        padding: 8px 40px 120px 40px;
     }
 }
 
 @media (min-width: 2500px) {
     .app-container {
         max-width: min(2780px, 96vw);
-        padding: 36px 48px 120px 48px;
+        padding: 8px 48px 120px 48px;
     }
 }
 

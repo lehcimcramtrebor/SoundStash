@@ -8,13 +8,20 @@
    ========================================================= */
 
 /* Disparition temporaire du centre du lecteur audio pour révéler le fond Synthwave animé */
-body.video-playback-active .app-container > :not(.app-header) {
+body.video-playback-active #player-content-card {
     display: none !important;
 }
 
-body.video-playback-active .app-header {
+body.video-playback-active #player-controls-card {
     position: relative;
     z-index: 900;
+}
+
+body.video-playback-active #player-controls-card .player-nav-tabs-bar,
+body.video-playback-active #player-controls-card .player-toolbar-row,
+body.video-playback-active #player-controls-card .player-filter-banner,
+body.video-playback-active #player-controls-card .player-detail-context-bar {
+    display: none !important;
 }
 
 /* Suppression absolue du bouton Mode Ambiance de l'en-tête global pendant la vidéo pour éliminer tout doublon */

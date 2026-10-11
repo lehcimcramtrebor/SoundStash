@@ -333,8 +333,17 @@ async function executeAddToPlaylist(playlistId, playlistName) {
                 backdrop.style.display = "none";
                 pendingAddToPlaylistSpec = null;
             }
-            // Si la vue playlists est ouverte, la rafraîchir
-            if (window.AudioPlayer && window.AudioPlayer.currentView === "playlists" && window.UserPlaylists) {
+            // Synchronisation instantanée universelle (détail, grille, badges, cache, file d'attente)
+            let updatedPl = data.playlist;
+            if (!updatedPl) {
+                try {
+                    const freshRes = await fetch(`/api/playlists/${playlistId}`);
+                    if (freshRes.ok) updatedPl = await freshRes.json();
+                } catch (_) {}
+            }
+            if (window.UserPlaylists && updatedPl) {
+                window.UserPlaylists.syncPlaylistUpdate(updatedPl);
+            } else if (window.UserPlaylists) {
                 window.UserPlaylists.loadAndRenderPlaylists(true);
             }
         } else {
@@ -429,6 +438,89 @@ const UserPlaylists = {
         }
     },
 
+    syncPlaylistUpdate(updatedPlaylist) {
+        if (!updatedPlaylist || !updatedPlaylist.id) return;
+        const plId = updatedPlaylist.id;
+
+        // 1. Mettre à jour le cache mémoire (accès direct 0 ms)
+        this.playlistCache.set(plId, updatedPlaylist);
+
+        // 2. Mettre à jour la liste des playlists en mémoire
+        if (!Array.isArray(this.playlists)) this.playlists = [];
+        const idx = this.playlists.findIndex(p => p.id === plId);
+        const summary = {
+            id: updatedPlaylist.id,
+            name: updatedPlaylist.name,
+            description: updatedPlaylist.description,
+            cover_url: updatedPlaylist.cover_url,
+            cover_collage: updatedPlaylist.cover_collage,
+            items_count: (updatedPlaylist.items ? updatedPlaylist.items.length : updatedPlaylist.items_count) || 0,
+            track_count: (updatedPlaylist.items ? updatedPlaylist.items.length : updatedPlaylist.track_count) || 0,
+            audio_count: updatedPlaylist.audio_count !== undefined ? updatedPlaylist.audio_count : (updatedPlaylist.items ? updatedPlaylist.items.filter(x => x.type !== "video").length : 0),
+            video_count: updatedPlaylist.video_count !== undefined ? updatedPlaylist.video_count : (updatedPlaylist.items ? updatedPlaylist.items.filter(x => x.type === "video").length : 0),
+            total_duration: updatedPlaylist.total_duration || 0,
+            total_duration_str: updatedPlaylist.total_duration_str || "0:00",
+            is_smart: !!updatedPlaylist.is_smart,
+            smart_type: updatedPlaylist.smart_type,
+            updated_at: updatedPlaylist.updated_at || Date.now()
+        };
+        if (idx !== -1) {
+            this.playlists[idx] = { ...this.playlists[idx], ...summary };
+        } else {
+            this.playlists.push(summary);
+        }
+
+        // Mettre également à jour la liste pour la modale d'ajout
+        if (typeof cachedPlaylistsList !== "undefined" && Array.isArray(cachedPlaylistsList)) {
+            const cIdx = cachedPlaylistsList.findIndex(p => p.id === plId);
+            if (cIdx !== -1) {
+                cachedPlaylistsList[cIdx] = { ...cachedPlaylistsList[cIdx], ...summary };
+            } else {
+                cachedPlaylistsList.push(summary);
+            }
+        }
+
+        // 3. Mettre à jour le badge de décompte du sous-onglet
+        this.updateBadgeUI();
+
+        // 4. Mettre à jour la grille si elle existe dans le DOM
+        const grid = document.getElementById("playlists-grid");
+        if (grid) {
+            this.renderGrid();
+        }
+
+        // 5. Mettre à jour la vue de détail si elle est ouverte sur cette playlist
+        if (this.isDetailOpen && this.currentDetailPlaylist && this.currentDetailPlaylist.id === plId) {
+            this.currentDetailPlaylist = updatedPlaylist;
+            this.renderDetail(updatedPlaylist);
+        }
+
+        // 6. Synchroniser en temps réel la file de lecture AudioPlayer si cette playlist est active
+        if (window.AudioPlayer && typeof window.AudioPlayer.syncActiveUserPlaylist === "function") {
+            window.AudioPlayer.syncActiveUserPlaylist(updatedPlaylist);
+        }
+    },
+
+    handlePlaylistDeleted(playlistId) {
+        if (!playlistId) return;
+        this.playlistCache.delete(playlistId);
+        if (Array.isArray(this.playlists)) {
+            this.playlists = this.playlists.filter(p => p.id !== playlistId);
+        }
+        if (typeof cachedPlaylistsList !== "undefined" && Array.isArray(cachedPlaylistsList)) {
+            cachedPlaylistsList = cachedPlaylistsList.filter(p => p.id !== playlistId);
+        }
+        this.updateBadgeUI();
+        if (this.isDetailOpen && this.currentDetailPlaylist && this.currentDetailPlaylist.id === playlistId) {
+            this.closeDetail();
+        } else {
+            this.renderGrid();
+        }
+        if (window.AudioPlayer && typeof window.AudioPlayer.handlePlaylistDeleted === "function") {
+            window.AudioPlayer.handlePlaylistDeleted(playlistId);
+        }
+    },
+
     /** Prefetch en arrière-plan des playlists complètes (avec items) pour clic instantané. */
     async warmPlaylistCache() {
         if (!this.playlists || this.playlists.length === 0) return;
@@ -473,6 +565,14 @@ const UserPlaylists = {
             this.updateBadgeUI();
 
             this.renderGrid();
+            if (window.AudioPlayer && window.AudioPlayer.currentView === "playlists") {
+                const collapseOffset = window.AudioPlayer.getHeaderCollapseOffset();
+                const isHeaderCurrentlyMasked = ((window.scrollY || document.documentElement.scrollTop || 0) >= collapseOffset - 2);
+                const targetPlaylistsY = (window.AudioPlayer.savedScrollPositions && typeof window.AudioPlayer.savedScrollPositions["playlists"] === "number")
+                    ? window.AudioPlayer.savedScrollPositions["playlists"]
+                    : (isHeaderCurrentlyMasked ? collapseOffset : 0);
+                window.AudioPlayer.restoreScrollPosition(targetPlaylistsY);
+            }
 
             // Prefetch en arrière-plan de toutes les playlists avec leurs items
             if (force) this.playlistCache.clear();
@@ -585,7 +685,7 @@ const UserPlaylists = {
                         const data = await res.json();
                         if (data.success) {
                             showToast(`Playlist « ${pl.name} » supprimée.`, "success");
-                            await this.loadAndRenderPlaylists(true);
+                            this.handlePlaylistDeleted(pl.id);
                         } else {
                             showToast(data.message || "Erreur suppression", "danger");
                         }
@@ -599,6 +699,9 @@ const UserPlaylists = {
                 this.openDetail(id);
             });
         });
+        if (window.AudioPlayer && typeof window.AudioPlayer.updateScrollBounds === "function") {
+            window.AudioPlayer.updateScrollBounds();
+        }
     },
 
     async openAllCollectionDetail() {
@@ -708,7 +811,7 @@ const UserPlaylists = {
         }
     },
 
-    async openDetail(playlistId) {
+    async openDetail(playlistId, force = false) {
         if (!playlistId || playlistId === "system:all-collection" || playlistId === "all-collection" || (typeof playlistId === "string" && playlistId.includes("all-collection"))) {
             return this.openAllCollectionDetail();
         }
@@ -737,10 +840,10 @@ const UserPlaylists = {
         if (renameBtn) renameBtn.style.display = "inline-flex";
         if (changeCoverBtn) changeCoverBtn.style.display = "inline-flex";
 
-        // Vérifier d'abord le cache mémoire pour affichage instantané à 0 ms !
+        // Vérifier d'abord le cache mémoire pour affichage instantané à 0 ms (sauf si force demandé)
         const cached = this.playlistCache.get(playlistId);
         const isSmart = (basicPl && basicPl.is_smart) || (cached && cached.is_smart);
-        if (cached && cached.items && cached.items.length > 0) {
+        if (!force && cached && cached.items) {
             this.currentDetailPlaylist = cached;
             this.renderDetail(cached);
             if (!isSmart) {
@@ -904,13 +1007,18 @@ const UserPlaylists = {
                 <td style="color: var(--text-muted); font-size: 0.85rem;">${escapeHtml(item.artist)}</td>
                 <td style="text-align: right; font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-muted);">${escapeHtml(item.duration_str || "--:--")}</td>
                 <td style="text-align: center; white-space: nowrap;">
-                    <div style="display: inline-flex; gap: 4px; justify-content: center;">
+                    <div style="display: inline-flex; gap: 4px; justify-content: center; align-items: center;">
                         <button type="button" class="btn btn-ghost btn-sm btn-pl-item-play" title="Lire à partir d'ici">
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                         </button>
+                        ${pl.is_system ? "" : `
                         <button type="button" class="btn btn-ghost btn-sm btn-pl-item-delete" title="Retirer de la playlist" style="color: var(--danger, #ef4444);">
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                         </button>
+                        <span class="pl-drag-handle" title="Glisser pour réorganiser la position de ce titre" data-drag-idx="${idx}">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+                        </span>
+                        `}
                     </div>
                 </td>
             `;
@@ -932,8 +1040,8 @@ const UserPlaylists = {
 
             // Clic direct sur n'importe quel endroit de la ligne (comme pour les albums)
             tr.addEventListener("click", (e) => {
-                // Ne pas déclencher si clic sur le bouton de suppression ou autre action spécifique
-                if (e.target.closest(".btn-pl-item-delete") || e.target.closest("button:not(.btn-pl-item-play)")) {
+                // Ne pas déclencher si clic sur le bouton de suppression, le drag handle ou autre action spécifique
+                if (e.target.closest(".btn-pl-item-delete") || e.target.closest(".pl-drag-handle") || e.target.closest("button:not(.btn-pl-item-play)")) {
                     return;
                 }
                 handleTrackPlay();
@@ -980,8 +1088,125 @@ const UserPlaylists = {
                 });
             }
 
+            // --- Gestion du Glisser-Déposer (Drag & Drop) pour réorganiser les pistes ---
+            if (!pl.is_system) {
+                const dragHandle = tr.querySelector(".pl-drag-handle");
+                if (dragHandle) {
+                    dragHandle.addEventListener("mousedown", (e) => {
+                        e.stopPropagation();
+                        tr.setAttribute("draggable", "true");
+                    });
+                    const clearDraggable = () => {
+                        tr.removeAttribute("draggable");
+                    };
+                    dragHandle.addEventListener("mouseup", clearDraggable);
+                    window.addEventListener("mouseup", clearDraggable, { once: true });
+                }
+
+                tr.addEventListener("dragstart", (e) => {
+                    if (tr.getAttribute("draggable") !== "true") {
+                        e.preventDefault();
+                        return;
+                    }
+                    e.stopPropagation();
+                    this._dragSourceIdx = idx;
+                    this._dragSourcePlId = pl.id;
+                    tr.classList.add("is-dragging");
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", String(idx));
+                });
+
+                tr.addEventListener("dragend", () => {
+                    tr.removeAttribute("draggable");
+                    tr.classList.remove("is-dragging");
+                    if (tbody) {
+                        tbody.querySelectorAll("tr").forEach(r => {
+                            r.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
+                        });
+                    }
+                    this._dragSourceIdx = null;
+                    this._dragSourcePlId = null;
+                });
+
+                tr.addEventListener("dragover", (e) => {
+                    if (this._dragSourceIdx === null || this._dragSourceIdx === undefined) return;
+                    if (this._dragSourcePlId !== pl.id) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "move";
+
+                    const rect = tr.getBoundingClientRect();
+                    const isBottom = (e.clientY - rect.top) > (rect.height / 2);
+
+                    tr.classList.toggle("drag-over-top", !isBottom);
+                    tr.classList.toggle("drag-over-bottom", isBottom);
+                });
+
+                tr.addEventListener("dragleave", (e) => {
+                    if (!tr.contains(e.relatedTarget)) {
+                        tr.classList.remove("drag-over-top", "drag-over-bottom");
+                    }
+                });
+
+                tr.addEventListener("drop", async (e) => {
+                    if (this._dragSourceIdx === null || this._dragSourceIdx === undefined) return;
+                    if (this._dragSourcePlId !== pl.id) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    tr.classList.remove("drag-over-top", "drag-over-bottom");
+
+                    const fromIdx = this._dragSourceIdx;
+                    const targetIdx = parseInt(tr.getAttribute("data-idx"), 10);
+                    const rect = tr.getBoundingClientRect();
+                    const isBottom = (e.clientY - rect.top) > (rect.height / 2);
+
+                    let desiredTarget = isBottom ? targetIdx + 1 : targetIdx;
+                    if (fromIdx < desiredTarget) {
+                        desiredTarget--;
+                    }
+                    const targetNewIdx = Math.max(0, Math.min(desiredTarget, pl.items.length - 1));
+
+                    if (fromIdx === targetNewIdx) return;
+
+                    // 1. Réordonner le tableau en mémoire
+                    const [movedItem] = pl.items.splice(fromIdx, 1);
+                    pl.items.splice(targetNewIdx, 0, movedItem);
+
+                    // 2. Mise à jour immédiate de l'affichage (0ms)
+                    this.renderDetail(pl);
+
+                    // 3. Sauvegarder sur le backend
+                    await this.savePlaylistReorder(pl);
+                });
+            }
+
             tbody.appendChild(tr);
         });
+    },
+
+    async savePlaylistReorder(pl) {
+        if (!pl || !pl.id || !pl.items) return;
+        const itemIds = pl.items.map(it => it.id);
+        try {
+            const res = await fetch(`/api/playlists/${encodeURIComponent(pl.id)}/reorder`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item_ids: itemIds })
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || "Échec de l'enregistrement de l'ordre");
+            }
+            const data = await res.json();
+            const updatedPl = data.playlist || data;
+            this.syncPlaylistUpdate(updatedPl);
+            showToast("Ordre de la playlist mis à jour !", "info");
+        } catch (err) {
+            console.error("Erreur savePlaylistReorder:", err);
+            showToast("Impossible d'enregistrer l'ordre : " + err.message, "danger");
+            this.openDetail(pl.id);
+        }
     },
 
     promptCreatePlaylist() {
@@ -1010,9 +1235,8 @@ const UserPlaylists = {
             });
             const data = await res.json();
             if (data.success) {
-                this.currentDetailPlaylist.name = newName.trim();
-                const titleEl = document.getElementById("playlist-hero-title");
-                if (titleEl) titleEl.textContent = newName.trim();
+                const updatedPl = data.playlist || { ...this.currentDetailPlaylist, name: newName.trim() };
+                this.syncPlaylistUpdate(updatedPl);
                 showToast("Playlist renommée avec succès !", "success");
             } else {
                 showToast(data.message || "Erreur renommage", "danger");
@@ -1031,6 +1255,9 @@ const UserPlaylists = {
         if (gridView) gridView.style.display = "block";
         if (window.AudioPlayer && window.AudioPlayer.updateDetailContextBar) {
             window.AudioPlayer.updateDetailContextBar();
+        }
+        if (window.AudioPlayer && typeof window.AudioPlayer.updateScrollBounds === "function") {
+            window.AudioPlayer.updateScrollBounds();
         }
         this.loadAndRenderPlaylists(true);
     },
@@ -1061,7 +1288,7 @@ const UserPlaylists = {
             const data = await res.json();
             if (data.success) {
                 showToast(`Playlist « ${pl.name} » supprimée.`, "success");
-                this.closeDetail();
+                this.handlePlaylistDeleted(pl.id);
             } else {
                 showToast(data.message || "Erreur suppression", "danger");
             }
@@ -1084,7 +1311,20 @@ const UserPlaylists = {
             const data = await res.json();
             if (data.success) {
                 showToast(`« ${itemTitle} » retiré de la playlist.`, "info");
-                await this.openDetail(playlistId);
+                let updatedPl = data.playlist;
+                if (!updatedPl) {
+                    try {
+                        const freshRes = await fetch(`/api/playlists/${playlistId}`);
+                        if (freshRes.ok) updatedPl = await freshRes.json();
+                    } catch (_) {}
+                }
+                if (updatedPl) {
+                    this.syncPlaylistUpdate(updatedPl);
+                } else {
+                    await this.openDetail(playlistId, true);
+                }
+            } else {
+                showToast(data.message || "Erreur lors du retrait du morceau.", "danger");
             }
         } catch (e) {
             showToast("Erreur suppression élément : " + e.message, "danger");
@@ -1496,8 +1736,7 @@ function setupUserPlaylists() {
                 const res = await fetch(`/api/playlists/${pl.id}/refresh`, { method: "POST" });
                 const data = await res.json();
                 if (data.success && data.playlist) {
-                    UserPlaylists.currentDetailPlaylist = data.playlist;
-                    UserPlaylists.renderDetail(data.playlist);
+                    UserPlaylists.syncPlaylistUpdate(data.playlist);
                     showToast("Playlist intelligente actualisée avec succès selon vos écoutes !", "success");
                 } else {
                     showToast(data.message || "Erreur lors de l'actualisation", "warning");
@@ -1698,13 +1937,10 @@ function setupUserPlaylists() {
                 const data = await res.json();
                 if (data.success) {
                     targetChangeCoverPlaylist.cover_url = selectedChangeCoverUrl;
-                    const heroCover = document.getElementById("playlist-hero-cover");
-                    if (heroCover) {
-                        heroCover.src = selectedChangeCoverUrl || (targetChangeCoverPlaylist.items && (targetChangeCoverPlaylist.items[0]?.thumbnail_url || targetChangeCoverPlaylist.items[0]?.cover_url)) || "/static/placeholder-cover.svg";
-                    }
+                    const updatedPl = data.playlist || { ...targetChangeCoverPlaylist, cover_url: selectedChangeCoverUrl };
                     showToast("Illustration de la playlist mise à jour !", "success");
                     closeChangeCoverModal();
-                    await UserPlaylists.loadAndRenderPlaylists(true);
+                    UserPlaylists.syncPlaylistUpdate(updatedPl);
                 } else {
                     showToast(data.message || "Erreur mise à jour illustration", "danger");
                 }

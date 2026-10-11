@@ -1,0 +1,459 @@
+/* ==========================================================================
+   MODULE 4.5.0 : MODULE D'EXPORTATION & BALADEUR (AUDIO & VIDÉO)
+   ========================================================================== */
+
+.export-card {
+    background: var(--bg-surface-card, rgba(17, 24, 39, 0.75));
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg, 12px);
+    padding: 24px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+[data-theme="light"] .export-card {
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.export-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    padding-bottom: 16px;
+}
+
+.export-title-group h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin: 0 0 4px 0;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-title-group p {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* SECTION 1 : PANIER & CONTENUS SÉLECTIONNÉS */
+.export-section-card {
+    background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md, 10px);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color 0.2s ease;
+}
+
+.export-section-card:hover {
+    border-color: rgba(0, 240, 255, 0.3);
+}
+
+.export-section-title {
+    font-size: 0.96rem;
+    font-weight: 600;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0;
+}
+
+.export-cart-summary-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="light"] .export-cart-summary-bar {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+.export-cart-badges {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.cart-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cart-pill.audio-pill {
+    background: rgba(0, 240, 255, 0.12);
+    border-color: rgba(0, 240, 255, 0.3);
+    color: #00f0ff;
+}
+
+.cart-pill.video-pill {
+    background: rgba(168, 85, 247, 0.12);
+    border-color: rgba(168, 85, 247, 0.3);
+    color: #c084fc;
+}
+
+/* Liste des éléments du panier */
+.export-cart-items-list {
+    max-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-right: 4px;
+}
+
+.export-cart-item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.84rem;
+    transition: background 0.18s ease;
+}
+
+.export-cart-item-row:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.export-cart-item-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.export-cart-item-title {
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.export-cart-item-sub {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.export-cart-empty-state {
+    text-align: center;
+    padding: 24px 16px;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+/* SECTION 2 : CONFIGURATION DU FICHIER & DESTINATION */
+.export-grid-settings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.export-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.export-form-group label {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.export-input {
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 0.88rem;
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-surface, rgba(0, 0, 0, 0.3));
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    box-sizing: border-box;
+}
+
+.export-input:focus {
+    border-color: var(--color-primary, #00f0ff);
+    outline: none;
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+}
+
+.export-dest-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* OPTIONS RADIO & SÉLECTEURS DE FORMAT */
+.export-segmented-control {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 4px;
+}
+
+[data-theme="light"] .export-segmented-control {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.export-segment-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.export-segment-btn:hover {
+    color: var(--text-main);
+}
+
+.export-segment-btn.active {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.22) 0%, rgba(99, 102, 241, 0.22) 100%);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    color: #ffffff;
+    font-weight: 600;
+    box-shadow: 0 1px 6px rgba(0, 240, 255, 0.15);
+}
+
+[data-theme="light"] .export-segment-btn.active {
+    background: #ffffff;
+    border-color: rgba(2, 132, 199, 0.4);
+    color: #0284c7;
+}
+
+/* Radios d'arborescence */
+.export-radio-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.export-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+    transition: all 0.18s ease;
+}
+
+.export-radio-label:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.export-radio-label input[type="radio"] {
+    accent-color: var(--color-primary, #00f0ff);
+    margin: 0;
+}
+
+/* CARTE DE RÉCAPITULATIF & BOUTON PRINCIPAL */
+.export-launch-card {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 27, 75, 0.85) 100%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: var(--radius-md, 10px);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 4px 18px rgba(0, 240, 255, 0.08);
+}
+
+[data-theme="light"] .export-launch-card {
+    background: linear-gradient(135deg, rgba(240, 249, 255, 0.95) 0%, rgba(238, 242, 255, 0.95) 100%);
+    border-color: rgba(2, 132, 199, 0.3);
+}
+
+.export-estimate-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 0.90rem;
+    color: var(--text-main);
+}
+
+.export-estimate-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.export-estimate-metric strong {
+    color: var(--color-primary, #00f0ff);
+}
+
+[data-theme="light"] .export-estimate-metric strong {
+    color: #0284c7;
+}
+
+.export-launch-btn {
+    padding: 12px 24px;
+    font-size: 1.02rem;
+    font-weight: 700;
+    border-radius: var(--radius-sm, 8px);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.22s ease;
+    box-shadow: 0 0 16px rgba(0, 240, 255, 0.25);
+}
+
+/* JAUGE DE PROGRESSION EN TEMPS RÉEL */
+.export-progress-panel {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    border-radius: var(--radius-md, 10px);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: fadeIn 0.25s ease-out;
+}
+
+[data-theme="light"] .export-progress-panel {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(2, 132, 199, 0.4);
+}
+
+.export-progress-bar-container {
+    width: 100%;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+}
+
+.export-progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00f0ff 0%, #6366f1 100%);
+    border-radius: 6px;
+    transition: width 0.2s ease;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+.export-progress-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.export-current-file-label {
+    font-size: 0.84rem;
+    color: var(--text-main);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70%;
+}
+
+/* MODALE DE SÉLECTION D'ALBUMS POUR AJOUT AU PANIER */
+.export-selector-modal {
+    max-width: 720px;
+    width: 90%;
+}
+
+.export-selector-list {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 6px;
+}
+
+.export-selector-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: background 0.15s ease;
+}
+
+.export-selector-row:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.btn-in-cart {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    color: var(--text-secondary) !important;
+    transition: all 0.18s ease !important;
+    cursor: pointer !important;
+}
+
+.btn-in-cart:hover,
+.btn-in-cart.btn-danger-hover {
+    background: rgba(239, 68, 68, 0.25) !important;
+    border-color: rgba(239, 68, 68, 0.6) !important;
+    color: #fca5a5 !important;
+}

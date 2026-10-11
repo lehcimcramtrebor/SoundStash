@@ -13,13 +13,51 @@ window.currentAlbumIndex = window.currentAlbumIndex !== undefined ? window.curre
 window.editorDirtyState = window.editorDirtyState || {};
 window.editorDraftsByAlbum = window.editorDraftsByAlbum || {};
 window.isCollectionEditorMode = window.isCollectionEditorMode || false;
-window.editorSubMode = window.editorSubMode || "temp"; // "temp" | "collection" | "genres"
+window.editorSourceMode = window.editorSourceMode || "temp"; // "temp" | "collection" | "videos" | "covers"
+window.editorWorkMode = window.editorWorkMode || "single"; // "single" | "batch"
+window.editorSubMode = window.editorSubMode || "temp"; // "temp" | "collection" | "genres" | "videos" | "covers"
 window.genreBatchAlbums = window.genreBatchAlbums || [];
 window.genreBatchSelectedPaths = window.genreBatchSelectedPaths || new Set();
 window.genreBatchCurrentScope = window.genreBatchCurrentScope || "all";
 window.genreBatchSearchQuery = window.genreBatchSearchQuery || "";
 window.collectionAlbumsList = window.collectionAlbumsList || [];
+window.editorVideosList = window.editorVideosList || [];
 window.cachedTagSuggestions = window.cachedTagSuggestions || null;
+
+// Éditeur & Vidéothèque
+async function loadVideoLibraryForEditor(force = false) {
+    try {
+        const url = `/api/videos/catalog${force ? "?force_refresh=true" : ""}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        const vids = data.videos || [];
+        window.editorVideosList = vids;
+
+        const countBadge = document.getElementById("editor-videos-count-badge");
+        if (countBadge) countBadge.textContent = vids.length;
+
+        const select = document.getElementById("editor-videos-select");
+        if (select) {
+            const previousVal = select.value;
+            select.innerHTML = '<option value="">-- Choisir une vidéo de ma vidéothèque --</option>';
+            vids.forEach(v => {
+                const opt = document.createElement("option");
+                opt.value = v.filepath;
+                const typeIcon = (v.video_type === "concert" || v.is_concert) ? "🎸 [Concert]" : "🎬 [Clip]";
+                const durStr = v.duration_str ? ` (${v.duration_str})` : "";
+                opt.textContent = `${typeIcon} ${v.artist || "Inconnu"} - ${v.title || v.filename}${durStr}`;
+                select.appendChild(opt);
+            });
+            if (previousVal && Array.from(select.options).some(o => o.value === previousVal)) {
+                select.value = previousVal;
+            }
+        }
+    } catch (err) {
+        console.warn("Erreur chargement vidéothèque pour l'éditeur:", err);
+    }
+}
+window.loadVideoLibraryForEditor = loadVideoLibraryForEditor;
 
 // Éditeur & Curation de Collection
 async function loadCollectionAlbumsForEditor() {
@@ -27,7 +65,15 @@ async function loadCollectionAlbumsForEditor() {
         const res = await fetch(`/api/library/albums?source=library&_t=${Date.now()}`);
         if (!res.ok) return;
         const data = await res.json();
-        collectionAlbumsList = data.albums || [];
+        const rawAlbums = data.albums || [];
+        collectionAlbumsList = rawAlbums.filter(alb => {
+            const p = (alb.path || "").toLowerCase();
+            const t = (alb.album_type || "").toLowerCase();
+            if (p.endsWith(".mp4") || p.endsWith(".mkv") || p.endsWith(".webm") || p.endsWith(".avi") || p.endsWith(".mov") || p.endsWith(".m4v")) return false;
+            if (t === "video" || t === "clip") return false;
+            if (p.includes("/concerts/") || p.includes("\\concerts\\") || p.includes("mes vidéos") || p.includes("mes videos")) return false;
+            return true;
+        });
 
         const countBadge = document.getElementById("editor-collection-count-badge");
         if (countBadge) countBadge.textContent = collectionAlbumsList.length;
@@ -58,9 +104,16 @@ async function loadCollectionAlbumsForEditor() {
 function updateEditorSourceModeUI() {
     const tempBtn = document.getElementById("editor-source-temp-btn");
     const colBtn = document.getElementById("editor-source-collection-btn");
+    const videosBtn = document.getElementById("editor-source-videos-btn");
     const genresBtn = document.getElementById("editor-source-genres-btn");
     const coversBtn = document.getElementById("editor-source-covers-btn");
+
+    const workmodeGroup = document.getElementById("editor-workmode-group");
+    const workmodeSingleBtn = document.getElementById("editor-workmode-single-btn");
+    const workmodeBatchBtn = document.getElementById("editor-workmode-batch-btn");
+
     const pickerWrap = document.getElementById("editor-collection-picker-wrapper");
+    const videosPickerWrap = document.getElementById("editor-videos-picker-wrapper");
     const singleView = document.getElementById("editor-single-view");
     const genreBatchView = document.getElementById("editor-genre-batch-view");
     const coversGalleryView = document.getElementById("editor-covers-gallery-view");
@@ -73,22 +126,44 @@ function updateEditorSourceModeUI() {
     const statusBadge = document.getElementById("editor-album-tag-status");
     const applyBtn = document.getElementById("apply-uniform-btn");
 
-    const isCoversMode = (window.editorSubMode === "covers");
-    const isGenresMode = (window.editorSubMode === "genres");
-    const isColMode = (!isGenresMode && !isCoversMode && isCollectionEditorMode);
-    const isTempMode = (!isGenresMode && !isCoversMode && !isCollectionEditorMode);
+    window.editorSourceMode = window.editorSourceMode || (isCollectionEditorMode ? "collection" : "temp");
+    window.editorWorkMode = window.editorWorkMode || "single";
 
-    if (tempBtn) tempBtn.classList.toggle("active", isTempMode);
-    if (colBtn) colBtn.classList.toggle("active", isColMode);
-    if (genresBtn) genresBtn.classList.toggle("active", isGenresMode);
-    if (coversBtn) coversBtn.classList.toggle("active", isCoversMode);
+    const isTempSource = (window.editorSourceMode === "temp");
+    const isColSource = (window.editorSourceMode === "collection");
+    const isVideosSource = (window.editorSourceMode === "videos");
+    const isCoversSource = (window.editorSourceMode === "covers");
 
-    if (singleView) singleView.style.display = (isGenresMode || isCoversMode) ? "none" : "block";
-    if (genreBatchView) genreBatchView.style.display = isGenresMode ? "block" : "none";
-    if (coversGalleryView) coversGalleryView.style.display = isCoversMode ? "block" : "none";
-    if (pickerWrap) pickerWrap.style.display = isColMode ? "flex" : "none";
+    const isBatchMode = (window.editorWorkMode === "batch" && (isTempSource || isColSource));
+    const isSingleMode = (!isBatchMode);
 
-    if (isCoversMode) {
+    // Synchronisation de compatibilité ascendante
+    window.isCollectionEditorMode = isColSource;
+    if (isBatchMode) {
+        window.editorSubMode = "genres";
+    } else {
+        window.editorSubMode = window.editorSourceMode;
+    }
+
+    if (tempBtn) tempBtn.classList.toggle("active", isTempSource);
+    if (colBtn) colBtn.classList.toggle("active", isColSource);
+    if (videosBtn) videosBtn.classList.toggle("active", isVideosSource);
+    if (coversBtn) coversBtn.classList.toggle("active", isCoversSource);
+    if (genresBtn) genresBtn.classList.toggle("active", isBatchMode);
+
+    if (workmodeGroup) {
+        workmodeGroup.style.display = (isTempSource || isColSource) ? "inline-flex" : "none";
+    }
+    if (workmodeSingleBtn) workmodeSingleBtn.classList.toggle("active", isSingleMode);
+    if (workmodeBatchBtn) workmodeBatchBtn.classList.toggle("active", isBatchMode);
+
+    if (singleView) singleView.style.display = (isBatchMode || isCoversSource) ? "none" : "block";
+    if (genreBatchView) genreBatchView.style.display = isBatchMode ? "block" : "none";
+    if (coversGalleryView) coversGalleryView.style.display = isCoversSource ? "block" : "none";
+    if (pickerWrap) pickerWrap.style.display = (isColSource && isSingleMode) ? "flex" : "none";
+    if (videosPickerWrap) videosPickerWrap.style.display = isVideosSource ? "flex" : "none";
+
+    if (isCoversSource) {
         if (deleteBtn) deleteBtn.style.display = "none";
         if (openExportBtn) openExportBtn.style.display = "none";
         if (exportAllBtn) exportAllBtn.style.display = "none";
@@ -101,7 +176,19 @@ function updateEditorSourceModeUI() {
         return;
     }
 
-    if (isGenresMode) {
+    // Mise à jour réactive du badge de comptage des lots selon la source active
+    const batchCountBadge = document.getElementById("editor-genres-count-badge");
+    if (batchCountBadge && Array.isArray(window.genreBatchAlbums) && window.genreBatchAlbums.length > 0) {
+        if (isTempSource) {
+            batchCountBadge.textContent = window.genreBatchAlbums.filter(a => a.source === "temp").length;
+        } else if (isColSource) {
+            batchCountBadge.textContent = window.genreBatchAlbums.filter(a => a.source === "library" || !a.source).length;
+        } else {
+            batchCountBadge.textContent = window.genreBatchAlbums.length;
+        }
+    }
+
+    if (isBatchMode) {
         if (deleteBtn) deleteBtn.style.display = "none";
         if (openExportBtn) openExportBtn.style.display = "none";
         if (exportAllBtn) exportAllBtn.style.display = "none";
@@ -109,12 +196,30 @@ function updateEditorSourceModeUI() {
         if (navBar) navBar.style.display = "none";
         if (statusBadge) {
             statusBadge.className = "badge badge-primary";
-            statusBadge.textContent = "🏷️ Genres par lot";
+            statusBadge.textContent = isTempSource ? "🏷️ Tags par lot (Temporaire)" : "🏷️ Tags par lot (Collection)";
         }
         return;
     }
 
-    if (isCollectionEditorMode) {
+    if (isVideosSource) {
+        if (deleteBtn) {
+            deleteBtn.style.display = "inline-flex";
+            deleteBtn.title = "Déplacer cette vidéo vers la Corbeille Windows (sécurisé)";
+        }
+        if (deleteLabel) deleteLabel.textContent = "Supprimer la vidéo";
+        if (openExportBtn) openExportBtn.style.display = "none";
+        if (exportAllBtn) exportAllBtn.style.display = "none";
+        if (exportPanel) exportPanel.style.display = "none";
+        if (navBar) navBar.style.display = "none";
+        if (statusBadge) {
+            statusBadge.className = "badge badge-info";
+            statusBadge.textContent = "🎬 Vidéothèque";
+        }
+        if (applyBtn) {
+            applyBtn.title = "Sauvegarder les modifications (titre, artiste, type clip/concert) de cette vidéo";
+            applyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm2 16H5V5h11.17L19 7.83V19zm-7-7c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zM6 6h9v4H6z"/></svg> Enregistrer les modifications`;
+        }
+    } else if (isColSource) {
         if (deleteBtn) {
             deleteBtn.style.display = "inline-flex";
             deleteBtn.title = "Déplacer cet album de votre collection vers la Corbeille Windows (sécurisé)";
@@ -150,8 +255,172 @@ function updateEditorSourceModeUI() {
             applyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm2 16H5V5h11.17L19 7.83V19zm-7-7c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zM6 6h9v4H6z"/></svg> Sauvegarder les tags`;
         }
     }
+    if (typeof updateEditorVideoModeUI === "function") {
+        updateEditorVideoModeUI();
+    }
     updateEditorInteractiveState();
 }
+
+function isCurrentEditorItemVideo() {
+    if (window.editorSubMode === "videos") return true;
+    if (window.currentAlbumManualType === "video" || window.currentAlbumManualType === "clip") return true;
+    if (window.currentAlbumManualType === "concert") {
+        // Un concert peut être une vidéo s'il y a un fichier vidéo ou s'il s'agit d'un fichier vidéo individuel
+        const pLower = (window.currentAlbumPath || "").toLowerCase();
+        if (pLower.endsWith(".mp4") || pLower.endsWith(".mkv") || pLower.endsWith(".webm") || pLower.endsWith(".avi") || pLower.endsWith(".mov")) {
+            return true;
+        }
+    }
+    if (window.currentAlbumManualType && window.currentAlbumManualType !== "video" && window.currentAlbumManualType !== "clip") return false;
+    if (window.currentAlbumDetectedType === "video" || window.currentAlbumDetectedType === "clip") return true;
+    if (window.currentAlbumPath && (
+        window.currentAlbumPath.includes("[Vidéo]") || 
+        window.currentAlbumPath.includes("[Video]") || 
+        window.currentAlbumPath.includes("[Clip]")
+    )) return true;
+    const trs = document.querySelectorAll("#tracks-table-body tr[data-filename]");
+    if (trs.length > 0) {
+        const hasVideo = Array.from(trs).some(tr => {
+            const fn = (tr.getAttribute("data-filename") || "").toLowerCase();
+            return fn.endsWith(".mp4") || fn.endsWith(".mkv") || fn.endsWith(".webm") || fn.endsWith(".avi") || fn.endsWith(".mov");
+        });
+        if (hasVideo) return true;
+    }
+    const pLow = (window.currentAlbumPath || "").toLowerCase();
+    if (pLow.endsWith(".mp4") || pLow.endsWith(".mkv") || pLow.endsWith(".webm") || pLow.endsWith(".avi") || pLow.endsWith(".mov")) {
+        return true;
+    }
+    return false;
+}
+window.isCurrentEditorItemVideo = isCurrentEditorItemVideo;
+
+function cleanVideoTitleFromArtist(title, artist) {
+    if (!title) return "";
+    let clean = title.replace(/^\s*\d{1,3}(?:\s*[\.\-_]\s*|\s+)/, "").trim();
+    if (artist && artist.trim()) {
+        const escaped = artist.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const reg = new RegExp('^' + escaped + '\\s*[\\-–—\\/:|_~]+\\s*', 'i');
+        clean = clean.replace(reg, '').trim();
+    }
+    return clean;
+}
+window.cleanVideoTitleFromArtist = cleanVideoTitleFromArtist;
+
+function updateEditorVideoModeUI() {
+    const isVideo = isCurrentEditorItemVideo();
+    const banner = document.getElementById("editor-video-mode-banner");
+    const albumNameGroup = document.getElementById("editor-group-album-name");
+    const yearGenreRow = document.getElementById("editor-year-genre-row");
+    const artistLabel = document.getElementById("edit-album-artist-label");
+    const artistInput = document.getElementById("edit-album-artist");
+    const mbBtn = document.getElementById("musicbrainz-lookup-btn");
+    const directExportBtn = document.getElementById("direct-video-export-btn");
+    const openExportBtn = document.getElementById("open-export-modal-btn");
+    const thTrackNum = document.getElementById("th-track-num");
+    const thTrackArtist = document.getElementById("th-track-artist");
+    const thTrackGenre = document.getElementById("th-track-genre");
+    const thTrackTitle = document.getElementById("th-track-title");
+
+    const hasAlbum = Boolean(window.currentAlbumPath);
+
+    if (isVideo && hasAlbum) {
+        if (banner) banner.style.display = "flex";
+        if (albumNameGroup) albumNameGroup.style.display = "none";
+        if (yearGenreRow) yearGenreRow.style.display = "none";
+        if (artistLabel) artistLabel.textContent = "Artiste (Dossier de destination) :";
+        if (artistInput) artistInput.placeholder = "Ex: Nom de l'artiste ou chaîne...";
+        if (mbBtn) mbBtn.style.display = "none";
+        const mbMagicBtn = document.getElementById("musicbrainz-magic-tag-btn");
+        if (mbMagicBtn) mbMagicBtn.style.display = "none";
+
+        if (directExportBtn) {
+            directExportBtn.style.display = window.isCollectionEditorMode ? "none" : "inline-flex";
+        }
+        if (openExportBtn) {
+            openExportBtn.style.display = "none";
+        }
+
+        // En mode vidéo, masquer N° Piste, Artiste et Genre du tableau
+        // (L'artiste est unique et défini dans le champ principal en haut)
+        if (thTrackNum) thTrackNum.style.display = "none";
+        if (thTrackArtist) thTrackArtist.style.display = "none";
+        if (thTrackGenre) thTrackGenre.style.display = "none";
+        if (thTrackTitle) thTrackTitle.textContent = "Titre / Nom de fichier";
+
+        const currentArtistVal = (artistInput ? artistInput.value : "").trim();
+
+        // Ajuster les cellules des pistes déjà affichées dans tbody
+        document.querySelectorAll("#tracks-table-body tr").forEach(tr => {
+            const cells = tr.children;
+            if (cells.length >= 6) {
+                cells[0].style.display = "none"; // N° Piste
+                cells[2].style.display = "none"; // Artiste de piste (masqué pour éviter la double saisie)
+                cells[3].style.display = "none"; // Genre
+            }
+            const trackArtistInput = tr.querySelector(".track-artist-input");
+            if (trackArtistInput) {
+                if (currentArtistVal) {
+                    trackArtistInput.value = currentArtistVal;
+                } else if (trackArtistInput.value && artistInput) {
+                    artistInput.value = trackArtistInput.value;
+                }
+            }
+            const titleInput = tr.querySelector(".track-title-input");
+            if (titleInput) {
+                titleInput.placeholder = "Titre de la vidéo (nom du fichier)";
+                let effArt = currentArtistVal || (artistInput ? artistInput.value.trim() : "");
+                let clean = cleanVideoTitleFromArtist(titleInput.value, effArt);
+                if (clean && clean !== titleInput.value) {
+                    titleInput.value = clean;
+                }
+            }
+            const btnPlay = tr.querySelector(".btn-editor-track-add-playlist");
+            if (btnPlay) {
+                btnPlay.style.display = "none";
+            }
+        });
+    } else {
+        if (banner) banner.style.display = "none";
+        if (albumNameGroup) albumNameGroup.style.display = "";
+        if (yearGenreRow) yearGenreRow.style.display = "";
+        if (artistLabel) artistLabel.textContent = "Artiste de l'Album :";
+        if (artistInput) artistInput.placeholder = "Ex: Depeche Mode, Daft Punk...";
+        if (mbBtn) mbBtn.style.display = "none";
+        const mbMagicBtn = document.getElementById("musicbrainz-magic-tag-btn");
+        if (mbMagicBtn) mbMagicBtn.style.display = (hasAlbum && !currentAlbumIsConcert) ? "inline-flex" : "none";
+
+        if (directExportBtn) {
+            directExportBtn.style.display = "none";
+        }
+        if (openExportBtn) {
+            openExportBtn.style.display = (window.isCollectionEditorMode || !hasAlbum) ? "none" : "inline-flex";
+        }
+
+        if (thTrackNum) thTrackNum.style.display = "";
+        if (thTrackArtist) thTrackArtist.style.display = "";
+        if (thTrackGenre) thTrackGenre.style.display = "";
+        if (thTrackTitle) thTrackTitle.textContent = "Titre";
+
+        // Restaurer les cellules des pistes
+        document.querySelectorAll("#tracks-table-body tr").forEach(tr => {
+            const cells = tr.children;
+            if (cells.length >= 6) {
+                cells[0].style.display = ""; // N° Piste
+                cells[2].style.display = ""; // Artiste
+                cells[3].style.display = ""; // Genre
+            }
+            const titleInput = tr.querySelector(".track-title-input");
+            if (titleInput) {
+                titleInput.placeholder = "Titre de la piste";
+            }
+            const btnPlay = tr.querySelector(".btn-editor-track-add-playlist");
+            if (btnPlay) {
+                btnPlay.style.display = window.currentAlbumIsConcert ? "none" : "";
+            }
+        });
+    }
+}
+window.updateEditorVideoModeUI = updateEditorVideoModeUI;
 
 // Libération immédiate des verrous de lecture audio/vidéo Chromium avant export ou suppression
 function releaseMediaHandlesForPath(targetPath) {
@@ -180,6 +449,7 @@ function setupEditorActions() {
     const openFolderBtn = document.getElementById("open-folder-btn");
     const deleteCurrentBtn = document.getElementById("delete-current-album-btn");
     const openExportModalBtn = document.getElementById("open-export-modal-btn");
+    const directVideoExportBtn = document.getElementById("direct-video-export-btn");
     const confirmExportBtn = document.getElementById("confirm-export-btn");
     const cancelExportBtn = document.getElementById("cancel-export-btn");
     const exportPanel = document.getElementById("export-panel");
@@ -190,7 +460,9 @@ function setupEditorActions() {
     const sourceColBtn = document.getElementById("editor-source-collection-btn");
     const sourceGenresBtn = document.getElementById("editor-source-genres-btn");
     const sourceCoversBtn = document.getElementById("editor-source-covers-btn");
+    const sourceVideosBtn = document.getElementById("editor-source-videos-btn");
     const colSelect = document.getElementById("editor-collection-select");
+    const videosSelect = document.getElementById("editor-videos-select");
 
     if (playAlbumBtn) {
         playAlbumBtn.addEventListener("click", () => {
@@ -205,46 +477,69 @@ function setupEditorActions() {
 
     if (sourceTempBtn) {
         sourceTempBtn.addEventListener("click", async () => {
-            window.editorSubMode = "temp";
-            isCollectionEditorMode = false;
-            updateEditorSourceModeUI();
-            await refreshAlbumNavList();
-            if (tempAlbumsList.length > 0) {
-                currentAlbumIndex = Math.max(0, Math.min(currentAlbumIndex, tempAlbumsList.length - 1));
-                await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path, false);
+            window.editorSourceMode = "temp";
+            if (window.editorWorkMode === "batch") {
+                updateEditorSourceModeUI();
+                await loadGenreBatchAlbums(false);
             } else {
-                resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
+                window.editorSubMode = "temp";
+                isCollectionEditorMode = false;
+                updateEditorSourceModeUI();
+                await refreshAlbumNavList();
+                if (tempAlbumsList.length > 0) {
+                    currentAlbumIndex = Math.max(0, Math.min(currentAlbumIndex, tempAlbumsList.length - 1));
+                    await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path, false);
+                } else {
+                    resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
+                }
             }
         });
     }
 
     if (sourceColBtn) {
         sourceColBtn.addEventListener("click", async () => {
-            window.editorSubMode = "collection";
-            isCollectionEditorMode = true;
-            updateEditorSourceModeUI();
-            await loadCollectionAlbumsForEditor();
-            if (colSelect && colSelect.value) {
-                await loadAlbumInEditor(colSelect.value, true);
-            } else if (collectionAlbumsList.length > 0) {
-                colSelect.value = collectionAlbumsList[0].path;
-                await loadAlbumInEditor(collectionAlbumsList[0].path, true);
+            window.editorSourceMode = "collection";
+            if (window.editorWorkMode === "batch") {
+                updateEditorSourceModeUI();
+                await loadGenreBatchAlbums(false);
+            } else {
+                window.editorSubMode = "collection";
+                isCollectionEditorMode = true;
+                updateEditorSourceModeUI();
+                await loadCollectionAlbumsForEditor();
+                if (colSelect && colSelect.value) {
+                    await loadAlbumInEditor(colSelect.value, "collection");
+                } else if (collectionAlbumsList.length > 0) {
+                    colSelect.value = collectionAlbumsList[0].path;
+                    await loadAlbumInEditor(collectionAlbumsList[0].path, "collection");
+                } else {
+                    resetEditorState("Collection vide", "Aucun album trouvé");
+                }
             }
         });
     }
 
-    if (sourceGenresBtn) {
-        sourceGenresBtn.addEventListener("click", async () => {
-            window.editorSubMode = "genres";
+    if (sourceVideosBtn) {
+        sourceVideosBtn.addEventListener("click", async () => {
+            window.editorSourceMode = "videos";
+            window.editorSubMode = "videos";
             isCollectionEditorMode = false;
             updateEditorSourceModeUI();
-            initGenreBatchUI();
-            await loadGenreBatchAlbums(true);
+            await loadVideoLibraryForEditor(true);
+            if (videosSelect && videosSelect.value) {
+                await loadAlbumInEditor(videosSelect.value, "videos");
+            } else if (window.editorVideosList && window.editorVideosList.length > 0) {
+                videosSelect.value = window.editorVideosList[0].filepath;
+                await loadAlbumInEditor(window.editorVideosList[0].filepath, "videos");
+            } else {
+                resetEditorState("Vidéothèque vide", "Aucune vidéo trouvée");
+            }
         });
     }
 
     if (sourceCoversBtn) {
         sourceCoversBtn.addEventListener("click", async () => {
+            window.editorSourceMode = "covers";
             window.editorSubMode = "covers";
             isCollectionEditorMode = false;
             updateEditorSourceModeUI();
@@ -253,15 +548,431 @@ function setupEditorActions() {
         });
     }
 
-    if (colSelect) {
-        colSelect.addEventListener("change", async () => {
-            if (colSelect.value) {
-                await loadAlbumInEditor(colSelect.value, true);
+    // Sous-modes : Album individuel vs Tags par lot
+    const workmodeSingleBtn = document.getElementById("editor-workmode-single-btn");
+    const workmodeBatchBtn = document.getElementById("editor-workmode-batch-btn");
+
+    if (workmodeSingleBtn) {
+        workmodeSingleBtn.addEventListener("click", async () => {
+            window.editorWorkMode = "single";
+            window.editorSubMode = window.editorSourceMode;
+            isCollectionEditorMode = (window.editorSourceMode === "collection");
+            updateEditorSourceModeUI();
+            if (window.editorSourceMode === "collection") {
+                if (colSelect && colSelect.value) {
+                    await loadAlbumInEditor(colSelect.value, "collection");
+                } else if (collectionAlbumsList.length > 0) {
+                    colSelect.value = collectionAlbumsList[0].path;
+                    await loadAlbumInEditor(collectionAlbumsList[0].path, "collection");
+                } else {
+                    await loadCollectionAlbumsForEditor();
+                }
+            } else {
+                await refreshAlbumNavList();
+                if (tempAlbumsList.length > 0) {
+                    currentAlbumIndex = Math.max(0, Math.min(currentAlbumIndex, tempAlbumsList.length - 1));
+                    await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path, false);
+                } else {
+                    resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
+                }
             }
         });
     }
 
-    // ── Lookup MusicBrainz feat. ──────────────────────────────────────────────
+    if (workmodeBatchBtn) {
+        workmodeBatchBtn.addEventListener("click", async () => {
+            window.editorWorkMode = "batch";
+            window.editorSubMode = "genres";
+            updateEditorSourceModeUI();
+            initGenreBatchUI();
+            await loadGenreBatchAlbums(false);
+        });
+    }
+
+    if (sourceGenresBtn) {
+        sourceGenresBtn.addEventListener("click", async () => {
+            window.editorWorkMode = "batch";
+            window.editorSubMode = "genres";
+            updateEditorSourceModeUI();
+            initGenreBatchUI();
+            await loadGenreBatchAlbums(false);
+        });
+    }
+
+    if (colSelect) {
+        colSelect.addEventListener("change", async () => {
+            if (colSelect.value) {
+                await loadAlbumInEditor(colSelect.value, "collection");
+            }
+        });
+    }
+
+    if (videosSelect) {
+        videosSelect.addEventListener("change", async () => {
+            if (videosSelect.value) {
+                await loadAlbumInEditor(videosSelect.value, "videos");
+            }
+        });
+    }
+
+    // ── Tags Complets MusicBrainz (Magique avec aplatissement Multi-CD continu) ──
+    const mbMagicBtn = document.getElementById("musicbrainz-magic-tag-btn");
+    const mbModalBackdrop = document.getElementById("mb-select-modal-backdrop");
+    const mbModalCloseBtn = document.getElementById("mb-select-modal-close-btn");
+    const mbModalCancelBtn = document.getElementById("mb-select-modal-cancel-btn");
+    const mbModalList = document.getElementById("mb-select-releases-list");
+    const mbModalLoading = document.getElementById("mb-select-loading");
+    const mbModalEmpty = document.getElementById("mb-select-empty");
+    const mbModalSearchAlbum = document.getElementById("mb-modal-search-album");
+    const mbModalSearchArtist = document.getElementById("mb-modal-search-artist");
+    const mbModalSearchSubmit = document.getElementById("mb-modal-search-submit");
+
+    function openMusicBrainzModal() {
+        if (!mbModalBackdrop) return;
+        mbModalBackdrop.style.display = "flex";
+        requestAnimationFrame(() => {
+            mbModalBackdrop.classList.add("active");
+        });
+    }
+
+    function closeMusicBrainzModal() {
+        if (!mbModalBackdrop) return;
+        mbModalBackdrop.classList.remove("active");
+        setTimeout(() => {
+            if (!mbModalBackdrop.classList.contains("active")) {
+                mbModalBackdrop.style.display = "none";
+            }
+        }, 220);
+    }
+
+    if (mbModalCloseBtn) mbModalCloseBtn.addEventListener("click", closeMusicBrainzModal);
+    if (mbModalCancelBtn) mbModalCancelBtn.addEventListener("click", closeMusicBrainzModal);
+    if (mbModalBackdrop) {
+        mbModalBackdrop.addEventListener("click", (e) => {
+            if (e.target === mbModalBackdrop) closeMusicBrainzModal();
+        });
+    }
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && mbModalBackdrop && mbModalBackdrop.classList.contains("active")) {
+            closeMusicBrainzModal();
+        }
+    });
+
+    function renderMusicBrainzReleases(releases, expectedCount) {
+        if (!mbModalList) return;
+        mbModalList.innerHTML = "";
+
+        if (!releases || releases.length === 0) {
+            if (mbModalEmpty) {
+                mbModalEmpty.textContent = "Aucune édition trouvée pour ces termes de recherche.";
+                mbModalEmpty.style.display = "block";
+            }
+            return;
+        }
+        if (mbModalEmpty) mbModalEmpty.style.display = "none";
+
+        releases.forEach(rel => {
+            const card = document.createElement("div");
+            card.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer; transition: all 0.2s ease; gap: 12px;";
+            card.onmouseover = () => { card.style.background = "rgba(137, 180, 250, 0.1)"; card.style.borderColor = "var(--accent)"; };
+            card.onmouseout = () => { card.style.background = "rgba(255,255,255,0.03)"; card.style.borderColor = "rgba(255,255,255,0.08)"; };
+
+            const isMatchCount = expectedCount > 0 && rel.track_count === expectedCount;
+            const countBadge = isMatchCount
+                ? `<span class="badge badge-success" style="font-size: 0.75rem;">✓ ${rel.track_count} pistes (Exact)</span>`
+                : `<span class="badge badge-idle" style="font-size: 0.75rem;">${rel.track_count || "?"} pistes</span>`;
+
+            const discsBadge = (rel.medium_count && rel.medium_count > 1)
+                ? `<span class="badge badge-sm" style="background: rgba(245, 169, 127, 0.2); color: #f5a97f; font-size: 0.72rem;">${rel.medium_count} Disques réunis</span>`
+                : "";
+
+            card.innerHTML = `
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+                        <strong style="color: var(--text); font-size: 0.95rem;">${escapeHtml(rel.title)}</strong>
+                        ${countBadge}
+                        ${discsBadge}
+                        ${rel.year ? `<span class="text-muted" style="font-size: 0.8rem;">[${rel.year}]</span>` : ""}
+                        ${rel.country ? `<span class="text-muted" style="font-size: 0.78rem;">🌍 ${rel.country}</span>` : ""}
+                    </div>
+                    <div style="font-size: 0.82rem; color: var(--text-muted);">
+                        Artiste : <strong>${escapeHtml(rel.artist)}</strong> ${rel.disambiguation ? `· <em>(${escapeHtml(rel.disambiguation)})</em>` : ""}
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" style="white-space: nowrap; font-weight: 600;">
+                    Appliquer
+                </button>
+            `;
+
+            card.addEventListener("click", () => {
+                applyMusicBrainzReleaseDetail(rel.id, rel.title);
+            });
+
+            mbModalList.appendChild(card);
+        });
+    }
+
+    async function executeMusicBrainzSearch(albumVal, artistVal) {
+        const currentRows = document.querySelectorAll("#tracks-table-body tr:not(.missing-track-row)");
+        const trackCount = currentRows.length;
+
+        if (mbModalLoading) mbModalLoading.style.display = "block";
+        if (mbModalEmpty) mbModalEmpty.style.display = "none";
+        if (mbModalList) mbModalList.innerHTML = "";
+
+        try {
+            const res = await fetch("/api/musicbrainz/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    album: albumVal,
+                    artist: artistVal,
+                    expected_track_count: trackCount
+                })
+            });
+            if (!res.ok) {
+                const errText = await res.text();
+                showToast(`Erreur serveur (${res.status}) : ${errText.slice(0, 100)}`, "danger");
+                if (mbModalEmpty) {
+                    mbModalEmpty.textContent = `Erreur de recherche (${res.status})`;
+                    mbModalEmpty.style.display = "block";
+                }
+                return [];
+            }
+            const data = await res.json();
+            if (mbModalLoading) mbModalLoading.style.display = "none";
+
+            if (!data.success || !data.releases || data.releases.length === 0) {
+                if (mbModalEmpty) {
+                    mbModalEmpty.textContent = data.message || "Aucune édition trouvée pour ces termes de recherche.";
+                    mbModalEmpty.style.display = "block";
+                }
+                return [];
+            }
+
+            renderMusicBrainzReleases(data.releases, trackCount);
+            return data.releases;
+        } catch (err) {
+            if (mbModalLoading) mbModalLoading.style.display = "none";
+            if (mbModalEmpty) {
+                mbModalEmpty.textContent = `Erreur : ${err.message}`;
+                mbModalEmpty.style.display = "block";
+            }
+            showToast(`Erreur MusicBrainz : ${err.message}`, "danger");
+            return [];
+        }
+    }
+
+    if (mbModalSearchSubmit) {
+        mbModalSearchSubmit.addEventListener("click", async () => {
+            const alb = mbModalSearchAlbum ? mbModalSearchAlbum.value.trim() : "";
+            const art = mbModalSearchArtist ? mbModalSearchArtist.value.trim() : "";
+            if (!alb && !art) {
+                showToast("Saisissez au moins un nom d'album ou un artiste.", "warning");
+                return;
+            }
+            await executeMusicBrainzSearch(alb, art);
+        });
+    }
+
+    const handleSearchKeydown = (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (mbModalSearchSubmit) mbModalSearchSubmit.click();
+        }
+    };
+    if (mbModalSearchAlbum) mbModalSearchAlbum.addEventListener("keydown", handleSearchKeydown);
+    if (mbModalSearchArtist) mbModalSearchArtist.addEventListener("keydown", handleSearchKeydown);
+
+    async function applyMusicBrainzReleaseDetail(releaseId, releaseTitleFallback) {
+        if (!releaseId) return;
+        closeMusicBrainzModal();
+        if (mbMagicBtn) {
+            mbMagicBtn.disabled = true;
+            mbMagicBtn.innerHTML = `<span>Application des tags...</span>`;
+        }
+        showToast("Récupération des tags officiels et featurings...", "info");
+
+        try {
+            const albumNameVal = document.getElementById("edit-album-name")?.value.trim() || "";
+            const artistVal = document.getElementById("edit-album-artist")?.value.trim() || "";
+
+            const res = await fetch("/api/musicbrainz/release-detail", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    release_id: releaseId,
+                    album_fallback: albumNameVal,
+                    artist_fallback: artistVal
+                })
+            });
+            if (!res.ok) {
+                const errText = await res.text();
+                showToast(`Erreur serveur (${res.status}) : ${errText.slice(0, 100)}`, "danger");
+                return;
+            }
+            const data = await res.json();
+            if (!data.success) {
+                showToast(data.message || "Impossible de récupérer les détails de cette édition.", "warning");
+                return;
+            }
+
+            let modifiedCount = 0;
+
+            // 1. Mettre à jour l'artiste et le nom d'album si vides ou différents
+            const albumInput = document.getElementById("edit-album-name");
+            if (albumInput && data.title) {
+                if (albumInput.value.trim() !== data.title) {
+                    albumInput.value = data.title;
+                    albumInput.classList.add("input-highlight");
+                    setTimeout(() => albumInput.classList.remove("input-highlight"), 1200);
+                    modifiedCount++;
+                }
+            }
+
+            const artistInput = document.getElementById("edit-album-artist");
+            if (artistInput && data.artist) {
+                if (artistInput.value.trim() !== data.artist) {
+                    artistInput.value = data.artist;
+                    artistInput.classList.add("input-highlight");
+                    setTimeout(() => artistInput.classList.remove("input-highlight"), 1200);
+                    modifiedCount++;
+                }
+            }
+
+            // 2. Année (YYYY)
+            const yearInput = document.getElementById("edit-album-year");
+            if (yearInput && data.year) {
+                if (yearInput.value.trim() !== data.year) {
+                    yearInput.value = data.year;
+                    yearInput.classList.add("input-highlight");
+                    setTimeout(() => yearInput.classList.remove("input-highlight"), 1200);
+                    modifiedCount++;
+                }
+            }
+
+            // 3. Genre (détecté ou complété)
+            const genreInput = document.getElementById("edit-album-genre");
+            if (genreInput && data.genre) {
+                if (!genreInput.value.trim() || genreInput.value.trim() !== data.genre) {
+                    genreInput.value = data.genre;
+                    genreInput.classList.add("input-highlight");
+                    setTimeout(() => genreInput.classList.remove("input-highlight"), 1200);
+                    modifiedCount++;
+                }
+            }
+
+            // 4. Mettre à jour les pistes dans le tableau : numérotation séquentielle continue (multi-CD aplatis !)
+            const rows = document.querySelectorAll("#tracks-table-body tr:not(.missing-track-row)");
+            const mbTracks = data.tracks || [];
+
+            console.log(`[MusicBrainz] Détails reçus pour '${data.title}' de '${data.artist}' (${data.tracks?.length || 0} pistes, ${rows.length} lignes dans le tableau). modifiedCount initial=0`);
+
+            rows.forEach((row, idx) => {
+                const mbTrk = mbTracks[idx];
+                const seqNum = String(idx + 1).padStart(2, "0");
+
+                // Mettre à jour le badge de numéro de piste
+                const numBadge = row.querySelector(".track-num-badge");
+                if (numBadge) {
+                    numBadge.textContent = seqNum;
+                }
+                row.setAttribute("data-track-num", seqNum);
+
+                // Titre
+                const titleInput = row.querySelector(".track-title-input");
+                if (titleInput && mbTrk && mbTrk.title) {
+                    if (titleInput.value.trim() !== mbTrk.title) {
+                        titleInput.value = mbTrk.title;
+                        titleInput.classList.add("input-highlight");
+                        setTimeout(() => titleInput.classList.remove("input-highlight"), 1200);
+                        modifiedCount++;
+                    }
+                }
+
+                // Artiste de piste (avec featurings exacts)
+                const trkArtistInput = row.querySelector(".track-artist-input");
+                if (trkArtistInput) {
+                    const targetArt = (mbTrk && mbTrk.artist) ? mbTrk.artist : (data.artist || artistInput?.value.trim());
+                    if (targetArt && trkArtistInput.value.trim() !== targetArt) {
+                        trkArtistInput.value = targetArt;
+                        trkArtistInput.classList.add("input-highlight");
+                        setTimeout(() => trkArtistInput.classList.remove("input-highlight"), 1200);
+                        modifiedCount++;
+                    }
+                }
+
+                // Genre de piste
+                const trkGenreInput = row.querySelector(".track-genre-input");
+                if (trkGenreInput && data.genre) {
+                    if (!trkGenreInput.value.trim()) {
+                        trkGenreInput.value = data.genre;
+                    }
+                }
+            });
+
+            markEditorDirty();
+            saveCurrentEditorDraft();
+
+            const discNotice = (data.total_tracks && data.total_tracks !== rows.length)
+                ? ` (Attention : l'édition officielle compte ${data.total_tracks} pistes, votre dossier en contient ${rows.length})`
+                : "";
+
+            if (modifiedCount > 0) {
+                showToast(`✨ MusicBrainz : ${modifiedCount} champ(s) mis à jour sur ${rows.length} pistes.${discNotice}`, "success");
+            } else {
+                showToast(`MusicBrainz : Les tags appliqués correspondent déjà à votre saisie.${discNotice}`, "info");
+            }
+        } catch (err) {
+            showToast(`Erreur application tags MusicBrainz : ${err.message}`, "danger");
+        } finally {
+            if (mbMagicBtn) {
+                mbMagicBtn.disabled = false;
+                mbMagicBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2l-1.4 2.5L10 7 7.5 5.6zm12 9.8L22 14l-1.4 2.5L22 19l-2.5-1.4L17 19l1.4-2.5L17 14l2.5 1.4zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5L22 2zm-7.63 5.29c-.39-.39-1.02-.39-1.41 0L1.29 18.96c-.39.39-.39 1.02 0 1.41l2.34 2.34c.39.39 1.02.39 1.41 0L16.7 11.05c.39-.39.39-1.02 0-1.41l-2.33-2.35zm-1.06 3.53l-1.41-1.41 1.41-1.41 1.41 1.41-1.41 1.41z"/></svg>
+                    <span>Tags MusicBrainz</span>
+                `;
+            }
+        }
+    }
+
+    if (mbMagicBtn) {
+        mbMagicBtn.addEventListener("click", async () => {
+            const albumNameVal = document.getElementById("edit-album-name")?.value.trim() || "";
+            const artistVal = document.getElementById("edit-album-artist")?.value.trim() || "";
+
+            if (!albumNameVal && !artistVal) {
+                showToast("Renseignez au moins le nom de l'album ou l'artiste dans l'éditeur.", "warning");
+                return;
+            }
+
+            // Pré-remplir la barre de recherche intégrée à la modale
+            if (mbModalSearchAlbum) mbModalSearchAlbum.value = albumNameVal;
+            if (mbModalSearchArtist) mbModalSearchArtist.value = artistVal;
+
+            mbMagicBtn.disabled = true;
+            const origHtml = mbMagicBtn.innerHTML;
+            mbMagicBtn.innerHTML = `<span>Recherche MusicBrainz...</span>`;
+
+            try {
+                // Ouvrir immédiatement la modale avec retour visuel
+                openMusicBrainzModal();
+                const releases = await executeMusicBrainzSearch(albumNameVal, artistVal);
+
+                // S'il n'y a qu'un résultat unique, on peut l'appliquer immédiatement
+                if (releases && releases.length === 1) {
+                    await applyMusicBrainzReleaseDetail(releases[0].id, releases[0].title);
+                }
+            } catch (err) {
+                showToast(`Erreur MusicBrainz : ${err.message}`, "danger");
+            } finally {
+                mbMagicBtn.disabled = false;
+                mbMagicBtn.innerHTML = origHtml;
+            }
+        });
+    }
+
+    // ── Lookup MusicBrainz feat. (Bouton secondaire) ──────────────────────────
     if (mbLookupBtn) {
         mbLookupBtn.addEventListener("click", async () => {
             const album = document.getElementById("edit-album-name").value.trim();
@@ -419,6 +1130,7 @@ function setupEditorActions() {
     const toggleRipBtn = document.getElementById("toggle-type-rip-btn");
     const togglePlaylistBtn = document.getElementById("toggle-type-playlist-btn");
     const toggleConcertBtn = document.getElementById("toggle-type-concert-btn");
+    const toggleVideoBtn = document.getElementById("toggle-type-video-btn");
     const badgePreviewEl = document.getElementById("editor-type-badge-preview");
 
     if (toggleAutoBtn) {
@@ -449,11 +1161,11 @@ function setupEditorActions() {
             const nameInput = document.getElementById("edit-album-name");
             if (nameInput) {
                 const prevName = nameInput.value;
-                if (nameInput.value.trim().toLowerCase() === "singles & rips") {
+                if (nameInput.value.trim().toLowerCase() === "singles & rips" || nameInput.value.trim().toLowerCase() === "vidéos") {
                     // Restaurer le nom d'origine mémorisé
                     nameInput.value = nameInput.dataset.originalAlbumName || "Album";
                 } else {
-                    nameInput.value = nameInput.value.replace(/\s*\[(playlist|mix|compilation)\]/gi, "").trim();
+                    nameInput.value = nameInput.value.replace(/\s*\[(playlist|mix|compilation|vidéo|video|clip)\]/gi, "").trim();
                 }
                 const titleEl = document.getElementById("editor-album-title");
                 if (titleEl) titleEl.textContent = nameInput.value || "Album sans nom";
@@ -468,7 +1180,7 @@ function setupEditorActions() {
             let cleanedCount = 0;
             titleInputs.forEach(input => {
                 const original = input.value;
-                let cleaned = original.replace(/\s*\[(single|audio\s*rip|rip|extrait\s*vid[eé]o|vid[eé]o)\]\s*$/gi, "");
+                let cleaned = original.replace(/\s*\[(single|audio\s*rip|rip|extrait\s*vid[eé]o|vid[eé]o|clip)\]\s*$/gi, "");
                 cleaned = cleaned.replace(/\s*\([^\)]+\)\s*$/, "");
                 cleaned = cleaned.trim();
                 if (cleaned !== original && cleaned) {
@@ -571,7 +1283,39 @@ function setupEditorActions() {
             }
 
             markEditorDirty();
+            if (typeof updateEditorVideoModeUI === "function") {
+                updateEditorVideoModeUI();
+            }
             showToast("Mode Manuel ✍️ : Badge forcé en « CONCERT ».", "info");
+        });
+    }
+
+    if (toggleVideoBtn) {
+        toggleVideoBtn.addEventListener("click", () => {
+            if (!currentAlbumPath) return;
+            currentAlbumManualType = "video";
+            currentAlbumIsPlaylist = false;
+            currentAlbumIsConcert = false;
+            updateEditorTypeToggleUI("video", true);
+            updateEditorBadgePreview("video", true);
+
+            const nameInput = document.getElementById("edit-album-name");
+            if (nameInput) {
+                if (nameInput.value.trim().toLowerCase() === "singles & rips") {
+                    nameInput.dataset.originalAlbumName = nameInput.value;
+                }
+                nameInput.value = "Vidéos";
+                const titleEl = document.getElementById("editor-album-title");
+                if (titleEl) titleEl.textContent = "Vidéos";
+                nameInput.classList.add("input-highlight");
+                setTimeout(() => nameInput.classList.remove("input-highlight"), 600);
+            }
+
+            markEditorDirty();
+            if (typeof updateEditorVideoModeUI === "function") {
+                updateEditorVideoModeUI();
+            }
+            showToast("Mode Manuel ✍️ : Mode Vidéo activé (destination Vidéothèque).", "info");
         });
     }
 
@@ -579,7 +1323,7 @@ function setupEditorActions() {
     if (badgePreviewEl) {
         badgePreviewEl.addEventListener("click", () => {
             if (!currentAlbumPath) return;
-            const cycle = ["auto", "album", "single", "rip", "playlist", "concert"];
+            const cycle = ["auto", "album", "single", "rip", "playlist", "concert", "video"];
             const currentMode = currentAlbumManualType || "auto";
             const nextIdx = (cycle.indexOf(currentMode) + 1) % cycle.length;
             const nextMode = cycle[nextIdx];
@@ -596,6 +1340,128 @@ function setupEditorActions() {
                 if (togglePlaylistBtn) togglePlaylistBtn.click();
             } else if (nextMode === "concert") {
                 if (toggleConcertBtn) toggleConcertBtn.click();
+            } else if (nextMode === "video") {
+                if (toggleVideoBtn) toggleVideoBtn.click();
+            }
+        });
+    }
+
+    if (directVideoExportBtn) {
+        directVideoExportBtn.addEventListener("click", async () => {
+            if (!currentAlbumPath) {
+                await showModalAlert("Aucun élément sélectionné", "Veuillez d'abord sélectionner ou télécharger une vidéo.", "warning");
+                return;
+            }
+
+            releaseMediaHandlesForPath(currentAlbumPath);
+
+            const albumArtist = document.getElementById("edit-album-artist").value.trim() || "Artiste Inconnu";
+            const albumName = "Vidéos";
+
+            // Récupérer les pistes avec titres nettoyés (sans préfixe de numérotation)
+            const customTracks = [];
+            document.querySelectorAll("#tracks-table-body tr[data-filename]").forEach(row => {
+                const filename = row.getAttribute("data-filename");
+                const titleInput = row.querySelector(".track-title-input");
+                const artistInput = row.querySelector(".track-artist-input");
+                if (filename) {
+                    let titleVal = (titleInput ? titleInput.value.trim() : "") || filename.replace(/\.[^/.]+$/, "");
+                    titleVal = cleanVideoTitleFromArtist(titleVal, albumArtist);
+                    customTracks.push({
+                        filename: filename,
+                        title: titleVal,
+                        artist: albumArtist, // Toujours l'artiste du champ unique en haut
+                        track_number: "" // Strictement aucun numéro de piste pour les vidéos
+                    });
+                }
+            });
+
+            const targetBase = currentConfig.video_export_dir || currentConfig.video_library_dir || "";
+            if (!targetBase) {
+                await showModalAlert(
+                    "Dossier Vidéothèque introuvable",
+                    "Le dossier de votre Vidéothèque n'est pas configuré. Veuillez vérifier les Paramètres.",
+                    "warning"
+                );
+                return;
+            }
+
+            const originalBtnHtml = directVideoExportBtn.innerHTML;
+            directVideoExportBtn.disabled = true;
+            directVideoExportBtn.textContent = "🎬 Rangement dans la Vidéothèque...";
+
+            try {
+                // Étape 1 : Sauvegarde transparente des tags (sans numérotation) et renommage propre
+                await fetch("/api/album/retag", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        album_dir: currentAlbumPath,
+                        custom_album: albumName,
+                        custom_artist: albumArtist,
+                        custom_tracks: customTracks,
+                        custom_album_type: "video"
+                    })
+                });
+
+                // Étape 2 : Exportation directe dans la Vidéothèque (destination <target_base_dir>/<Artiste>/<Titre>.mp4)
+                const res = await fetch("/api/album/export", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        album_dir: currentAlbumPath,
+                        target_base_dir: targetBase,
+                        delete_temp: true,
+                        custom_album: albumName,
+                        custom_artist: albumArtist,
+                        custom_tracks: customTracks,
+                        custom_album_type: "video",
+                        conflict_policy: "overwrite"
+                    })
+                });
+
+                let result;
+                try {
+                    result = await res.json();
+                } catch (e) {
+                    throw new Error(`Erreur serveur (${res.status} ${res.statusText})`);
+                }
+
+                if (res.ok && result.success) {
+                    delete editorDirtyState[currentAlbumPath];
+
+                    if (typeof loadLibrary === "function") loadLibrary();
+                    if (typeof refreshAlbumNavList === "function") await refreshAlbumNavList();
+                    if (typeof loadExternalTempAlbums === "function") loadExternalTempAlbums();
+                    if (typeof window.refreshSearchBadges === "function") window.refreshSearchBadges();
+
+                    if (window.AudioPlayer) {
+                        if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") {
+                            window.AudioPlayer.loadAndRenderVideosCatalog(true);
+                        }
+                        if (typeof window.AudioPlayer.loadAndRenderConcertsCatalog === "function") {
+                            window.AudioPlayer.loadAndRenderConcertsCatalog(true);
+                        }
+                    }
+
+                    if (tempAlbumsList.length > 0) {
+                        currentAlbumIndex = Math.min(currentAlbumIndex, tempAlbumsList.length - 1);
+                        await loadAlbumInEditor(tempAlbumsList[currentAlbumIndex].path);
+                    } else {
+                        resetEditorState("Dossier temporaire vide", "Toutes les vidéos et albums temporaires ont été traités.");
+                    }
+
+                    const successMsg = `🎬 Clip Vidéo rangé avec succès !\n\nDestination : ${result.export_dir}\nFichier(s) : ${result.files_count}\n\n✨ Retrouvez votre vidéo dans le Lecteur > Onglet « 🎬 Clips » !\nLe dossier temporaire a été nettoyé.`;
+
+                    await showModalAlert("Vidéothèque mise à jour", successMsg, "success");
+                } else {
+                    await showModalAlert("Erreur d'exportation vidéo", result.message || "Erreur lors du rangement de la vidéo.", "danger");
+                }
+            } catch (err) {
+                await showModalAlert("Erreur", err.message, "danger");
+            } finally {
+                directVideoExportBtn.disabled = false;
+                directVideoExportBtn.innerHTML = originalBtnHtml;
             }
         });
     }
@@ -610,7 +1476,8 @@ function setupEditorActions() {
         exportPanel.style.display = exportPanel.style.display === "none" ? "block" : "none";
         currentSmartDestInfo = null;
         
-        const isVideo = (currentAlbumPath && (currentAlbumPath.includes("[Vidéo]") || currentAlbumPath.includes("[Video]"))) ||
+        const isVideo = currentAlbumManualType === "video" || currentAlbumDetectedType === "video" ||
+            (currentAlbumPath && (currentAlbumPath.includes("[Vidéo]") || currentAlbumPath.includes("[Video]"))) ||
             document.querySelectorAll('#tracks-table-body td[title$=".mp4"], #tracks-table-body td[title$=".mkv"], #tracks-table-body td[title$=".webm"]').length > 0;
             
         const targetInput = document.getElementById("export-dir-input");
@@ -623,7 +1490,7 @@ function setupEditorActions() {
         const smartConflictMsg = document.getElementById("smart-export-conflict-msg");
 
         if (isVideo) {
-            targetInput.value = currentConfig.video_export_dir || "";
+            targetInput.value = currentConfig.video_export_dir || currentConfig.video_library_dir || "";
             if (currentAlbumIsConcert) {
                 if (titleEl) titleEl.innerHTML = `Export Concert / Live : <code>Artiste / Concerts / [Titre].mp4</code>`;
                 if (descEl) descEl.textContent = "Le concert sera exporté dans votre dossier Vidéos YTM sous le sous-dossier Concerts de l'artiste (isolé des clips).";
@@ -687,6 +1554,33 @@ function setupEditorActions() {
         updateQuickDestButtons("export-dir-input");
         updateEditorExportUIState();
     });
+
+    const editorExportCartBtn = document.getElementById("btn-editor-export-cart");
+    if (editorExportCartBtn) {
+        editorExportCartBtn.addEventListener("click", () => {
+            if (!currentAlbumPath) {
+                showToast("Veuillez d'abord sélectionner un album ou une vidéo dans l'éditeur.", "warning");
+                return;
+            }
+            const isVideo = isCurrentEditorItemVideo();
+            const artist = (document.getElementById("edit-album-artist")?.value || "").trim() || "Artiste";
+            const albumName = (document.getElementById("edit-album-name")?.value || "").trim() || "Album";
+            const trackRows = document.querySelectorAll("#tracks-table-body tr:not(.missing-track-row)");
+
+            if (typeof window.addToExportCart === "function") {
+                window.addToExportCart({
+                    type: isVideo ? "video" : "album",
+                    path: currentAlbumPath,
+                    title: isVideo ? (trackRows[0]?.querySelector(".track-title-input")?.value || albumName) : albumName,
+                    artist: artist,
+                    album: albumName,
+                    year: document.getElementById("edit-album-year")?.value || "",
+                    genre: document.getElementById("edit-album-genre")?.value || "",
+                    tracks_count: trackRows.length || 1
+                });
+            }
+        });
+    }
 
     cancelExportBtn.addEventListener("click", () => {
         exportPanel.style.display = "none";
@@ -755,16 +1649,23 @@ function setupEditorActions() {
                             rename_files: true,
                             clean_titles: true,
                             custom_tracks: customTracks.length > 0 ? customTracks : undefined,
-                            is_playlist: currentAlbumIsPlaylist
+                            is_playlist: currentAlbumIsPlaylist,
+                            custom_album_type: currentAlbumManualType || (currentAlbumDetectedType === "video" ? "video" : "auto")
                         })
                     });
                     const saveResult = await saveRes.json();
                     if (saveResult.success) {
-                        clearCurrentEditorDraft(currentAlbumPath);
+                        const oldP = currentAlbumPath;
+                        clearCurrentEditorDraft(oldP);
                         if (saveResult.album_dir) {
                             currentAlbumPath = saveResult.album_dir;
+                            clearCurrentEditorDraft(currentAlbumPath);
                         }
+                        delete editorDraftsByAlbum[oldP];
+                        delete editorDraftsByAlbum[currentAlbumPath];
+                        delete editorDirtyState[oldP];
                         delete editorDirtyState[currentAlbumPath];
+                        clearEditorDirty();
                     } else {
                         showToast("Avertissement : la sauvegarde préalable des tags a échoué (" + saveResult.message + ").", "warning");
                     }
@@ -809,6 +1710,7 @@ function setupEditorActions() {
         confirmExportBtn.textContent = "Exportation en cours...";
 
         try {
+            const effectiveAlbumType = currentAlbumManualType || (currentAlbumDetectedType === "video" ? "video" : undefined);
             const res = await fetch("/api/album/export", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -823,7 +1725,8 @@ function setupEditorActions() {
                     custom_tracks: (exportWithCustomTags && customTracks.length > 0) ? customTracks : undefined,
                     is_playlist: currentAlbumIsPlaylist,
                     is_concert: currentAlbumIsConcert,
-                    conflict_policy: conflictPolicy
+                    conflict_policy: conflictPolicy,
+                    custom_album_type: effectiveAlbumType
                 })
             });
 
@@ -835,9 +1738,17 @@ function setupEditorActions() {
             }
 
             if (res.ok && result.success) {
-                let successMsg = `Album exporté avec succès !\n\nDestination : ${result.export_dir}\nFichiers exportés : ${result.files_count}${result.is_smart ? "\n\n✨ Intégré directement dans votre collection musicale !" : ""}${deleteTemp ? "\n\nLe dossier temporaire a été intégralement vidé." : ""}`;
+                const isVideoExport = !!(result.album === "Vidéos" || result.album === "Concerts" || effectiveAlbumType === "video" || currentAlbumIsConcert);
+
+                let successMsg = "";
+                if (isVideoExport) {
+                    const isConcert = result.album === "Concerts" || currentAlbumIsConcert;
+                    successMsg = `🎬 ${isConcert ? "Concert" : "Clip Vidéo"} exporté avec succès !\n\nDestination : ${result.export_dir}\nFichiers exportés : ${result.files_count}\n\n✨ Retrouvez votre vidéo dans le Lecteur > Onglet « ${isConcert ? "🎸 Concerts" : "🎬 Clips"} » !${deleteTemp ? "\n\nLe dossier temporaire a été nettoyé." : ""}`;
+                } else {
+                    successMsg = `Album exporté avec succès !\n\nDestination : ${result.export_dir}\nFichiers exportés : ${result.files_count}${result.is_smart ? "\n\n✨ Intégré directement dans votre collection musicale !" : ""}${deleteTemp ? "\n\nLe dossier temporaire a été intégralement vidé." : ""}`;
+                }
                 if (result.conflict) {
-                    successMsg += `\n\nℹ️ Cet album existait déjà dans votre collection : fusion effectuée (${result.conflict_policy === 'overwrite' ? 'pistes remplacées' : 'pistes existantes préservées sans doublon'}).`;
+                    successMsg += `\n\nℹ️ Cet élément existait déjà : fusion effectuée (${result.conflict_policy === 'overwrite' ? 'fichiers remplacés' : 'fichiers existants préservés sans doublon'}).`;
                 }
 
                 exportPanel.style.display = "none";
@@ -860,8 +1771,16 @@ function setupEditorActions() {
                     enrichItemsWithLibraryStatus();
                 }
                 // Auto-sync immédiate du Lecteur Audio (Collection & Temporaire)
-                if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
-                    window.AudioPlayer.loadLibraryData(true);
+                if (window.AudioPlayer) {
+                    if (typeof window.AudioPlayer.loadLibraryData === "function") {
+                        window.AudioPlayer.loadLibraryData(true);
+                    }
+                    if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") {
+                        window.AudioPlayer.loadAndRenderVideosCatalog(true);
+                    }
+                    if (typeof window.AudioPlayer.loadAndRenderConcertsCatalog === "function") {
+                        window.AudioPlayer.loadAndRenderConcertsCatalog(true);
+                    }
                 }
 
                 if (deleteTemp) {
@@ -889,7 +1808,7 @@ function setupEditorActions() {
                 }
 
                 await showModalAlert(
-                    "Exportation réussie",
+                    isVideoExport ? "Exportation Vidéo Réussie" : "Exportation réussie",
                     successMsg,
                     "success"
                 );
@@ -912,6 +1831,8 @@ function setupEditorActions() {
         const year = document.getElementById("edit-album-year").value.trim();
         const genre = document.getElementById("edit-album-genre").value.trim();
 
+        const isVideoItem = isCurrentEditorItemVideo();
+
         // Récupérer les pistes personnalisées
         const customTracks = [];
         const rows = document.querySelectorAll("#tracks-table-body tr:not(.missing-track-row)");
@@ -922,16 +1843,21 @@ function setupEditorActions() {
             const artistInput = row.querySelector(".track-artist-input");
             const genreInput = row.querySelector(".track-genre-input");
             if (filename) {
+                let cleanTitle = titleInput ? titleInput.value.trim() : "";
+                if (isVideoItem) {
+                    cleanTitle = cleanVideoTitleFromArtist(cleanTitle, albumArtist);
+                }
                 customTracks.push({
                     filename: filename,
-                    title: titleInput ? titleInput.value.trim() : "",
-                    artist: artistInput ? artistInput.value.trim() : "",
-                    genre: genreInput ? genreInput.value.trim() : "",
-                    track_number: trackNum
+                    title: cleanTitle,
+                    artist: isVideoItem ? albumArtist : (artistInput ? artistInput.value.trim() : ""),
+                    genre: isVideoItem ? "" : (genreInput ? genreInput.value.trim() : ""),
+                    track_number: isVideoItem ? "" : trackNum
                 });
             }
         });
 
+        clearTimeout(_editorDraftSaveTimer);
         applyBtn.disabled = true;
         applyBtn.textContent = "Sauvegarde en cours...";
 
@@ -941,15 +1867,15 @@ function setupEditorActions() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     album_dir: currentAlbumPath,
-                    custom_album: albumName,
+                    custom_album: isVideoItem ? (albumName || "Vidéos") : albumName,
                     custom_artist: albumArtist,
-                    custom_year: year,
-                    custom_genre: genre,
+                    custom_year: isVideoItem ? "" : year,
+                    custom_genre: isVideoItem ? "" : genre,
                     rename_files: true,
                     clean_titles: true,
                     custom_tracks: customTracks.length > 0 ? customTracks : undefined,
                     is_playlist: currentAlbumIsPlaylist,
-                    custom_album_type: currentAlbumManualType || "auto"
+                    custom_album_type: currentAlbumManualType || (isVideoItem ? "video" : "auto")
                 })
             });
 
@@ -959,7 +1885,14 @@ function setupEditorActions() {
                 clearCurrentEditorDraft(oldAlbumPath);
                 if (result.album_dir) {
                     currentAlbumPath = result.album_dir;
+                    clearCurrentEditorDraft(currentAlbumPath);
                 }
+
+                delete editorDraftsByAlbum[oldAlbumPath];
+                delete editorDraftsByAlbum[currentAlbumPath];
+                delete editorDirtyState[oldAlbumPath];
+                delete editorDirtyState[currentAlbumPath];
+                clearEditorDirty();
 
                 if (window.AudioPlayer && typeof window.AudioPlayer.remapAlbumPaths === "function" && oldAlbumPath !== currentAlbumPath) {
                     window.AudioPlayer.remapAlbumPaths(oldAlbumPath, currentAlbumPath, {
@@ -970,25 +1903,36 @@ function setupEditorActions() {
                     });
                 }
 
-                await showModalAlert("Succès", isCollectionEditorMode ? "Tags enregistrés et collection mise à jour !" : "Tags sauvegardés et album mis à jour !", "success");
-                if (isCollectionEditorMode) {
+                const isVideosMode = (window.editorSubMode === "videos" || isVideoItem);
+                await showModalAlert("Succès", isVideosMode ? "Tags de la vidéo enregistrés avec succès !" : (isCollectionEditorMode ? "Tags enregistrés et collection mise à jour !" : "Tags sauvegardés et album mis à jour !"), "success");
+                if (isVideosMode) {
+                    await loadVideoLibraryForEditor(true);
+                    if (videosSelect) videosSelect.value = currentAlbumPath;
+                    await loadAlbumInEditor(currentAlbumPath, "videos");
+                    if (window.AudioPlayer) {
+                        if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") window.AudioPlayer.loadAndRenderVideosCatalog(true);
+                        if (typeof window.AudioPlayer.loadAndRenderConcertsCatalog === "function") window.AudioPlayer.loadAndRenderConcertsCatalog(true);
+                    }
+                } else if (isCollectionEditorMode) {
                     await loadCollectionAlbumsForEditor();
-                    await loadAlbumInEditor(currentAlbumPath, true);
+                    await loadAlbumInEditor(currentAlbumPath, "collection");
                     if (window.AudioPlayer) {
                         if (typeof window.AudioPlayer.loadLibraryData === "function") window.AudioPlayer.loadLibraryData(true);
                         if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") window.AudioPlayer.loadAndRenderVideosCatalog(true);
+                        if (typeof window.AudioPlayer.loadAndRenderConcertsCatalog === "function") window.AudioPlayer.loadAndRenderConcertsCatalog(true);
                     }
                     if (typeof loadGenreBatchAlbums === "function") loadGenreBatchAlbums(true);
                     if (typeof loadCoversGalleryAlbums === "function") loadCoversGalleryAlbums(true);
                 } else {
-                    await loadAlbumInEditor(currentAlbumPath, false);
                     await refreshAlbumNavList();
+                    await loadAlbumInEditor(currentAlbumPath, "temp");
                     if (typeof loadExternalTempAlbums === "function") loadExternalTempAlbums();
                     if (typeof updateTempTabBadge === "function") updateTempTabBadge();
                     if (typeof loadLibrary === "function") loadLibrary();
                     if (window.AudioPlayer) {
                         if (typeof window.AudioPlayer.loadLibraryData === "function") window.AudioPlayer.loadLibraryData(true);
                         if (typeof window.AudioPlayer.loadAndRenderVideosCatalog === "function") window.AudioPlayer.loadAndRenderVideosCatalog(true);
+                        if (typeof window.AudioPlayer.loadAndRenderConcertsCatalog === "function") window.AudioPlayer.loadAndRenderConcertsCatalog(true);
                     }
                     if (typeof loadGenreBatchAlbums === "function") loadGenreBatchAlbums(true);
                     if (typeof loadCoversGalleryAlbums === "function") loadCoversGalleryAlbums(true);
@@ -1020,6 +1964,12 @@ function setupEditorActions() {
     deleteCurrentBtn.addEventListener("click", async () => {
         if (!currentAlbumPath) return;
         releaseMediaHandlesForPath(currentAlbumPath);
+
+        if (window.editorSubMode === "videos") {
+            const vidTitle = document.getElementById("editor-album-title")?.textContent.trim() || "Vidéo";
+            await confirmDeleteCollectionItem(currentAlbumPath, "video", vidTitle);
+            return;
+        }
 
         if (isCollectionEditorMode) {
             const albumName = document.getElementById("edit-album-name")?.value.trim() || document.getElementById("editor-album-title")?.textContent.trim() || "Album";
@@ -1067,6 +2017,46 @@ function setupEditorActions() {
     if (navPrevBtn) navPrevBtn.addEventListener("click", navPrevAlbum);
     if (navNextBtn) navNextBtn.addEventListener("click", navNextAlbum);
 
+    // Bascule de l'emplacement des flèches (Gauche / Droite)
+    const navPosBtn = document.getElementById("album-nav-pos-btn");
+    const navBarEl = document.getElementById("album-nav-bar");
+    if (navPosBtn && navBarEl) {
+        const savedPos = localStorage.getItem("ytm_album_nav_pos") || "left";
+        if (savedPos === "right") {
+            navBarEl.classList.add("nav-pos-right");
+            navPosBtn.textContent = "⇄ Flèches à gauche";
+            navPosBtn.title = "Placer les flèches de navigation à gauche";
+        } else {
+            navPosBtn.textContent = "⇄ Flèches à droite";
+            navPosBtn.title = "Placer les flèches de navigation à droite";
+        }
+        navPosBtn.addEventListener("click", () => {
+            const isRight = navBarEl.classList.toggle("nav-pos-right");
+            const newPos = isRight ? "right" : "left";
+            localStorage.setItem("ytm_album_nav_pos", newPos);
+            navPosBtn.textContent = isRight ? "⇄ Flèches à gauche" : "⇄ Flèches à droite";
+            navPosBtn.title = isRight ? "Placer les flèches de navigation à gauche" : "Placer les flèches de navigation à droite";
+            if (typeof showToast === "function") {
+                showToast(`Flèches de navigation fixées à ${isRight ? "droite" : "gauche"}`, "info", 2000);
+            }
+        });
+    }
+
+    // Raccourcis clavier universels dans l'éditeur : Alt + Flèche Gauche / Droite
+    document.addEventListener("keydown", (e) => {
+        if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+            const navBar = document.getElementById("album-nav-bar");
+            if (navBar && navBar.style.display !== "none" && tempAlbumsList && tempAlbumsList.length > 1) {
+                e.preventDefault();
+                if (e.key === "ArrowLeft") {
+                    navPrevAlbum();
+                } else {
+                    navNextAlbum();
+                }
+            }
+        }
+    });
+
     // Bouton "Tout exporter"
     const exportAllEditorBtn = document.getElementById("export-all-editor-btn");
     if (exportAllEditorBtn) {
@@ -1098,7 +2088,7 @@ function setupEditorActions() {
                         const draft = editorDraftsByAlbum[albPath];
                         if (draft) {
                             try {
-                                await fetch("/api/album/retag", {
+                                const retagRes = await fetch("/api/album/retag", {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({
@@ -1113,7 +2103,14 @@ function setupEditorActions() {
                                         is_playlist: draft.is_playlist
                                     })
                                 });
+                                const retagData = await retagRes.json();
                                 clearCurrentEditorDraft(albPath);
+                                if (retagData && retagData.album_dir) {
+                                    clearCurrentEditorDraft(retagData.album_dir);
+                                    delete editorDraftsByAlbum[retagData.album_dir];
+                                    delete editorDirtyState[retagData.album_dir];
+                                }
+                                delete editorDraftsByAlbum[albPath];
                                 delete editorDirtyState[albPath];
                             } catch (e) {
                                 console.warn("Erreur sauvegarde draft:", e);
@@ -1239,8 +2236,8 @@ function updateAlbumNavUI() {
     const total = tempAlbumsList.length;
     const current = currentAlbumIndex >= 0 ? currentAlbumIndex + 1 : 1;
     const albumName = tempAlbumsList[currentAlbumIndex]?.name || "";
-    indicator.textContent = `${current} / ${total} — ${albumName}`;
-    indicator.title = albumName;
+    indicator.innerHTML = `<span class="album-nav-badge">${current} / ${total}</span> <span class="album-nav-sep">—</span> <span class="album-nav-title" title="${escapeHtml(albumName)}">${escapeHtml(albumName)}</span>`;
+    indicator.title = `${current} / ${total} — ${albumName}`;
 
     prevBtn.disabled = (currentAlbumIndex <= 0);
     nextBtn.disabled = (currentAlbumIndex >= total - 1);
@@ -1315,6 +2312,7 @@ function saveCurrentEditorDraft() {
 
 function clearCurrentEditorDraft(albumPath) {
     if (!albumPath) return;
+    clearTimeout(_editorDraftSaveTimer);
     delete editorDraftsByAlbum[albumPath];
     delete editorDirtyState[albumPath];
 
@@ -1420,6 +2418,9 @@ function resetEditorState(customTitle = "Sélectionnez un album", customPath = "
     clearEditorDirty();
     updateAlbumNavUI();
     updateEditorInteractiveState();
+    if (typeof updateEditorVideoModeUI === "function") {
+        updateEditorVideoModeUI();
+    }
 }
 
 function updateEditorInteractiveState() {
@@ -1452,8 +2453,10 @@ function updateEditorInteractiveState() {
     const albumActionBtnIds = [
         "apply-uniform-btn",            // Sauvegarder les tags
         "open-export-modal-btn",        // Exporter l'Album
+        "direct-video-export-btn",      // Ranger dans la Vidéothèque
         "btn-search-cover-ytm",         // Changer jaquette
         "editor-play-album-btn",        // Écouter l'album
+        "musicbrainz-magic-tag-btn",    // Tags MusicBrainz Magiques
         "musicbrainz-lookup-btn",       // feat. MusicBrainz
         "open-folder-btn",              // Ouvrir Dossier
         "delete-current-album-btn",     // Supprimer (Temp / Collection)
@@ -1464,7 +2467,8 @@ function updateEditorInteractiveState() {
         "toggle-type-single-btn",       // Type Single
         "toggle-type-rip-btn",          // Type Rip Audio
         "toggle-type-playlist-btn",     // Type Playlist
-        "toggle-type-concert-btn"       // Type Concert & Live
+        "toggle-type-concert-btn",      // Type Concert & Live
+        "toggle-type-video-btn"         // Type Clip Vidéo
     ];
 
     albumActionBtnIds.forEach(id => {
@@ -1694,6 +2698,20 @@ function setupEditorDirtyTracking() {
         artInput.addEventListener("input", () => {
             updateEditorAlbumsDatalist(artInput.value);
             updateCollectionMatchBadges();
+            if (isCurrentEditorItemVideo()) {
+                const newArt = artInput.value.trim();
+                document.querySelectorAll("#tracks-table-body tr").forEach(tr => {
+                    const trackArtistInput = tr.querySelector(".track-artist-input");
+                    if (trackArtistInput) trackArtistInput.value = artInput.value;
+                    const titleInput = tr.querySelector(".track-title-input");
+                    if (titleInput && newArt) {
+                        let clean = cleanVideoTitleFromArtist(titleInput.value, newArt);
+                        if (clean && clean !== titleInput.value) {
+                            titleInput.value = clean;
+                        }
+                    }
+                });
+            }
         });
         artInput.addEventListener("blur", () => {
             if (cachedTagSuggestions && cachedTagSuggestions.artists) {
@@ -1706,6 +2724,20 @@ function setupEditorDirtyTracking() {
             }
             updateEditorAlbumsDatalist(artInput.value);
             updateCollectionMatchBadges();
+            if (isCurrentEditorItemVideo()) {
+                const newArt = artInput.value.trim();
+                document.querySelectorAll("#tracks-table-body tr").forEach(tr => {
+                    const trackArtistInput = tr.querySelector(".track-artist-input");
+                    if (trackArtistInput) trackArtistInput.value = artInput.value;
+                    const titleInput = tr.querySelector(".track-title-input");
+                    if (titleInput && newArt) {
+                        let clean = cleanVideoTitleFromArtist(titleInput.value, newArt);
+                        if (clean && clean !== titleInput.value) {
+                            titleInput.value = clean;
+                        }
+                    }
+                });
+            }
         });
     }
 
@@ -1785,21 +2817,42 @@ function setupEditorDirtyTracking() {
 }
 
 // Charger les données d'un album dans l'éditeur
-async function loadAlbumInEditor(albumPath, isCollection = false) {
+async function loadAlbumInEditor(albumPath, modeOrIsCollection = null) {
     currentAlbumPath = albumPath;
-    if (isCollection !== undefined) {
-        isCollectionEditorMode = !!isCollection;
+
+    // Déterminer le sous-mode de manière robuste :
+    const pathLow = String(albumPath || "").toLowerCase();
+    const isVideoFile = pathLow.endsWith(".mp4") || pathLow.endsWith(".mkv") || pathLow.endsWith(".webm") || pathLow.endsWith(".avi") || pathLow.endsWith(".mov") || pathLow.endsWith(".m4v");
+
+    let targetMode = "temp";
+    if (modeOrIsCollection === "videos" || window.editorSubMode === "videos" || isVideoFile) {
+        targetMode = "videos";
+    } else if (modeOrIsCollection === "collection" || modeOrIsCollection === true) {
+        targetMode = "collection";
+    } else if (modeOrIsCollection === "temp" || modeOrIsCollection === false) {
+        targetMode = "temp";
+    } else if (window.editorSubMode) {
+        targetMode = window.editorSubMode;
     }
-    window.editorSubMode = isCollectionEditorMode ? "collection" : "temp";
+
+    window.editorSourceMode = targetMode;
+    window.editorWorkMode = "single";
+    window.editorSubMode = targetMode;
+    isCollectionEditorMode = (targetMode === "collection");
     updateEditorSourceModeUI();
 
-    if (!isCollectionEditorMode) {
+    if (targetMode === "temp") {
         if (tempAlbumsList.length === 0) await refreshAlbumNavList();
         updateAlbumNavUI();
-    } else {
+    } else if (targetMode === "collection") {
         const select = document.getElementById("editor-collection-select");
         if (select && albumPath && select.value !== albumPath) {
             select.value = albumPath;
+        }
+    } else if (targetMode === "videos") {
+        const vSelect = document.getElementById("editor-videos-select");
+        if (vSelect && albumPath && vSelect.value !== albumPath) {
+            vSelect.value = albumPath;
         }
     }
     try {
@@ -1807,23 +2860,34 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
         if (!res.ok) throw new Error("Album non trouvé");
         const info = await res.json();
 
-        if (isCollectionEditorMode) {
+        if (targetMode === "collection") {
             const select = document.getElementById("editor-collection-select");
             if (select && albumPath) {
-                let found = false;
                 for (let i = 0; i < select.options.length; i++) {
                     if (select.options[i].value === albumPath) {
                         select.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        } else if (targetMode === "videos") {
+            const vSelect = document.getElementById("editor-videos-select");
+            if (vSelect && albumPath) {
+                let found = false;
+                for (let i = 0; i < vSelect.options.length; i++) {
+                    if (vSelect.options[i].value === albumPath) {
+                        vSelect.selectedIndex = i;
                         found = true;
                         break;
                     }
                 }
-                if (!found && info.is_single_file) {
+                if (!found) {
                     const opt = document.createElement("option");
                     opt.value = albumPath;
-                    opt.textContent = `🎬 ${info.album_artist || "Artiste inconnu"} - ${info.album_name || "Média"}`;
-                    select.appendChild(opt);
-                    select.value = albumPath;
+                    const typeIcon = (info.album_type === "concert" || info.is_concert) ? "🎸 [Concert]" : "🎬 [Clip]";
+                    opt.textContent = `${typeIcon} ${info.album_artist || "Inconnu"} - ${info.album_name || "Média"}`;
+                    vSelect.appendChild(opt);
+                    vSelect.value = albumPath;
                 }
             }
         }
@@ -1857,8 +2921,13 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
             : !!info.is_concert;
 
         const isSinglesRips = !currentAlbumIsPlaylist && !currentAlbumIsConcert && info.album_name && info.album_name.toLowerCase() === "singles & rips";
+        const isVideoFolder = info.album_type === "video" || info.album_type === "clip" || !!info.is_video || (info.tracks && info.tracks.some(t => {
+            const ext = (t.filepath || t.filename || "").toLowerCase();
+            return ext.endsWith(".mp4") || ext.endsWith(".mkv") || ext.endsWith(".webm");
+        }));
         let initialToggleMode = info.album_type || "album";
-        if (currentAlbumIsPlaylist) initialToggleMode = "playlist";
+        if (isVideoFolder && !currentAlbumIsConcert) initialToggleMode = "video";
+        else if (currentAlbumIsPlaylist) initialToggleMode = "playlist";
         else if (currentAlbumIsConcert) initialToggleMode = "concert";
         else if (isSinglesRips) initialToggleMode = "rip";
 
@@ -1967,6 +3036,9 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
                 <td class="text-muted" style="font-family: var(--font-mono); font-size: 0.8rem;" title="${escapeHtml(track.filename)}">${escapeHtml(track.filename)}</td>
                 <td style="text-align: center; white-space: nowrap;">
                     <div style="display: inline-flex; gap: 4px; justify-content: center;">
+                        <button type="button" class="btn btn-ghost btn-sm btn-editor-track-export" title="Ajouter ce morceau au panier d'export de l'Atelier" style="padding: 3px 6px; color: var(--accent, #89b4fa);">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        </button>
                         <button type="button" class="btn btn-ghost btn-sm btn-editor-track-add-playlist" title="Ajouter ce morceau à une playlist" style="padding: 3px 6px;">
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
                         </button>
@@ -1977,9 +3049,31 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
                 </td>
             `;
 
+            if (isCurrentEditorItemVideo()) {
+                const tdNum = tr.children[0];
+                const tdArtist = tr.children[2];
+                const tdGenre = tr.children[3];
+                if (tdNum) tdNum.style.display = "none";
+                if (tdArtist) tdArtist.style.display = "none";
+                if (tdGenre) tdGenre.style.display = "none";
+                const curArt = (document.getElementById("edit-album-artist")?.value || "").trim();
+                const trackArtistInput = tr.querySelector(".track-artist-input");
+                if (trackArtistInput && curArt) {
+                    trackArtistInput.value = curArt;
+                }
+                const titleInput = tr.querySelector(".track-title-input");
+                if (titleInput) {
+                    titleInput.placeholder = "Titre de la vidéo (nom du fichier)";
+                    let clean = cleanVideoTitleFromArtist(titleInput.value, curArt);
+                    if (clean && clean !== titleInput.value) {
+                        titleInput.value = clean;
+                    }
+                }
+            }
+
             const btnPlay = tr.querySelector(".btn-editor-track-add-playlist");
             if (btnPlay) {
-                if (currentAlbumIsConcert) {
+                if (currentAlbumIsConcert || isCurrentEditorItemVideo()) {
                     btnPlay.style.display = "none";
                 } else {
                     btnPlay.addEventListener("click", () => {
@@ -2001,6 +3095,25 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
                 btnTrash.addEventListener("click", () => {
                     const fullPath = track.path || (info.album_dir ? `${info.album_dir}\\${track.filename}` : track.filename);
                     confirmDeleteCollectionItem(fullPath, "track", fields.title || track.filename);
+                });
+            }
+
+            const btnTrackExp = tr.querySelector(".btn-editor-track-export");
+            if (btnTrackExp) {
+                btnTrackExp.addEventListener("click", () => {
+                    const fullPath = track.path || (info.album_dir ? `${info.album_dir}\\${track.filename}` : track.filename);
+                    if (typeof window.addToExportCart === "function") {
+                        window.addToExportCart({
+                            type: isCurrentEditorItemVideo() ? "video" : "track",
+                            path: fullPath,
+                            title: tr.querySelector(".track-title-input")?.value || fields.title || track.title || track.filename,
+                            artist: tr.querySelector(".track-artist-input")?.value || fields.artist || track.artist || info.album_artist || "Artiste",
+                            album: effectiveAlbumName || "",
+                            year: document.getElementById("edit-album-year")?.value || info.album_year || "",
+                            genre: tr.querySelector(".track-genre-input")?.value || fields.genre || track.genre || "",
+                            track_num: trackNum
+                        });
+                    }
                 });
             }
 
@@ -2077,6 +3190,10 @@ async function loadAlbumInEditor(albumPath, isCollection = false) {
         } else {
             tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Aucun morceau audio trouvé dans ce dossier.</td></tr>`;
         }
+
+        if (typeof updateEditorVideoModeUI === "function") {
+            updateEditorVideoModeUI();
+        }
     } catch (err) {
         console.error("Erreur chargement album:", err);
         resetEditorState();
@@ -2095,23 +3212,18 @@ const UNIVERSAL_GENRE_PRESETS = [
     "Soundtrack", "Ambient", "R&B / Soul", "Punk", "Disco"
 ];
 
+function setGenreBatchScope(scope) {
+    if (scope === "temp") {
+        window.editorSourceMode = "temp";
+    } else if (scope === "library" || scope === "collection") {
+        window.editorSourceMode = "collection";
+    }
+}
+window.setGenreBatchScope = setGenreBatchScope;
+
 function initGenreBatchUI() {
     if (window._genreBatchUIInitialized) return;
     window._genreBatchUIInitialized = true;
-
-    // Boutons de Portée (Scope)
-    const scopeContainer = document.getElementById("genre-batch-scope-group");
-    if (scopeContainer) {
-        scopeContainer.addEventListener("click", (e) => {
-            const btn = e.target.closest(".genre-scope-btn");
-            if (!btn) return;
-            const scope = btn.dataset.scope || "all";
-            window.genreBatchCurrentScope = scope;
-            scopeContainer.querySelectorAll(".genre-scope-btn").forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-            renderGenreBatchTable();
-        });
-    }
 
     // Champ de Recherche
     const searchInput = document.getElementById("genre-batch-search-input");
@@ -2139,7 +3251,20 @@ function initGenreBatchUI() {
         });
     }
 
-    // Champ Genre Cible
+    // Champs Cibles du Lot (Artiste, Genre, Année)
+    const targetArtistInput = document.getElementById("batch-target-artist-input");
+    if (targetArtistInput) {
+        targetArtistInput.addEventListener("input", () => {
+            updateGenreBatchSelectionUI();
+        });
+        targetArtistInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                applyGenreBatch();
+            }
+        });
+    }
+
     const targetInput = document.getElementById("genre-batch-target-input");
     if (targetInput) {
         targetInput.addEventListener("input", () => {
@@ -2153,11 +3278,32 @@ function initGenreBatchUI() {
         });
     }
 
-    // Bouton Appliquer le Genre
+    const targetYearInput = document.getElementById("batch-target-year-input");
+    if (targetYearInput) {
+        targetYearInput.addEventListener("input", () => {
+            updateGenreBatchSelectionUI();
+        });
+        targetYearInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                applyGenreBatch();
+            }
+        });
+    }
+
+    // Bouton Appliquer les Tags
     const applyBtn = document.getElementById("genre-batch-apply-btn");
     if (applyBtn) {
         applyBtn.addEventListener("click", () => {
             applyGenreBatch();
+        });
+    }
+
+    // Bouton Détecter Années officielles par lot (MusicBrainz / iTunes)
+    const batchDetectYearsBtn = document.getElementById("batch-detect-years-btn");
+    if (batchDetectYearsBtn) {
+        batchDetectYearsBtn.addEventListener("click", () => {
+            batchDetectOfficialYears();
         });
     }
 
@@ -2235,26 +3381,22 @@ async function loadGenreBatchAlbums(forceRefresh = false) {
 }
 
 function updateGenreScopeBadges() {
-    const allCount = (window.genreBatchAlbums || []).length;
     let libCount = 0;
     let tempCount = 0;
-    let missingCount = 0;
 
     (window.genreBatchAlbums || []).forEach(alb => {
-        if (alb.source === "library" || !alb.source) libCount++;
-        else if (alb.source === "temp") tempCount++;
-        if (!alb.genre || !String(alb.genre).trim()) missingCount++;
+        if (alb.source === "temp") tempCount++;
+        else libCount++;
     });
 
-    const bAll = document.getElementById("genre-scope-count-all");
-    const bLib = document.getElementById("genre-scope-count-lib");
-    const bTemp = document.getElementById("genre-scope-count-temp");
-    const bMissing = document.getElementById("genre-scope-count-missing");
-
-    if (bAll) bAll.textContent = allCount;
-    if (bLib) bLib.textContent = libCount;
-    if (bTemp) bTemp.textContent = tempCount;
-    if (bMissing) bMissing.textContent = missingCount;
+    const genresBadge = document.getElementById("editor-genres-count-badge");
+    if (genresBadge) {
+        if (window.editorSourceMode === "temp") {
+            genresBadge.textContent = tempCount;
+        } else {
+            genresBadge.textContent = libCount;
+        }
+    }
 }
 
 function populateGenreBatchDatalistAndChips() {
@@ -2317,13 +3459,16 @@ function populateGenreBatchDatalistAndChips() {
 }
 
 function getFilteredGenreBatchAlbums() {
-    const scope = window.genreBatchCurrentScope || "all";
+    const isTempSource = (window.editorSourceMode === "temp");
     const query = (window.genreBatchSearchQuery || "").toLowerCase().trim();
 
     return (window.genreBatchAlbums || []).filter(alb => {
-        if (scope === "library" && alb.source === "temp") return false;
-        if (scope === "temp" && alb.source !== "temp") return false;
-        if (scope === "missing" && (alb.genre && String(alb.genre).trim())) return false;
+        // Filtrage direct selon la source active (Dossier Temporaire vs Ma Collection)
+        if (isTempSource) {
+            if (alb.source !== "temp") return false;
+        } else {
+            if (alb.source === "temp") return false;
+        }
 
         if (query) {
             const t = (alb.title || "").toLowerCase();
@@ -2356,16 +3501,9 @@ function renderGenreBatchTable() {
         const isSelected = window.genreBatchSelectedPaths.has(alb.path);
         if (isSelected) tr.classList.add("selected");
 
-        let locBadge = `<span class="badge badge-success" style="font-size: 0.72rem; padding: 2px 6px;">💿 Collection</span>`;
-        if (alb.source === "temp") {
-            locBadge = `<span class="badge badge-idle" style="font-size: 0.72rem; padding: 2px 6px;">📁 Temp</span>`;
-        }
-        if (alb.album_type === "playlist") {
-            locBadge += ` <span class="badge badge-secondary" style="font-size: 0.70rem; padding: 1px 5px; margin-left: 4px;">📋 Playlist</span>`;
-        }
-
-        const coverSrc = alb.has_cover ? `/api/cover?path=${encodeURIComponent(alb.path)}` : '/static/placeholder-cover.svg';
+        const coverSrc = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}${alb.mtime ? `&v=${Math.floor(alb.mtime)}` : ''}`;
         const curGenre = (alb.genre || "").trim();
+        const curYear = (alb.year ? String(alb.year).trim() : "");
         const genreBadgeHtml = curGenre
             ? `<span class="genre-badge-cell" title="${escapeHtml(curGenre)}">${escapeHtml(curGenre)}</span>`
             : `<span class="genre-badge-cell genre-badge-empty">— Aucun —</span>`;
@@ -2378,14 +3516,21 @@ function renderGenreBatchTable() {
                 <img src="${coverSrc}" class="genre-row-cover" loading="lazy" alt="Cover" onerror="this.src='/static/placeholder-cover.svg';">
             </td>
             <td>
-                <div style="font-weight: 600; color: var(--text-main);">${escapeHtml(alb.title || "Sans titre")}</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${alb.year ? `Année : ${alb.year}` : ""}${alb.tracks_count ? ` • ${alb.tracks_count} pistes` : ""}</div>
+                <div style="font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span>${escapeHtml(alb.title || "Sans titre")}</span>
+                    ${alb.album_type === "playlist" ? `<span class="badge badge-secondary" style="font-size: 0.70rem; padding: 1px 5px;">📋 Playlist</span>` : ""}
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${alb.tracks_count ? `${alb.tracks_count} pistes` : ""}</div>
             </td>
             <td>
                 <div style="color: var(--text-secondary); font-weight: 500;">${escapeHtml(alb.artist || "Artiste inconnu")}</div>
             </td>
-            <td style="text-align: center;">
-                ${locBadge}
+            <td class="col-year" style="text-align: center; white-space: nowrap;">
+                <div class="year-quick-unit-wrap">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" class="year-quick-input" placeholder="AAAA" value="${escapeHtml(curYear)}" data-album-path="${escapeHtml(alb.path)}" title="Corriger l'année de sortie (Appuyez sur Entrée ou cliquez ✓ pour valider)">
+                    <button type="button" class="btn-year-magic-detect" data-album-path="${escapeHtml(alb.path)}" title="⚡ Détecter l'année officielle (MusicBrainz / iTunes)">⚡</button>
+                    <button type="button" class="btn-year-quick-save" title="Enregistrer l'année">✓</button>
+                </div>
             </td>
             <td>
                 ${genreBadgeHtml}
@@ -2415,6 +3560,98 @@ function renderGenreBatchTable() {
             });
         }
 
+        // Gestion de la saisie / détection unitaire d'année
+        const quickYearInput = tr.querySelector(".year-quick-input");
+        const magicYearBtn = tr.querySelector(".btn-year-magic-detect");
+        const quickYearSaveBtn = tr.querySelector(".btn-year-quick-save");
+
+        const saveYear = async (val, isMagic = false) => {
+            const cleanY = (val || "").trim();
+            if (!cleanY) {
+                showToast("Veuillez saisir une année à 4 chiffres (ex: 2000).", "warning");
+                return;
+            }
+            if (quickYearSaveBtn) {
+                quickYearSaveBtn.disabled = true;
+                quickYearSaveBtn.textContent = "...";
+            }
+            try {
+                const res = await fetch("/api/albums/batch-tags", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ albums: [alb.path], year: cleanY })
+                });
+                const d = await res.json();
+                if (!res.ok || !d.success) throw new Error(d.detail || "Erreur enregistrement année");
+                alb.year = cleanY;
+                if (window.AudioPlayer && typeof window.AudioPlayer.invalidateAlbumCache === "function") {
+                    window.AudioPlayer.invalidateAlbumCache(alb.path);
+                }
+                if (quickYearInput) {
+                    quickYearInput.value = cleanY;
+                    quickYearInput.classList.add("updated-highlight");
+                    setTimeout(() => quickYearInput.classList.remove("updated-highlight"), 1500);
+                }
+                if (isMagic) {
+                    showToast(`⚡ Année officielle ${cleanY} détectée et enregistrée pour "${alb.title || 'album'}" !`, "success");
+                } else {
+                    showToast(`Année ${cleanY} enregistrée pour "${alb.title || 'album'}"`, "success");
+                }
+            } catch (err) {
+                showToast(`Erreur : ${err.message}`, "error");
+            } finally {
+                if (quickYearSaveBtn) {
+                    quickYearSaveBtn.disabled = false;
+                    quickYearSaveBtn.textContent = "✓";
+                }
+            }
+        };
+
+        if (quickYearSaveBtn && quickYearInput) {
+            quickYearSaveBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                saveYear(quickYearInput.value, false);
+            });
+            quickYearInput.addEventListener("click", (e) => e.stopPropagation());
+            quickYearInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    saveYear(quickYearInput.value, false);
+                }
+            });
+        }
+
+        if (magicYearBtn && quickYearInput) {
+            magicYearBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                magicYearBtn.disabled = true;
+                magicYearBtn.textContent = "⏳";
+                try {
+                    const res = await fetch("/api/album/detect-year", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            album: alb.title || "",
+                            artist: alb.artist || ""
+                        })
+                    });
+                    const d = await res.json();
+                    if (!res.ok || !d.success || !d.year) {
+                        throw new Error(d.message || "Année officielle introuvable.");
+                    }
+                    quickYearInput.value = d.year;
+                    await saveYear(d.year, true);
+                } catch (err) {
+                    showToast(`Détection : ${err.message}`, "warning");
+                } finally {
+                    magicYearBtn.disabled = false;
+                    magicYearBtn.textContent = "⚡";
+                }
+            });
+        }
+
+        // Gestion de la saisie unitaire de genre
         const quickInput = tr.querySelector(".genre-quick-input");
         const quickSaveBtn = tr.querySelector(".btn-genre-quick-save");
         if (quickSaveBtn && quickInput) {
@@ -2427,7 +3664,7 @@ function renderGenreBatchTable() {
                 quickSaveBtn.disabled = true;
                 quickSaveBtn.innerHTML = `...`;
                 try {
-                    const res = await fetch("/api/albums/batch-genre", {
+                    const res = await fetch("/api/albums/batch-tags", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ albums: [alb.path], genre: newG })
@@ -2436,6 +3673,9 @@ function renderGenreBatchTable() {
                     if (!res.ok || !d.success) throw new Error(d.detail || "Erreur de mise à jour");
 
                     alb.genre = newG;
+                    if (window.AudioPlayer && typeof window.AudioPlayer.invalidateAlbumCache === "function") {
+                        window.AudioPlayer.invalidateAlbumCache(alb.path);
+                    }
                     showToast(`Genre "${newG}" appliqué à "${alb.title || 'album'}"`, "success");
                     updateGenreScopeBadges();
                     populateGenreBatchDatalistAndChips();
@@ -2478,12 +3718,29 @@ function updateGenreBatchSelectionUI() {
     const countSpan = document.getElementById("genre-batch-selected-count");
     if (countSpan) countSpan.textContent = selCount;
 
-    const targetInput = document.getElementById("genre-batch-target-input");
-    const targetGenre = (targetInput ? targetInput.value : "").trim();
+    const targetArtistInput = document.getElementById("batch-target-artist-input");
+    const targetGenreInput = document.getElementById("genre-batch-target-input");
+    const targetYearInput = document.getElementById("batch-target-year-input");
+
+    const targetArtist = (targetArtistInput ? targetArtistInput.value : "").trim();
+    const targetGenre = (targetGenreInput ? targetGenreInput.value : "").trim();
+    const targetYear = (targetYearInput ? targetYearInput.value : "").trim();
+
+    const hasAnyTag = !!(targetArtist || targetGenre || targetYear);
+
     const applyBtn = document.getElementById("genre-batch-apply-btn");
     if (applyBtn) {
-        applyBtn.disabled = (selCount === 0 || !targetGenre);
-        applyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg> <span>Appliquer aux albums sélectionnés (${selCount})</span>`;
+        applyBtn.disabled = (selCount === 0 || !hasAnyTag);
+        applyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg> <span>Appliquer (${selCount})</span>`;
+    }
+
+    const batchDetectYearsBtn = document.getElementById("batch-detect-years-btn");
+    if (batchDetectYearsBtn) {
+        batchDetectYearsBtn.disabled = (selCount === 0);
+    }
+    const batchDetectCount = document.getElementById("batch-detect-count");
+    if (batchDetectCount) {
+        batchDetectCount.textContent = selCount;
     }
 
     const masterChk = document.getElementById("genre-batch-master-checkbox");
@@ -2501,11 +3758,17 @@ function updateGenreBatchSelectionUI() {
 }
 
 async function applyGenreBatch() {
-    const targetInput = document.getElementById("genre-batch-target-input");
-    const targetGenre = (targetInput ? targetInput.value : "").trim();
-    if (!targetGenre) {
-        showToast("Veuillez saisir ou choisir un genre à appliquer.", "warning");
-        if (targetInput) targetInput.focus();
+    const targetArtistInput = document.getElementById("batch-target-artist-input");
+    const targetGenreInput = document.getElementById("genre-batch-target-input");
+    const targetYearInput = document.getElementById("batch-target-year-input");
+
+    const targetArtist = (targetArtistInput ? targetArtistInput.value : "").trim();
+    const targetGenre = (targetGenreInput ? targetGenreInput.value : "").trim();
+    const targetYear = (targetYearInput ? targetYearInput.value : "").trim();
+
+    if (!targetArtist && !targetGenre && !targetYear) {
+        showToast("Veuillez renseigner au moins un Artiste, un Genre ou une Année à appliquer.", "warning");
+        if (targetArtistInput) targetArtistInput.focus();
         return;
     }
     const paths = Array.from(window.genreBatchSelectedPaths);
@@ -2521,24 +3784,41 @@ async function applyGenreBatch() {
     }
 
     try {
-        const res = await fetch("/api/albums/batch-genre", {
+        const payload = {
+            albums: paths,
+            artist: targetArtist || null,
+            genre: targetGenre || null,
+            year: targetYear || null
+        };
+        const res = await fetch("/api/albums/batch-tags", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ albums: paths, genre: targetGenre })
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-            throw new Error(data.detail || "Erreur lors de l'application du genre");
+            throw new Error(data.detail || "Erreur lors de l'application des tags");
         }
 
         const pathSet = new Set(paths);
         (window.genreBatchAlbums || []).forEach(alb => {
             if (pathSet.has(alb.path)) {
-                alb.genre = targetGenre;
+                if (targetArtist) alb.artist = targetArtist;
+                if (targetGenre) alb.genre = targetGenre;
+                if (targetYear) alb.year = targetYear;
             }
         });
 
-        showToast(`Genre "${targetGenre}" appliqué avec succès à ${data.updated_albums_count} album(s) (${data.total_tracks_updated} pistes) !`, "success");
+        const modifiedLabels = [];
+        if (targetArtist) modifiedLabels.push(`Artiste "${targetArtist}"`);
+        if (targetGenre) modifiedLabels.push(`Genre "${targetGenre}"`);
+        if (targetYear) modifiedLabels.push(`Année "${targetYear}"`);
+
+        showToast(`${modifiedLabels.join(", ")} appliqué avec succès à ${data.updated_albums_count} album(s) !`, "success");
+
+        if (window.AudioPlayer && typeof window.AudioPlayer.invalidateAlbumCache === "function") {
+            window.AudioPlayer.invalidateAlbumCache();
+        }
 
         window.genreBatchSelectedPaths.clear();
         updateGenreScopeBadges();
@@ -2553,6 +3833,72 @@ async function applyGenreBatch() {
         updateGenreBatchSelectionUI();
     }
 }
+
+async function batchDetectOfficialYears() {
+    const paths = Array.from(window.genreBatchSelectedPaths);
+    if (paths.length === 0) {
+        showToast("Veuillez cocher au moins un album pour détecter les années.", "warning");
+        return;
+    }
+
+    const detectBtn = document.getElementById("batch-detect-years-btn");
+    if (detectBtn) {
+        detectBtn.disabled = true;
+        detectBtn.textContent = `⚡ Détection (0/${paths.length})...`;
+    }
+
+    let successCount = 0;
+    try {
+        for (let i = 0; i < paths.length; i++) {
+            const albPath = paths[i];
+            const alb = (window.genreBatchAlbums || []).find(a => a.path === albPath);
+            if (!alb) continue;
+
+            if (detectBtn) {
+                detectBtn.textContent = `⚡ Détection (${i + 1}/${paths.length})...`;
+            }
+
+            try {
+                const res = await fetch("/api/album/detect-year", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ album: alb.title || "", artist: alb.artist || "" })
+                });
+                const d = await res.json();
+                if (d.success && d.year) {
+                    await fetch("/api/albums/batch-tags", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ albums: [alb.path], year: d.year })
+                    });
+                    alb.year = d.year;
+                    successCount++;
+                }
+            } catch (itemErr) {
+                console.warn(`Erreur détection année pour ${alb.title}:`, itemErr);
+            }
+        }
+
+        if (successCount > 0) {
+            if (window.AudioPlayer && typeof window.AudioPlayer.invalidateAlbumCache === "function") {
+                window.AudioPlayer.invalidateAlbumCache();
+            }
+            showToast(`⚡ Années officielles détectées et appliquées avec succès pour ${successCount}/${paths.length} album(s) !`, "success");
+            renderGenreBatchTable();
+        } else {
+            showToast("Aucune année officielle n'a pu être détectée pour la sélection.", "info");
+        }
+    } catch (err) {
+        showToast(`Erreur lors de la détection des années : ${err.message}`, "error");
+    } finally {
+        if (detectBtn) {
+            detectBtn.disabled = false;
+            detectBtn.textContent = `⚡ Années officielles (${window.genreBatchSelectedPaths.size})`;
+        }
+        updateGenreBatchSelectionUI();
+    }
+}
+
 
 // Exports globaux
 window.loadCollectionAlbumsForEditor = loadCollectionAlbumsForEditor;
@@ -2580,8 +3926,11 @@ window.updateCollectionMatchBadges = updateCollectionMatchBadges;
 window.setupEditorDirtyTracking = setupEditorDirtyTracking;
 window.loadAlbumInEditor = loadAlbumInEditor;
 window.initGenreBatchUI = initGenreBatchUI;
+window.setGenreBatchScope = setGenreBatchScope;
 window.loadGenreBatchAlbums = loadGenreBatchAlbums;
 window.applyGenreBatch = applyGenreBatch;
+window.applyBatchTags = applyGenreBatch;
+window.batchDetectOfficialYears = batchDetectOfficialYears;
 
 // =========================================================================
 // Galerie des Jaquettes (Onglet Jaquettes dans Uniformiser & Éditer)

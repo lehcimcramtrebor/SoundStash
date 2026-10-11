@@ -37,6 +37,7 @@ files_to_sync = [
     ("backend/genre_service.py", "backend/genre_service.py"),
     ("backend/tagger.py", "backend/tagger.py"),
     ("backend/downloader.py", "backend/downloader.py"),
+    ("backend/exporter.py", "backend/exporter.py"),
 ]
 
 # Ajouter dynamiquement toutes les pochettes vectorielles
@@ -105,7 +106,7 @@ all_verified = True
 for _, rel in files_to_sync:
     p_src = ROOT / rel
     p_dist = DIST_RESOURCES / rel
-    p_inst = INSTALLED_STASH / rel if INSTALLED_STASH.exists() else None
+    p_inst = INSTALLED_SOUNDSTASH / rel if INSTALLED_SOUNDSTASH.exists() else None
     
     h_src = get_sha256(p_src)
     h_dist = get_sha256(p_dist) if p_dist.exists() else "ABSENT"
@@ -119,7 +120,7 @@ for _, rel in files_to_sync:
 
 # Vérification app.asar
 asar_dist = DIST_RESOURCES / "app.asar"
-asar_inst = INSTALLED_STASH / "app.asar" if INSTALLED_STASH.exists() else None
+asar_inst = INSTALLED_SOUNDSTASH / "app.asar" if INSTALLED_SOUNDSTASH.exists() else None
 if asar_dist.exists():
     h_ad = get_sha256(asar_dist)
     h_ai = get_sha256(asar_inst) if (asar_inst and asar_inst.exists()) else "N/A"

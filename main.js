@@ -453,11 +453,11 @@ function waitForServer(port, timeoutMs = 25000) {
 // Fichier de persistance de l'état de la fenêtre (taille, position, maximisation)
 const windowStatePath = path.join(configDir, 'window-state.json');
 const DEFAULT_WINDOW_STATE = {
-    width: 1120,
+    width: 1180,
     height: 880,
     isMaximized: false
 };
-const MIN_WINDOW_WIDTH = 1040;
+const MIN_WINDOW_WIDTH = 1100;
 const MIN_WINDOW_HEIGHT = 680;
 
 function loadWindowState() {

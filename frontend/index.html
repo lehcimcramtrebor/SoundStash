@@ -11,55 +11,131 @@
             document.documentElement.setAttribute("data-theme", savedTheme);
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=4.0.1">
+    <link rel="stylesheet" href="/static/style.css?v=5.0.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        /* Navigation multi-albums */
+        /* Navigation multi-albums dans l'Atelier / Éditeur */
         .album-nav-bar {
             display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 16px;
-            padding: 10px 16px;
+            gap: 14px;
+            padding: 8px 16px;
             background: var(--bg-hover, #2a2a3e);
             border-bottom: 1px solid var(--border, #333);
             border-radius: var(--radius, 12px) var(--radius, 12px) 0 0;
             margin-bottom: 12px;
             width: 100%;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+        .album-nav-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
         }
         .album-nav-bar .btn-nav {
-            background: var(--bg-hover, #2a2a3e);
+            background: var(--bg, #1e1e2e);
             border: 1px solid var(--border, #444);
             color: var(--text, #cdd6f4);
             border-radius: 50%;
             width: 36px;
             height: 36px;
-            font-size: 1.1rem;
+            font-size: 1rem;
             cursor: pointer;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s;
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            user-select: none;
+            flex-shrink: 0;
         }
         .album-nav-bar .btn-nav:hover:not(:disabled) {
             background: var(--accent, #89b4fa);
             color: var(--bg, #1e1e2e);
+            border-color: var(--accent, #89b4fa);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(137, 180, 250, 0.35);
+        }
+        .album-nav-bar .btn-nav:active:not(:disabled) {
+            transform: translateY(0);
         }
         .album-nav-bar .btn-nav:disabled {
-            opacity: 0.3;
+            opacity: 0.25;
             cursor: not-allowed;
+            box-shadow: none;
+            border-color: transparent;
         }
         #album-nav-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
             font-size: 0.9rem;
-            font-weight: 600;
             color: var(--text, #cdd6f4);
-            min-width: 200px;
-            text-align: center;
+            min-width: 0;
+            flex: 1;
+            overflow: hidden;
             white-space: nowrap;
+        }
+        .album-nav-badge {
+            background: rgba(137, 180, 250, 0.15);
+            color: var(--accent, #89b4fa);
+            border: 1px solid rgba(137, 180, 250, 0.35);
+            border-radius: 6px;
+            padding: 2px 9px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            font-family: var(--font-mono, monospace);
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
+        }
+        .album-nav-sep {
+            color: var(--text-muted, #a6adc8);
+            opacity: 0.6;
+            flex-shrink: 0;
+        }
+        .album-nav-title {
+            font-weight: 600;
             overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .btn-nav-pos {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text-muted, #a6adc8);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: auto;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .btn-nav-pos:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text, #cdd6f4);
+            border-color: rgba(255, 255, 255, 0.28);
+        }
+        /* Mode Flèches à droite */
+        .album-nav-bar.nav-pos-right {
+            flex-direction: row-reverse;
+        }
+        .album-nav-bar.nav-pos-right #album-nav-indicator {
+            justify-content: flex-end;
+        }
+        .album-nav-bar.nav-pos-right .btn-nav-pos {
+            margin-left: 0;
+            margin-right: auto;
+        }
     </style>
 </head>
 <body>
@@ -103,6 +179,11 @@
                         <span>Dossier Temporaire</span>
                         <span class="tab-badge" id="temp-count-badge" style="display: none;">0</span>
                     </button>
+                    <button class="nav-tab" data-tab="tab-export" id="nav-tab-export" title="Exporter des albums, titres ou vidéos vers une clé USB, un dossier ou un baladeur">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        <span>Exporter</span>
+                        <span class="tab-badge" id="export-cart-badge" style="display: none;">0</span>
+                    </button>
                 </nav>
 
                 <button type="button" id="btn-close-workshop-drawer" class="btn-close-workshop-drawer" title="Fermer l'Atelier (Échap)">
@@ -125,6 +206,22 @@
                                 <span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted, #777); display: inline-block;"></span>
                                 <span class="session-text">Session YouTube : Inactive</span>
                             </button>
+                            <script>
+                                (function() {
+                                    try {
+                                        var st = localStorage.getItem("soundstash_yt_session_status");
+                                        var b = document.getElementById("search-session-status-badge");
+                                        if (b && st === "expired") {
+                                            b.className = "badge badge-warning";
+                                            b.style.background = "rgba(245, 158, 11, 0.20)";
+                                            b.style.color = "#f59e0b";
+                                            b.style.borderColor = "rgba(245, 158, 11, 0.5)";
+                                            b.innerHTML = '<span class="session-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; box-shadow: 0 0 8px #f59e0b;"></span><span class="session-text" style="font-weight: 700;">⚠️ Session expirée</span>';
+                                            b.title = "Session YouTube expirée ou mot de passe changé ! Cliquez pour importer votre nouveau cookies.txt dans les Paramètres.";
+                                        }
+                                    } catch (_) {}
+                                })();
+                            </script>
                         </div>
                     </div>
 
@@ -490,23 +587,44 @@
                 <div class="card editor-card">
                     <!-- Sélecteur de source : Dossier Temporaire vs Collection Musicale -->
                     <div class="editor-source-selector-bar" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;">
-                        <div class="source-toggle-group">
-                            <button type="button" id="editor-source-temp-btn" class="source-toggle-btn active" title="Éditer les albums téléchargés dans le dossier temporaire">
-                                📁 Dossier Temporaire (<span id="editor-temp-count-badge">0</span>)
-                            </button>
-                            <button type="button" id="editor-source-collection-btn" class="source-toggle-btn" title="Gérer et éditer les albums et vidéos de votre collection">
-                                💿 Ma Collection (<span id="editor-collection-count-badge">0</span>)
-                            </button>
-                            <button type="button" id="editor-source-genres-btn" class="source-toggle-btn" title="Attribuer ou uniformiser les genres d'albums par lot ou à l'unité">
-                                🏷️ Genres par lot (<span id="editor-genres-count-badge">0</span>)
-                            </button>
-                            <button type="button" id="editor-source-covers-btn" class="source-toggle-btn" title="Galerie visuelle de toutes les jaquettes de la collection">
-                                🖼️ Jaquettes (<span id="editor-covers-count-badge">0</span>)
-                            </button>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <!-- Sources principales -->
+                            <div class="source-toggle-group">
+                                <button type="button" id="editor-source-temp-btn" class="source-toggle-btn active" title="Éditer les albums téléchargés dans le dossier temporaire">
+                                    📁 Dossier Temporaire (<span id="editor-temp-count-badge">0</span>)
+                                </button>
+                                <button type="button" id="editor-source-collection-btn" class="source-toggle-btn" title="Gérer et éditer les albums de votre collection">
+                                    💿 Ma Collection (<span id="editor-collection-count-badge">0</span>)
+                                </button>
+                                <button type="button" id="editor-source-videos-btn" class="source-toggle-btn" title="Gérer et modifier les clips et concerts de votre vidéothèque">
+                                    🎬 Ma Vidéothèque (<span id="editor-videos-count-badge">0</span>)
+                                </button>
+                                <button type="button" id="editor-source-covers-btn" class="source-toggle-btn" title="Galerie visuelle de toutes les jaquettes de la collection">
+                                    🖼️ Jaquettes (<span id="editor-covers-count-badge">0</span>)
+                                </button>
+                            </div>
+
+                            <!-- Sous-modes : Album individuel vs Tags par lot -->
+                            <div id="editor-workmode-group" class="editor-workmode-group">
+                                <button type="button" id="editor-workmode-single-btn" class="workmode-toggle-btn active" title="Éditer un album individuel avec le détail de ses pistes">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                    <span>Album individuel</span>
+                                </button>
+                                <button type="button" id="editor-workmode-batch-btn" class="workmode-toggle-btn" title="Éditer et uniformiser les tags par lot (Artiste, Année, Genre)">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 7z"/></svg>
+                                    <span>Tags par lot (<span id="editor-genres-count-badge">0</span>)</span>
+                                </button>
+                            </div>
                         </div>
-                        <div id="editor-collection-picker-wrapper" style="display: none; align-items: center; gap: 8px; flex: 1; min-width: 260px; max-width: 620px;">
+
+                        <div id="editor-collection-picker-wrapper" style="display: none; align-items: center; gap: 8px; flex: 1; min-width: 240px; max-width: 580px;">
                             <select id="editor-collection-select" class="form-control" style="font-size: 0.85rem; flex: 1; border-radius: var(--radius-sm);">
                                 <option value="">-- Choisir un album de ma collection --</option>
+                            </select>
+                        </div>
+                        <div id="editor-videos-picker-wrapper" style="display: none; align-items: center; gap: 8px; flex: 1; min-width: 240px; max-width: 580px;">
+                            <select id="editor-videos-select" class="form-control" style="font-size: 0.85rem; flex: 1; border-radius: var(--radius-sm);">
+                                <option value="">-- Choisir une vidéo de ma vidéothèque --</option>
                             </select>
                         </div>
                     </div>
@@ -515,9 +633,16 @@
                     <div id="editor-single-view">
                     <!-- Navigation multi-albums -->
                     <div class="album-nav-bar" id="album-nav-bar" style="display:none;">
-                        <button id="album-nav-prev" class="btn btn-nav" title="Album précédent">◀</button>
-                        <span id="album-nav-indicator">Album 1 / 1</span>
-                        <button id="album-nav-next" class="btn btn-nav" title="Album suivant">▶</button>
+                        <div class="album-nav-controls" id="album-nav-controls">
+                            <button type="button" id="album-nav-prev" class="btn btn-nav" title="Album précédent (Raccourci: Alt + Gauche)">◀</button>
+                            <button type="button" id="album-nav-next" class="btn btn-nav" title="Album suivant (Raccourci: Alt + Droite)">▶</button>
+                        </div>
+                        <div id="album-nav-indicator">
+                            <span class="album-nav-badge">1 / 1</span>
+                            <span class="album-nav-sep">—</span>
+                            <span class="album-nav-title">Album</span>
+                        </div>
+                        <button type="button" id="album-nav-pos-btn" class="btn-nav-pos" title="Changer l'alignement des flèches (Gauche / Droite)">⇄ Flèches à droite</button>
                     </div>
                     <div class="editor-header">
                         <div class="album-cover-box">
@@ -538,13 +663,27 @@
                                     <button type="button" id="toggle-type-rip-btn" class="type-toggle-btn" title="Traiter comme un Rip Audio vidéo (contenu dans 'Singles &amp; Rips')">🎙️ Rip Audio</button>
                                     <button type="button" id="toggle-type-playlist-btn" class="type-toggle-btn" title="Traiter comme une Playlist (dossier Playlist dédié, badges [Playlist])">📋 Playlist</button>
                                     <button type="button" id="toggle-type-concert-btn" class="type-toggle-btn" title="Traiter comme un Concert ou Live (rangé dans Artiste / Concerts)">🎸 Concert</button>
+                                    <button type="button" id="toggle-type-video-btn" class="type-toggle-btn" title="Traiter comme un Clip Vidéo (exporté dans votre Vidéothèque)">🎬 Clip Vidéo</button>
                                 </div>
                                 <span id="editor-album-tag-status" class="badge badge-idle" style="margin-left: auto;">Temporaire</span>
                             </div>
                             <p class="text-muted" id="editor-album-path" style="margin: 6px 0 16px 0; font-family: var(--font-mono); font-size: 0.8rem;">Aucun dossier chargé</p>
                             
-                            <div class="form-row">
-                                <div class="form-group col">
+                            <!-- Bandeau d'information Mode Fichier Unique / Vidéo -->
+                            <div id="editor-video-mode-banner" class="alert-banner alert-info" style="display: none; align-items: center; margin-bottom: 14px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 10px 14px;">
+                                <div style="display: flex; align-items: center; gap: 10px; font-size: 0.88rem; color: #fca5a5;">
+                                    <span style="font-size: 1.25rem;">🎬</span>
+                                    <div>
+                                        <strong>Mode Fichier Unique Vidéo activé</strong>
+                                        <div style="font-size: 0.8rem; color: var(--text-muted, #a6adc8); margin-top: 2px;">
+                                            Taguage simplifié : seul l'<strong>Artiste</strong> (dossier de destination) et le <strong>Titre / Nom du fichier</strong> sont requis. Les numéros de pistes et métadonnées d'albums complexes sont désactivés.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-row" id="editor-album-row">
+                                <div class="form-group col" id="editor-group-album-name">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                         <label for="edit-album-name" style="margin-bottom: 0;">Nom de l'Album :</label>
                                         <span id="album-collection-match-badge" class="badge badge-sm" style="display: none; font-size: 0.72rem; padding: 1px 7px;"></span>
@@ -552,9 +691,9 @@
                                     <input type="text" id="edit-album-name" list="editor-albums-datalist" autocomplete="off" placeholder="Ex: Violator, Discovery...">
                                     <datalist id="editor-albums-datalist"></datalist>
                                 </div>
-                                <div class="form-group col">
+                                <div class="form-group col" id="editor-group-album-artist">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                        <label for="edit-album-artist" style="margin-bottom: 0;">Artiste de l'Album :</label>
+                                        <label for="edit-album-artist" id="edit-album-artist-label" style="margin-bottom: 0;">Artiste de l'Album :</label>
                                         <span id="artist-collection-match-badge" class="badge badge-sm" style="display: none; font-size: 0.72rem; padding: 1px 7px;"></span>
                                     </div>
                                     <input type="text" id="edit-album-artist" list="editor-artists-datalist" autocomplete="off" placeholder="Ex: Depeche Mode, Daft Punk...">
@@ -562,13 +701,13 @@
                                 </div>
                             </div>
 
-                            <div class="form-row">
-                                <div class="form-group col">
+                            <div class="form-row" id="editor-year-genre-row">
+                                <div class="form-group col" id="editor-group-album-year">
                                     <label for="edit-album-year">Année (YYYY) :</label>
                                     <input type="text" id="edit-album-year" list="editor-years-datalist" autocomplete="off" placeholder="Ex: 2024">
                                     <datalist id="editor-years-datalist"></datalist>
                                 </div>
-                                <div class="form-group col">
+                                <div class="form-group col" id="editor-group-album-genre">
                                     <label for="edit-album-genre">Genre :</label>
                                     <div class="input-with-button">
                                         <input type="text" id="edit-album-genre" list="genres-datalist" autocomplete="off" placeholder="Ex: Variété française, Pop, Rock...">
@@ -609,7 +748,11 @@
                                         <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                         Écouter l'album
                                     </button>
-                                    <button id="musicbrainz-lookup-btn" class="btn btn-secondary btn-sm" title="Récupérer les crédits feat. depuis MusicBrainz et les appliquer aux pistes">
+                                    <button id="musicbrainz-magic-tag-btn" class="btn btn-primary btn-sm" title="Identifier l'album sur MusicBrainz et récupérer automatiquement tous les tags officiels (titres propres, featurings, année, genre, numérotation séquentielle continue)" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M7.5 5.6L5 7l1.4-2.5L5 2l2.5 1.4L10 2l-1.4 2.5L10 7 7.5 5.6zm12 9.8L22 14l-1.4 2.5L22 19l-2.5-1.4L17 19l1.4-2.5L17 14l2.5 1.4zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5L22 2zm-7.63 5.29c-.39-.39-1.02-.39-1.41 0L1.29 18.96c-.39.39-.39 1.02 0 1.41l2.34 2.34c.39.39 1.02.39 1.41 0L16.7 11.05c.39-.39.39-1.02 0-1.41l-2.33-2.35zm-1.06 3.53l-1.41-1.41 1.41-1.41 1.41 1.41-1.41 1.41z"/></svg>
+                                        <span>Tags MusicBrainz</span>
+                                    </button>
+                                    <button id="musicbrainz-lookup-btn" class="btn btn-secondary btn-sm" title="Récupérer uniquement les crédits feat. depuis MusicBrainz et les appliquer aux pistes" style="display: none;">
                                         <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
                                         feat. MusicBrainz
                                     </button>
@@ -642,9 +785,18 @@
                                     </button>
                                 </div>
                                 <div class="editor-actions-group-right">
+                                    <!-- Action directe rapide Vidéothèque (affiché en mode Vidéo) -->
+                                    <button id="direct-video-export-btn" class="btn btn-primary" style="display: none; background: #ef4444; border-color: #dc2626;" title="Ranger directement cette vidéo dans votre Vidéothèque sous le dossier de l'artiste">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+                                        🎬 Ranger dans la Vidéothèque
+                                    </button>
                                     <button id="open-export-modal-btn" class="btn btn-primary" title="Exporter cet album finalisé vers votre bibliothèque musicale">
                                         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
                                         Exporter l'Album
+                                    </button>
+                                    <button type="button" id="btn-editor-export-cart" class="btn btn-secondary" title="Ajouter cet album ou vidéo au panier d'exportation de l'Atelier">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                                        Panier d'export
                                     </button>
                                     <button id="export-all-editor-btn" class="btn btn-secondary" title="Exporter tous les albums du dossier temporaire">
                                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
@@ -751,10 +903,10 @@
                         <table class="tracks-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 80px;">N° Piste</th>
-                                    <th>Titre</th>
-                                    <th>Artiste</th>
-                                    <th style="width: 150px;">Genre</th>
+                                    <th id="th-track-num" style="width: 75px;">N° Piste</th>
+                                    <th id="th-track-title" style="width: 28%; min-width: 180px;">Titre</th>
+                                    <th id="th-track-artist" style="width: 20%; min-width: 140px;">Artiste</th>
+                                    <th id="th-track-genre" style="width: 220px; min-width: 180px;">Genre</th>
                                     <th>Fichier Actuel</th>
                                     <th style="width: 110px; text-align: center;">Actions</th>
                                 </tr>
@@ -779,42 +931,11 @@
                     <div id="editor-genre-batch-view" style="display: none;">
                         <div class="genre-batch-header-card">
                             <div class="genre-batch-top-controls">
-                                <!-- Sélecteur de portée (Scope) -->
-                                <div class="genre-batch-scope-group" id="genre-batch-scope-group">
-                                    <button type="button" class="genre-scope-btn active" data-scope="all" title="Tous les albums (Collection &amp; Dossier temporaire)">
-                                        🌐 Tous (<span id="genre-scope-count-all">0</span>)
-                                    </button>
-                                    <button type="button" class="genre-scope-btn" data-scope="library" title="Albums de votre collection musicale">
-                                        💿 Ma Collection (<span id="genre-scope-count-lib">0</span>)
-                                    </button>
-                                    <button type="button" class="genre-scope-btn" data-scope="temp" title="Albums du dossier temporaire">
-                                        📁 Temporaire (<span id="genre-scope-count-temp">0</span>)
-                                    </button>
-                                    <button type="button" class="genre-scope-btn" data-scope="missing" title="Albums sans genre défini">
-                                        ⚠️ Sans genre (<span id="genre-scope-count-missing">0</span>)
-                                    </button>
-                                </div>
-
                                 <!-- Recherche temps réel dans la liste -->
                                 <div class="genre-batch-search-box">
                                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                                    <input type="text" id="genre-batch-search-input" placeholder="Filtrer par artiste, album ou genre actuel..." autocomplete="off">
+                                    <input type="text" id="genre-batch-search-input" placeholder="Filtrer par artiste, album, année ou genre..." autocomplete="off">
                                     <button type="button" id="genre-batch-search-clear" class="btn-clear-search" style="display: none;" title="Effacer la recherche">✕</button>
-                                </div>
-                            </div>
-
-                            <!-- Panneau d'attribution par lot -->
-                            <div class="genre-batch-apply-panel">
-                                <div class="genre-batch-apply-left">
-                                    <label for="genre-batch-target-input" style="font-weight: 600; font-size: 0.85rem; margin: 0; white-space: nowrap;">Genre cible :</label>
-                                    <div class="genre-batch-input-wrap">
-                                        <input type="text" id="genre-batch-target-input" list="genre-batch-datalist" placeholder="Ex: Synthwave, Rock..." autocomplete="off">
-                                        <datalist id="genre-batch-datalist"></datalist>
-                                    </div>
-                                    <button type="button" id="genre-batch-apply-btn" class="btn btn-primary" disabled title="Appliquer ce genre aux albums cochés">
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
-                                        <span>Appliquer aux albums sélectionnés (<span id="genre-batch-selected-count">0</span>)</span>
-                                    </button>
                                 </div>
 
                                 <!-- Boutons de sélection rapide -->
@@ -823,6 +944,43 @@
                                     <button type="button" id="genre-batch-deselect-all-btn" class="btn btn-secondary btn-sm" title="Désélectionner tout">Tout décocher</button>
                                     <button type="button" id="genre-batch-refresh-btn" class="btn btn-secondary btn-sm" title="Rafraîchir la liste">
                                         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Panneau d'attribution par lot -->
+                            <div class="genre-batch-apply-panel">
+                                <div class="genre-batch-apply-left" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                    <!-- Artiste cible -->
+                                    <div class="batch-field-wrap" style="display: flex; align-items: center; gap: 5px;">
+                                        <label for="batch-target-artist-input" style="font-weight: 600; font-size: 0.82rem; margin: 0; white-space: nowrap;">Artiste :</label>
+                                        <input type="text" id="batch-target-artist-input" placeholder="Ex: Black Label Society" style="width: 155px; padding: 5px 8px; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-main);" autocomplete="off">
+                                    </div>
+
+                                    <!-- Genre cible -->
+                                    <div class="batch-field-wrap" style="display: flex; align-items: center; gap: 5px;">
+                                        <label for="genre-batch-target-input" style="font-weight: 600; font-size: 0.82rem; margin: 0; white-space: nowrap;">Genre :</label>
+                                        <div class="genre-batch-input-wrap" style="min-width: 135px; max-width: 175px;">
+                                            <input type="text" id="genre-batch-target-input" list="genre-batch-datalist" placeholder="Ex: Hard Rock..." style="width: 100%; padding: 5px 8px; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-main);" autocomplete="off">
+                                            <datalist id="genre-batch-datalist"></datalist>
+                                        </div>
+                                    </div>
+
+                                    <!-- Année cible -->
+                                    <div class="batch-field-wrap" style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+                                        <label for="batch-target-year-input" style="font-weight: 600; font-size: 0.82rem; margin: 0; white-space: nowrap;">Année :</label>
+                                        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" id="batch-target-year-input" placeholder="Ex: 2000" style="width: 76px; min-width: 76px; flex-shrink: 0; text-align: center; padding: 5px 6px; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-main); font-family: var(--font-mono);" autocomplete="off">
+                                    </div>
+
+                                    <!-- Bouton Appliquer les tags renseignés -->
+                                    <button type="button" id="genre-batch-apply-btn" class="btn btn-primary" disabled title="Appliquer les tags renseignés (Artiste, Genre et/ou Année) aux albums cochés">
+                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+                                        <span>Appliquer (<span id="genre-batch-selected-count">0</span>)</span>
+                                    </button>
+
+                                    <!-- Bouton Détecter Années officielles par lot -->
+                                    <button type="button" id="batch-detect-years-btn" class="btn btn-secondary btn-sm" disabled title="Détecter et corriger automatiquement les années réelles des albums cochés via MusicBrainz / iTunes">
+                                        ⚡ Années officielles (<span id="batch-detect-count">0</span>)
                                     </button>
                                 </div>
                             </div>
@@ -841,15 +999,15 @@
                             <table class="tracks-table genre-batch-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 44px; text-align: center;">
+                                        <th style="width: 38px; min-width: 38px; text-align: center;">
                                             <input type="checkbox" id="genre-batch-master-checkbox" title="Tout sélectionner / désélectionner">
                                         </th>
-                                        <th style="width: 52px; text-align: center;">Jaquette</th>
-                                        <th>Album / Playlist</th>
-                                        <th>Artiste</th>
-                                        <th style="width: 130px; text-align: center;">Emplacement</th>
-                                        <th style="width: 160px;">Genre Actuel</th>
-                                        <th style="width: 210px; text-align: right;">Action Rapide Unitaire</th>
+                                        <th style="width: 48px; min-width: 48px; text-align: center;">Jaquette</th>
+                                        <th style="width: 26%; min-width: 140px;">Album / Playlist</th>
+                                        <th style="width: 20%; min-width: 120px;">Artiste</th>
+                                        <th class="col-year" style="width: 154px; min-width: 154px; text-align: center; white-space: nowrap;" title="Corriger l'année de sortie ou détecter l'année officielle via MusicBrainz / iTunes">Année ⚡</th>
+                                        <th style="width: 135px; min-width: 120px;">Genre Actuel</th>
+                                        <th style="width: 170px; min-width: 150px; text-align: right;">Action Rapide</th>
                                     </tr>
                                 </thead>
                                 <tbody id="genre-batch-table-body">
@@ -979,6 +1137,217 @@
                     </div>
                 </div>
             </section>
+
+            <!-- ONGLET 4: EXPORTATION & BALADEUR (AUDIO & VIDÉO) v5.0.1 -->
+            <section id="tab-export" class="tab-pane">
+                <div class="card export-card">
+                    <!-- En-tête -->
+                    <div class="export-header">
+                        <div class="export-title-group">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                                Exportation &amp; Baladeur
+                            </h2>
+                            <p>Exportez facilement vos albums, morceaux et vidéos vers une clé USB, un dossier de sauvegarde ou un baladeur.</p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label class="export-radio-label" style="background: rgba(0, 240, 255, 0.08); border-color: rgba(0, 240, 255, 0.25); padding: 6px 12px; font-weight: 600;">
+                                <input type="checkbox" id="export-all-library-checkbox">
+                                <span>⚡ Exporter toute ma collection</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Zone Panier d'Exportation -->
+                    <div class="export-section-card" id="export-cart-section-card">
+                        <div class="export-section-title">
+                            <span>📦 Panier d'exportation</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button type="button" id="export-open-picker-btn" class="btn btn-secondary btn-sm" title="Ajouter des albums, morceaux ou vidéos au panier">
+                                    ➕ Ajouter du contenu...
+                                </button>
+                                <button type="button" id="export-clear-cart-btn" class="btn btn-secondary btn-sm" title="Vider le panier d'export">
+                                    🗑️ Vider
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="export-cart-summary-bar">
+                            <div class="export-cart-badges">
+                                <span class="cart-pill audio-pill">💿 <span id="export-cart-albums-count">0</span> album(s)</span>
+                                <span class="cart-pill audio-pill">🎵 <span id="export-cart-audio-count">0</span> morceau(x)</span>
+                                <span class="cart-pill video-pill">🎬 <span id="export-cart-video-count">0</span> vidéo(s)</span>
+                            </div>
+                            <span class="text-muted" style="font-size: 0.80rem;">💾 Panier persistant sauvegardé automatiquement</span>
+                        </div>
+
+                        <!-- Liste déroulante des éléments dans le panier -->
+                        <div class="export-cart-items-list" id="export-cart-items-list"></div>
+                        <div class="export-cart-empty-state" id="export-cart-empty-state">
+                            <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor" style="opacity: 0.4;"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                            <span>Votre panier d'exportation est actuellement vide.</span>
+                            <span style="font-size: 0.80rem; opacity: 0.7;">Cliquez sur <strong>« ➕ Ajouter du contenu... »</strong> ou cochez <strong>« ⚡ Exporter toute ma collection »</strong> ci-dessus.</span>
+                        </div>
+                    </div>
+
+                    <!-- Formulaire de paramétrage (masqué pendant l'exportation en cours) -->
+                    <div id="export-settings-form-panel" style="display: flex; flex-direction: column; gap: 16px;">
+                        <div class="export-grid-settings">
+                            <!-- Nom de l'export -->
+                            <div class="export-form-group">
+                                <label for="export-name-input">1. Nom de l'exportation :</label>
+                                <input type="text" id="export-name-input" class="export-input" placeholder="Ex: Voyage 2026, Clé USB Voiture..." value="Export SoundStash">
+                                <span class="text-muted" style="font-size: 0.76rem;">Créera un dossier <code>Export SoundStash [Nom]</code> contenant les dossiers <code>Audio</code> et <code>Video</code>.</span>
+                            </div>
+
+                            <!-- Destination -->
+                            <div class="export-form-group">
+                                <label for="export-dest-input">2. Dossier de destination :</label>
+                                <div class="export-dest-input-wrap">
+                                    <input type="text" id="export-dest-input" class="export-input" placeholder="Par défaut : Bureau\Export SoundStash">
+                                    <button type="button" id="export-browse-dest-btn" class="btn btn-secondary btn-sm" title="Parcourir vos disques ou clés USB">Parcourir...</button>
+                                </div>
+                                <div class="quick-dest-group" style="margin-top: 4px;">
+                                    <button type="button" class="btn quick-dest-btn export-quick-dest-btn" data-dest="desktop" title="Bureau">Bureau</button>
+                                    <button type="button" class="btn quick-dest-btn export-quick-dest-btn" data-dest="music" title="Dossier Musique">Musique</button>
+                                    <button type="button" class="btn quick-dest-btn export-quick-dest-btn" data-dest="downloads" title="Téléchargements">Téléchargements</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="export-grid-settings">
+                            <!-- Traitement Audio -->
+                            <div class="export-section-card">
+                                <label class="export-section-title">3. Traitement Audio :</label>
+                                <div class="export-segmented-control">
+                                    <button type="button" id="export-audio-mode-copy" class="export-segment-btn active" title="Copie ultra-rapide sans perte des fichiers originaux">
+                                        ⚡ Fichiers originaux (Tel quel)
+                                    </button>
+                                    <button type="button" id="export-audio-mode-convert" class="export-segment-btn" title="Reconvertir dans un format et débit spécifiques pour votre appareil">
+                                        🔄 Reconvertir
+                                    </button>
+                                </div>
+
+                                <div id="export-audio-convert-options" style="display: none; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap;">
+                                    <div style="flex: 1; min-width: 120px;">
+                                        <label for="export-audio-format-select" style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 2px;">Format cible :</label>
+                                        <select id="export-audio-format-select" class="form-control" style="font-size: 0.84rem; padding: 5px 8px;">
+                                            <option value="mp3" selected>MP3 (.mp3)</option>
+                                            <option value="aac">AAC (.m4a)</option>
+                                            <option value="ogg">OGG Vorbis (.ogg)</option>
+                                            <option value="flac">FLAC (.flac)</option>
+                                            <option value="opus">Opus (.opus)</option>
+                                        </select>
+                                    </div>
+                                    <div style="flex: 1; min-width: 120px;">
+                                        <label for="export-audio-bitrate-select" style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 2px;">Qualité / Débit :</label>
+                                        <select id="export-audio-bitrate-select" class="form-control" style="font-size: 0.84rem; padding: 5px 8px;">
+                                            <option value="320k" selected>320 kbps (Qualité Maximale)</option>
+                                            <option value="256k">256 kbps (Très haute qualité)</option>
+                                            <option value="192k">192 kbps (Haute qualité standard)</option>
+                                            <option value="128k">128 kbps (Économie d'espace)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Traitement Vidéo -->
+                            <div class="export-section-card">
+                                <label class="export-section-title">4. Traitement Vidéo :</label>
+                                <div class="export-radio-options">
+                                    <label class="export-radio-label">
+                                        <input type="radio" name="export_video_mode" id="export-video-mode-copy" value="copy" checked>
+                                        <span>Conserver le format vidéo original (Dossier <code>Video</code>)</span>
+                                    </label>
+                                    <label class="export-radio-label">
+                                        <input type="radio" name="export_video_mode" id="export-video-mode-extract" value="extract_audio">
+                                        <span>Extraire l'audio en MP3 320k (Dossier <code>Audio</code>)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Organisation des dossiers -->
+                        <div class="export-section-card">
+                            <label class="export-section-title">5. Organisation des dossiers audio :</label>
+                            <div class="export-radio-options" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+                                <label class="export-radio-label">
+                                    <input type="radio" name="export_folder_structure" value="artist_album_track" checked>
+                                    <div>
+                                        <div style="font-weight: 600;">Artiste / Album / 01 - Titre</div>
+                                        <div style="font-size: 0.76rem; color: var(--text-muted);">Structure hiérarchique classique</div>
+                                    </div>
+                                </label>
+                                <label class="export-radio-label">
+                                    <input type="radio" name="export_folder_structure" value="artist_album_combined">
+                                    <div>
+                                        <div style="font-weight: 600;">Artiste - Album / 01 - Titre</div>
+                                        <div style="font-size: 0.76rem; color: var(--text-muted);">Un seul niveau de dossier par album</div>
+                                    </div>
+                                </label>
+                                <label class="export-radio-label">
+                                    <input type="radio" name="export_folder_structure" value="flat">
+                                    <div>
+                                        <div style="font-weight: 600;">Tous les fichiers à la racine</div>
+                                        <div style="font-size: 0.76rem; color: var(--text-muted);">Format plat pour anciens autoradios</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Options supplémentaires -->
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; padding: 4px 6px;">
+                            <label class="export-radio-label" style="background: transparent;">
+                                <input type="checkbox" id="export-copy-cover-checkbox" checked>
+                                <span>Copier la jaquette (<code>cover.jpg</code>) dans chaque dossier d'album</span>
+                            </label>
+                            <label class="export-radio-label" style="background: transparent;">
+                                <input type="checkbox" id="export-generate-playlist-checkbox" checked>
+                                <span>Générer une playlist (<code>.m3u8</code>) compatible autoradios &amp; baladeurs</span>
+                            </label>
+                        </div>
+
+                        <!-- Carte de lancement -->
+                        <div class="export-launch-card">
+                            <div class="export-estimate-bar">
+                                <div class="export-estimate-metric" id="export-estimate-text">
+                                    Calcul de l'estimation en cours...
+                                </div>
+                            </div>
+                            <button type="button" id="export-launch-btn" class="btn btn-primary export-launch-btn" disabled>
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                                <span>Lancer l'Exportation</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Panneau de Progression (affiché pendant l'exportation) -->
+                    <div id="export-progress-panel" class="export-progress-panel" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div class="spinner-small"></div>
+                                <strong style="font-size: 0.96rem; color: var(--color-primary, #00f0ff);">Exportation en cours...</strong>
+                            </div>
+                            <span id="export-progress-count-label" style="font-family: var(--font-mono); font-size: 0.88rem; font-weight: 600;">0 / 0</span>
+                        </div>
+
+                        <div class="export-progress-bar-container">
+                            <div id="export-progress-fill" class="export-progress-bar-fill"></div>
+                        </div>
+
+                        <div class="export-progress-meta-row">
+                            <div class="export-current-file-label" id="export-progress-current-file">Préparation des fichiers...</div>
+                            <strong id="export-progress-percent" style="font-family: var(--font-mono); font-size: 0.92rem; color: var(--text-main);">0%</strong>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                            <button type="button" id="export-cancel-btn" class="btn btn-secondary btn-sm" style="border-color: var(--color-danger); color: var(--color-danger);">
+                                🛑 Interrompre l'export
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div><!-- /#workshop-drawer-body -->
         <!-- Languette Skeumorphique Unique : Reste collée au bas du tiroir et descend avec -->
         <button type="button" id="workshop-pull-tab" class="workshop-pull-tab" title="Ouvrir / Replier l'Atelier (Raccourci: Maj+W ou Échap)" aria-label="Atelier Escamotable">
@@ -1014,27 +1383,6 @@
     </div><!-- /#workshop-drawer -->
 
     <div class="app-container">
-        <!-- En-tête : Titre & Logo épurés (les contrôles sont intégrés au lecteur sticky) -->
-        <header class="app-header">
-            <div class="logo-group">
-                <div class="logo-icon" title="SoundStash par Helmicretro">
-                    <svg viewBox="0 0 512 512" width="28" height="28" fill="none">
-                        <circle cx="256" cy="256" r="168" stroke="#ffffff" stroke-opacity="0.28" stroke-width="20"/>
-                        <path d="M 144 190 A 136 136 0 0 0 144 322" stroke="#ffffff" stroke-width="36" stroke-linecap="round"/>
-                        <path d="M 368 190 A 136 136 0 0 1 368 322" stroke="#ffffff" stroke-width="36" stroke-linecap="round"/>
-                        <circle cx="256" cy="256" r="95" stroke="#ffffff" stroke-width="28"/>
-                        <circle cx="256" cy="256" r="34" fill="#ffffff"/>
-                    </svg>
-                </div>
-                <div>
-                    <h1 class="app-title">SoundStash <span class="app-author">by Helmicretro</span></h1>
-                    <p class="app-subtitle">Univers musical 100% autonome</p>
-                </div>
-            </div>
-        </header>
-
-        
-
     <!-- CONTENU PERMANENT PRINCIPAL : LE LECTEUR AUDIO -->
     <main class="main-content main-content-player">
         <!-- ONGLET 3: LECTEUR AUDIO SANCTUARISÉ (Toujours Actif) -->
@@ -1042,15 +1390,28 @@
                 <!-- Voile d'estompage supérieur (shade) : dissout en douceur le contenu défilant derrière les coins arrondis (z-index intermédiaire) -->
                 <div class="player-scroll-shade" aria-hidden="true"></div>
 
-                <!-- CADRE 1 : ONGLETS & CONTRÔLES DU LECTEUR (Bloqué contre le scroll) -->
+                <!-- CADRE 1 : ONGLETS & CONTRÔLES DU LECTEUR (Cadre supérieur unique bloqué contre le scroll) -->
                 <div class="card player-card player-controls-card" id="player-controls-card">
-                    <!-- Ligne 1 : Titre Lecteur, Sources (Collection/Temporaire) & Cluster d'Actions Header Déplacé -->
+                    <!-- Ligne 1 : Marque & Logo unifié, Sources (Collection/Temporaire) & Cluster d'Actions Header Déplacé -->
                     <div class="player-header-bar">
                         <div class="player-header-left">
-                            <h2 class="card-title" style="display: flex; align-items: center; gap: 8px; margin: 0;">
-                                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12v6c0 1.66 1.34 3 3 3h3v-8H4v-1c0-4.41 3.59-8 8-8s8 3.59 8 8v1h-4v8h3c1.66 0 3-1.34 3-3v-6c0-5.52-4.48-10-10-10z"/></svg>
-                                Lecteur Audio
-                            </h2>
+                            <!-- Marque & Identité SoundStash intégrée -->
+                            <div class="logo-group player-brand-logo" id="player-brand-logo">
+                                <div class="logo-icon player-brand-icon" title="SoundStash par Helmicretro">
+                                    <svg viewBox="0 0 512 512" width="24" height="24" fill="none">
+                                        <circle cx="256" cy="256" r="168" stroke="#ffffff" stroke-opacity="0.28" stroke-width="20"/>
+                                        <path d="M 144 190 A 136 136 0 0 0 144 322" stroke="#ffffff" stroke-width="36" stroke-linecap="round"/>
+                                        <path d="M 368 190 A 136 136 0 0 1 368 322" stroke="#ffffff" stroke-width="36" stroke-linecap="round"/>
+                                        <circle cx="256" cy="256" r="95" stroke="#ffffff" stroke-width="28"/>
+                                        <circle cx="256" cy="256" r="34" fill="#ffffff"/>
+                                    </svg>
+                                </div>
+                                <div class="logo-text-block">
+                                    <h1 class="app-title player-brand-title">SoundStash <span class="app-author">by Helmicretro</span></h1>
+                                    <p class="app-subtitle player-brand-subtitle">Univers musical 100% autonome</p>
+                                </div>
+                            </div>
+                            <div class="player-header-divider" aria-hidden="true"></div>
                             <!-- Sélecteur de Source : Collection vs Temporaire -->
                             <div class="player-source-group" id="player-source-group">
                                 <button type="button" class="source-toggle-btn active" id="player-source-col-btn" title="Lire les albums de votre collection musicale">
@@ -1236,7 +1597,7 @@
                     <div class="player-toolbar-row" id="player-toolbar-row">
                         <div class="player-search-wrapper">
                             <svg class="player-search-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                            <input type="text" id="player-search-input" placeholder="Filtrer dans la collection (artiste, album, genre...)" autocomplete="off">
+                            <input type="text" id="player-search-input" placeholder="Rechercher un titre, album, artiste, clip, genre..." autocomplete="off">
                             <button type="button" id="player-search-clear-btn" class="player-search-clear" style="display: none;">&times;</button>
                         </div>
                         <div class="player-type-filters" id="player-type-filters"></div>
@@ -1266,12 +1627,6 @@
                         </div>
                         <div class="player-stats-badge">
                             <span id="player-count-indicator" class="text-muted" style="font-size: 0.85rem;">0 album</span>
-                        </div>
-                        <div class="player-toolbar-actions" id="player-toolbar-actions">
-                            <button type="button" id="player-btn-all-shuffle" class="btn btn-sm btn-primary player-all-shuffle-btn" title="Lancer une lecture aléatoire qui pioche dans tous les titres de la collection" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
-                                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
-                                <span>Aléatoire (Collection)</span>
-                            </button>
                         </div>
                     </div>
 
@@ -1311,6 +1666,11 @@
 
                 <!-- CADRE 2 : CONTENU DU LECTEUR (Vues Grille, Artistes, En cours, etc.) -->
                 <div class="card player-card player-content-card" id="player-content-card">
+                    <!-- VUE RECHERCHE GLOBALE UNIFIÉE (OPTION A) -->
+                    <div id="player-view-search" class="player-view-pane" style="display: none;">
+                        <div class="unified-search-view" id="unified-search-view"></div>
+                    </div>
+
                     <!-- VUE 1 : GRILLE DES ALBUMS & VUE DÉTAIL D'ALBUM INTÉGRÉE -->
                     <div id="player-view-albums" class="player-view-pane">
                         <div class="player-albums-grid" id="player-albums-grid">
@@ -1348,11 +1708,10 @@
 
                     <!-- VUE 4 : CLIPS & VIDÉOS MUSICALES -->
                     <div id="player-view-videos" class="player-view-pane" style="display: none;">
-                        <!-- Barre d'outils dédiée aux clips (Recherche, Filtre Artiste, Tri, Compteur, Sync) -->
+                        <!-- Barre d'outils dédiée aux clips (Tri, Compteur, Sync) -->
                         <div class="player-videos-toolbar" style="display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
-                            <div class="player-search-wrapper" style="flex: 1; min-width: 240px;">
-                                <svg class="player-search-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                                <input type="text" id="player-videos-search-input" placeholder="Rechercher un clip ou un artiste..." autocomplete="off">
+                            <div class="player-search-wrapper" style="display: none;">
+                                <input type="text" id="player-videos-search-input" autocomplete="off">
                             </div>
                             <div class="player-sort-wrapper" style="display: flex; align-items: center; gap: 8px;">
                                 <span class="text-muted" style="font-size: 0.82rem; white-space: nowrap;">Trier par :</span>
@@ -1378,11 +1737,10 @@
 
                     <!-- VUE CONCERTS : CONCERTS & LIVES COMPLETS -->
                     <div id="player-view-concerts" class="player-view-pane" style="display: none;">
-                        <!-- Barre d'outils dédiée aux concerts (Recherche, Tri, Compteur, Sync) -->
+                        <!-- Barre d'outils dédiée aux concerts (Tri, Compteur, Sync) -->
                         <div class="player-videos-toolbar" style="display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
-                            <div class="player-search-wrapper" style="flex: 1; min-width: 240px;">
-                                <svg class="player-search-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                                <input type="text" id="player-concerts-search-input" placeholder="Rechercher un concert ou un artiste..." autocomplete="off">
+                            <div class="player-search-wrapper" style="display: none;">
+                                <input type="text" id="player-concerts-search-input" autocomplete="off">
                             </div>
                             <div class="player-sort-wrapper" style="display: flex; align-items: center; gap: 8px;">
                                 <span class="text-muted" style="font-size: 0.82rem; white-space: nowrap;">Trier par :</span>
@@ -1496,7 +1854,7 @@
                                                     <th>Titre</th>
                                                     <th>Artiste</th>
                                                     <th style="width: 90px; text-align: right;">Durée</th>
-                                                    <th style="width: 110px; text-align: center;">Actions</th>
+                                                    <th style="width: 120px; text-align: center;">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="playlist-tracks-body">
@@ -2089,7 +2447,7 @@
                                         Mise à Jour de l'Application SoundStash
                                     </h3>
                                     <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
-                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v4.0.1</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
+                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v5.0.1</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
                                     </p>
                                 </div>
                                 <button type="button" id="btn-check-app-update" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
@@ -2353,6 +2711,45 @@
         </div>
     </div>
 
+    <!-- Modale Sélecteur d'éléments pour le panier d'export (v5.0.1) -->
+    <div id="export-picker-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog export-selector-modal" style="max-width: 760px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" style="margin-bottom: 2px;">Ajouter du contenu au panier d'export</h3>
+                    <p class="modal-subtitle" style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">Sélectionnez les albums, pistes ou vidéos à exporter</p>
+                </div>
+                <button type="button" id="export-picker-modal-close-btn" class="modal-close-icon-btn" title="Fermer (Échap)">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px; overflow-y: auto; flex: 1;">
+                <div style="margin-bottom: 12px;">
+                    <input type="text" id="export-picker-search-input" class="form-control" placeholder="🔍 Filtrer par titre, artiste ou album..." style="width: 100%; font-size: 0.88rem; padding: 7px 12px; border-radius: 6px;">
+                </div>
+                <div class="export-selector-list" id="export-picker-modal-list"></div>
+            </div>
+            <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-color); margin-top: 10px;">
+                <button type="button" id="export-picker-modal-close-footer-btn" class="btn btn-secondary">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Confirmation Fin d'Exportation Réussie (v5.0.1) -->
+    <div id="export-result-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog" style="max-width: 520px; text-align: center; padding: 28px 24px;">
+            <div style="font-size: 3rem; margin-bottom: 8px;">🎉</div>
+            <h3 class="modal-title" style="font-size: 1.3rem; margin-bottom: 6px;">Exportation Terminée avec Succès !</h3>
+            <p id="export-result-modal-summary" style="font-size: 0.90rem; color: var(--text-secondary); margin-bottom: 14px;">Tous vos fichiers ont été exportés et convertis.</p>
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font-family: var(--font-mono); font-size: 0.80rem; word-break: break-all; color: var(--color-primary, #00f0ff); margin-bottom: 20px;" id="export-result-modal-dest">
+                C:\Users\...
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button type="button" id="export-result-modal-close-btn" class="btn btn-primary" style="min-width: 140px; font-weight: 600;">
+                    Fermer
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modale Conflit d'Exportation (Album déjà existant dans la collection) -->
     <div id="export-conflict-modal-backdrop" class="modal-backdrop" style="display: none;">
         <div class="modal-dialog" style="max-width: 580px;">
@@ -2511,6 +2908,45 @@
         </div>
     </div>
 
+    <!-- Modale de Sélection d'Édition MusicBrainz -->
+    <div id="mb-select-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog" style="max-width: 680px; width: 92%;">
+            <div class="preview-modal-header" style="padding: 16px 20px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="font-size: 1.6rem; color: var(--accent);">✨</div>
+                    <div>
+                        <h3 class="preview-modal-title" style="font-size: 1.15rem; margin-bottom: 2px;">Éditions MusicBrainz Disponibles</h3>
+                        <p class="text-muted" style="font-size: 0.82rem; margin: 0;">Sélectionnez l'édition officielle correspondant à votre album pour appliquer l'ordre, les titres et featurings.</p>
+                    </div>
+                </div>
+                <button type="button" id="mb-select-modal-close-btn" class="modal-close-icon-btn" title="Fermer">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px; max-height: 60vh; overflow-y: auto;">
+                <div style="display: flex; gap: 8px; margin-bottom: 14px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: var(--radius); border: 1px solid var(--border-card);">
+                    <input type="text" id="mb-modal-search-album" class="form-control form-control-sm" placeholder="Titre de l'album" style="flex: 1.2;">
+                    <input type="text" id="mb-modal-search-artist" class="form-control form-control-sm" placeholder="Artiste" style="flex: 1;">
+                    <button type="button" id="mb-modal-search-submit" class="btn btn-primary btn-sm" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                        <span>Rechercher</span>
+                    </button>
+                </div>
+                <div id="mb-select-loading" class="search-loading" style="padding: 24px; display: none;">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Interrogation du catalogue MusicBrainz...</p>
+                </div>
+                <div id="mb-select-empty" class="text-muted" style="text-align: center; padding: 24px; display: none;">
+                    Aucune édition trouvée pour ces termes de recherche.
+                </div>
+                <div id="mb-select-releases-list" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Rempli dynamiquement en JS -->
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end;">
+                <button type="button" id="mb-select-modal-cancel-btn" class="btn btn-secondary">Annuler</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Grand Théâtre Vidéo In-App & Mode Ambiance -->
     <div id="video-modal-backdrop" class="video-theater-backdrop" style="display: none;">
         <div class="video-dialog" id="video-theater-dialog">
@@ -2585,12 +3021,12 @@
     </div>
 
     <!-- Mini-Lecteur Audio Flottant Persistant (In-App) -->
-    <div id="persistent-player-bar" class="persistent-player-bar" style="display: none;">
+    <div id="persistent-player-bar" class="persistent-player-bar">
         <div class="mini-player-track-info" id="mini-player-open-tab" title="Cliquez pour ouvrir le lecteur complet" style="cursor: pointer;">
             <img id="mini-player-thumb" src="/static/placeholder-cover.svg" class="mini-player-thumb" alt="Miniature" referrerpolicy="no-referrer" onerror="window.handleCoverError ? window.handleCoverError(this) : (this.src='/static/placeholder-cover.svg');">
             <div class="mini-player-text">
-                <div id="mini-player-title" class="mini-player-title">Titre du morceau</div>
-                <div id="mini-player-artist" class="mini-player-artist">Artiste &bull; Album</div>
+                <div id="mini-player-title" class="mini-player-title">Aucune lecture en cours</div>
+                <div id="mini-player-artist" class="mini-player-artist">SoundStash &bull; Prêt pour la lecture</div>
             </div>
         </div>
         <div class="mini-player-controls">
@@ -2641,6 +3077,9 @@
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
                 <span class="queue-badge-pill mini-queue-badge-pill" id="bar-queue-badge" style="display: none;">0</span>
             </button>
+            <button type="button" id="mini-player-add-playlist-btn" class="mini-btn" title="Ajouter le morceau en cours à une playlist" aria-label="Ajouter à une playlist">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+            </button>
             <button type="button" id="mini-player-ambient-btn" class="mini-btn" title="Mode Ambiance Plein Écran (Raccourci: T)" style="display: none;">
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M4 19h2V5H4v14zm4 0h2V9H8v10zm4 0h2V2h-2v17zm4 0h2V6h-2v13zm4 0h2v-8h-2v8z"/></svg>
             </button>
@@ -2650,7 +3089,7 @@
             <button type="button" id="mini-player-download-btn" class="mini-btn" title="Télécharger l'élément en cours de lecture" style="display: none; color: #ff2a4b;">
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
             </button>
-            <button type="button" id="mini-player-close-btn" class="mini-btn mini-close-btn" title="Fermer le lecteur">&times;</button>
+            <button type="button" id="mini-player-close-btn" class="mini-btn mini-close-btn" title="Fermer le lecteur" style="display: none;">&times;</button>
         </div>
         <audio id="global-audio-engine" preload="metadata"></audio>
     </div>
@@ -4181,45 +4620,46 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Socle JavaScript Modulaire Core -->
-    <script src="/static/js/core/icons.js?v=4.0.1"></script>
-    <script src="/static/js/core/utils.js?v=4.0.1"></script>
-    <script src="/static/js/core/modals.js?v=4.0.1"></script>
-    <script src="/static/js/core/websocket.js?v=4.0.1"></script>
-    <script src="/static/js/core/app_updater.js?v=4.0.1"></script>
+    <script src="/static/js/core/icons.js?v=5.0.1"></script>
+    <script src="/static/js/core/utils.js?v=5.0.1"></script>
+    <script src="/static/js/core/modals.js?v=5.0.1"></script>
+    <script src="/static/js/core/websocket.js?v=5.0.1"></script>
+    <script src="/static/js/core/app_updater.js?v=5.0.1"></script>
 
     <!-- Modules Autonomes : Mode Ambiance & Synthwave -->
-    <script src="/static/js/ambient/synthwave_canvas.js?v=4.0.1"></script>
-    <script src="/static/js/ambient/ambient_manager.js?v=4.0.1"></script>
+    <script src="/static/js/ambient/synthwave_canvas.js?v=5.0.1"></script>
+    <script src="/static/js/ambient/ambient_manager.js?v=5.0.1"></script>
 
     <!-- Modules Autonomes : Playlists Utilisateur -->
-    <script src="/static/js/playlists/user_playlists.js?v=4.0.1"></script>
+    <script src="/static/js/playlists/user_playlists.js?v=5.0.1"></script>
 
     <!-- Modules Autonomes : Configuration, Veille & Sécurité -->
-    <script src="/static/js/extras/settings.js?v=4.0.1"></script>
-    <script src="/static/js/extras/sleep_timer.js?v=4.0.1"></script>
-    <script src="/static/js/extras/party_lock.js?v=4.0.1"></script>
-    <script src="/static/js/extras/user_guide.js?v=4.0.1"></script>
+    <script src="/static/js/extras/settings.js?v=5.0.1"></script>
+    <script src="/static/js/extras/sleep_timer.js?v=5.0.1"></script>
+    <script src="/static/js/extras/party_lock.js?v=5.0.1"></script>
+    <script src="/static/js/extras/user_guide.js?v=5.0.1"></script>
 
-    <!-- Modules Métier : Atelier de Recherche & Téléchargement -->
-    <script src="/static/js/workshop/workbench.js?v=4.0.1"></script>
-    <script src="/static/js/workshop/search.js?v=4.0.1"></script>
-    <script src="/static/js/workshop/download.js?v=4.0.1"></script>
+    <!-- Modules Métier : Atelier de Recherche, Téléchargement & Exportation -->
+    <script src="/static/js/workshop/workbench.js?v=5.0.1"></script>
+    <script src="/static/js/workshop/search.js?v=5.0.1"></script>
+    <script src="/static/js/workshop/download.js?v=5.0.1"></script>
+    <script src="/static/js/workshop/exporter.js?v=5.0.1"></script>
 
     <!-- Modules Métier : Éditeur de Tags & Reconstitution -->
-    <script src="/static/js/editor/reconstitute.js?v=4.0.1"></script>
-    <script src="/static/js/editor/tag_editor.js?v=4.0.1"></script>
+    <script src="/static/js/editor/reconstitute.js?v=5.0.1"></script>
+    <script src="/static/js/editor/tag_editor.js?v=5.0.1"></script>
 
     <!-- Modules Métier : Discothèque & Corbeille -->
-    <script src="/static/js/library/library_manager.js?v=4.0.1"></script>
+    <script src="/static/js/library/library_manager.js?v=5.0.1"></script>
 
     <!-- Modules Métier : Lecteur Audio, Égaliseur & Raccourcis -->
-    <script src="/static/js/player/audio_player.js?v=4.0.1"></script>
-    <script src="/static/js/player/shortcuts.js?v=4.0.1"></script>
+    <script src="/static/js/player/audio_player.js?v=5.0.1"></script>
+    <script src="/static/js/player/shortcuts.js?v=5.0.1"></script>
 
     <!-- Modules Métier : Lecteur Vidéo Clip & Moteur Audio Vidéo -->
-    <script src="/static/js/video/video_player.js?v=4.0.1"></script>
+    <script src="/static/js/video/video_player.js?v=5.0.1"></script>
 
     <!-- Orchestrateur Principal -->
-    <script src="/static/app.js?v=4.0.1"></script>
+    <script src="/static/app.js?v=5.0.1"></script>
 </body>
 </html>

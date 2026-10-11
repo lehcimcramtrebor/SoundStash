@@ -227,6 +227,13 @@ const AudioPlayer = {
     videosSearchFilter: "",
     videosSortMode: "recent",
 
+    // Recherche globale unifiée (Option A)
+    preSearchView: "albums",
+    unifiedSearchQuery: "",
+    activeUnifiedSearchChip: "all",
+    unifiedSearchResults: null,
+    _unifiedSearchDebounceTimer: null,
+
     // File d'attente prioritaire & Reprise de lecture
     userQueue: [],            // Array of { title, artist, album, year, filepath, stream_url, duration, format, track_number, cover_url, album_path }
     playbackContext: null,    // { album: {...}, playlist: [...], currentIndex: number }
@@ -528,16 +535,41 @@ const AudioPlayer = {
         if (srcColBtn) srcColBtn.addEventListener("click", () => this.setSource("library"));
         if (srcTempBtn) srcTempBtn.addEventListener("click", () => this.setSource("temp"));
         if (srcRefreshBtn) srcRefreshBtn.addEventListener("click", () => this.refreshLibrary());
+        // Suivi continu et indépendant de la position de scroll de l'onglet actif avec protection anti-dépassement
+        window.addEventListener("scroll", () => {
+            if (this._isRestoringScroll) return;
+            this.cancelPendingScrolls();
+            const maxAllowed = this.getMaxAllowedScroll();
+            const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+            if (currentY > maxAllowed + 1) {
+                window.scrollTo({ top: maxAllowed, left: 0, behavior: "instant" });
+                const cv = this.currentView;
+                if (cv && cv !== "now-playing") {
+                    if (!this.savedScrollPositions) this.savedScrollPositions = {};
+                    this.savedScrollPositions[cv] = maxAllowed;
+                }
+                return;
+            }
+            const cv = this.currentView;
+            if (cv && cv !== "now-playing") {
+                if (!this.savedScrollPositions) this.savedScrollPositions = {};
+                this.savedScrollPositions[cv] = currentY;
+            }
+        }, { passive: true });
 
         // 4. Sous-Onglets de Vue (Albums, Artistes, Genres, En cours d'écoute)
         document.querySelectorAll(".player-subtab-btn").forEach(btn => {
             btn.addEventListener("click", () => {
+                try { btn.blur(); } catch (_) {}
                 const v = btn.getAttribute("data-pview");
                 if (v === "all" && !this.isCatalogReady) {
                     if (typeof showToast === "function") {
                         showToast("⏳ Préparation du catalogue en cours, disponible dans un instant...", "info");
                     }
                     return;
+                }
+                if (this.currentView === "search" || this.unifiedSearchQuery) {
+                    this.clearUnifiedSearch(false);
                 }
                 if (v === "albums" && this.currentView === "albums" && this.isAlbumDetailOpen) {
                     this.closeAlbumDetail(true);
@@ -598,55 +630,61 @@ const AudioPlayer = {
             } catch (_) {}
         }
         syncPlayerControlsHeight();
+        window.addEventListener("resize", () => {
+            this.updateScrollBounds();
+            if (typeof syncPlayerControlsHeight === "function") syncPlayerControlsHeight();
+        });
 
-        // 5. Barre d'outils (Recherche, Tri & Filtres)
+        // 5. Barre d'outils (Recherche Unifiée, Tri & Filtres)
         const searchInput = document.getElementById("player-search-input");
         const searchClearBtn = document.getElementById("player-search-clear-btn");
         const sortSelect = document.getElementById("player-sort-select");
         const clearFilterBtn = document.getElementById("player-clear-filter-btn");
 
-        let searchDebounceTimer = null;
         if (searchInput) {
             searchInput.addEventListener("input", () => {
-                clearTimeout(searchDebounceTimer);
-                searchDebounceTimer = setTimeout(() => {
-                    if (this.currentView === "all") {
-                        const prevSearch = Boolean(this.allSearchQuery);
-                        this.allSearchQuery = searchInput.value.trim();
-                        const nowSearch = Boolean(this.allSearchQuery);
-                        if (prevSearch !== nowSearch) {
-                            this.updateSortSelectForView("all");
-                        }
-                        if (searchClearBtn) searchClearBtn.style.display = this.allSearchQuery ? "block" : "none";
-                        this.renderAllView();
-                        return;
-                    }
-                    this.searchFilter = searchInput.value;
-                    if (searchClearBtn) searchClearBtn.style.display = this.searchFilter ? "block" : "none";
-                    if (this.isAlbumDetailOpen) this.closeAlbumDetail(false);
-                    this.renderCurrentView();
-                }, 35);
+                const q = searchInput.value;
+                if (searchClearBtn) searchClearBtn.style.display = q ? "block" : "none";
+                clearTimeout(this._unifiedSearchDebounceTimer);
+                this._unifiedSearchDebounceTimer = setTimeout(() => {
+                    this.onSearchInputChanged(q);
+                }, 120);
+            });
+
+            // Raccourcis clavier : Échap vide et ferme la recherche
+            searchInput.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") {
+                    e.preventDefault();
+                    this.clearUnifiedSearch(true);
+                }
             });
         }
+
         if (searchClearBtn) {
             searchClearBtn.addEventListener("click", () => {
-                clearTimeout(searchDebounceTimer);
-                if (searchInput) searchInput.value = "";
-                searchClearBtn.style.display = "none";
-                if (this.currentView === "all") {
-                    const prevSearch = Boolean(this.allSearchQuery);
-                    this.allSearchQuery = "";
-                    if (prevSearch) {
-                        this.updateSortSelectForView("all");
-                    }
-                    this.renderAllView();
-                    return;
-                }
-                this.searchFilter = "";
-                if (this.isAlbumDetailOpen) this.closeAlbumDetail(false);
-                this.renderCurrentView();
+                this.clearUnifiedSearch(true);
             });
         }
+
+        const unifiedSearchContainer = document.getElementById("unified-search-view");
+        if (unifiedSearchContainer) {
+            this.bindUnifiedSearchEvents(unifiedSearchContainer);
+        }
+
+        // Raccourci global clavier : "/" ou Ctrl+F pour focaliser la recherche
+        document.addEventListener("keydown", (e) => {
+            const isInput = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable);
+            if (!isInput && (e.key === "/" || ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")))) {
+                const sInp = document.getElementById("player-search-input");
+                if (sInp && sInp.offsetParent !== null) {
+                    e.preventDefault();
+                    sInp.focus();
+                    sInp.select();
+                }
+            } else if (e.key === "Escape" && this.currentView === "search") {
+                this.clearUnifiedSearch(true);
+            }
+        });
         if (sortSelect) {
             sortSelect.addEventListener("change", () => {
                 const val = sortSelect.value;
@@ -659,7 +697,7 @@ const AudioPlayer = {
                         this.sortModeAllCatalog = val;
                         try { localStorage.setItem("ytm_player_sort_all_catalog", val); } catch (e) {}
                     }
-                    this.renderAllView();
+                    this.renderAllView(true);
                 } else if (this.currentView === "artists") {
                     this.sortModeArtists = val;
                     try { localStorage.setItem("ytm_player_sort_artists", val); } catch (e) {}
@@ -708,17 +746,6 @@ const AudioPlayer = {
             });
         }
 
-        const allShuffleBtn = document.getElementById("player-btn-all-shuffle");
-        if (allShuffleBtn) {
-            allShuffleBtn.addEventListener("click", () => {
-                if (this.currentView === "all" && this.allSearchQuery && this._currentCatalogMatches && this._currentCatalogMatches.length > 0) {
-                    this.playSearchResults(this._currentCatalogMatches, true);
-                } else {
-                    this.playEntireCollection({ shuffle: true });
-                }
-            });
-        }
-
         const backToLibBtn = document.getElementById("player-btn-back-to-library");
         if (backToLibBtn) {
             backToLibBtn.addEventListener("click", () => this.setView("albums"));
@@ -761,6 +788,28 @@ const AudioPlayer = {
         if (miniDownloadBtn) {
             miniDownloadBtn.addEventListener("click", () => {
                 this.downloadCurrentOnlineItem(miniDownloadBtn);
+            });
+        }
+
+        const miniAddPlaylistBtn = document.getElementById("mini-player-add-playlist-btn");
+        if (miniAddPlaylistBtn) {
+            miniAddPlaylistBtn.addEventListener("click", () => {
+                const trk = this.currentTrack || (this.playlist && this.playlist[this.currentIndex]);
+                if (!trk) {
+                    showToast("Aucun titre en cours de lecture.", "warning");
+                    return;
+                }
+                if (typeof openAddToPlaylistModal === "function") {
+                    openAddToPlaylistModal({
+                        type: trk.type === "video" ? "video" : "audio",
+                        title: trk.title || "Piste",
+                        artist: trk.artist || this.currentAlbum?.artist || "Artiste",
+                        duration: trk.duration_seconds || trk.duration || 0,
+                        path: trk.path || trk.filepath || "",
+                        album_title: this.currentAlbum?.title,
+                        cover_url: trk.cover_url || this.currentAlbum?.cover_url
+                    });
+                }
             });
         }
 
@@ -1019,6 +1068,11 @@ const AudioPlayer = {
         this.setupArtistsDensity();
 
         // Démarrage systématique sur l'onglet Albums et état de préparation du catalogue Tout
+        this.savedScrollPositions = {
+            "albums": 0, "all": 0, "artists": 0, "genres": 0,
+            "videos": 0, "concerts": 0, "playlists": 0, "search": 0
+        };
+        this._visitedTabs = new Set(["albums"]);
         this.currentView = "albums";
         this.setView("albums");
         this.setAllCatalogPreparingState(true);
@@ -1071,6 +1125,7 @@ const AudioPlayer = {
         if (btn3) {
             btn3.addEventListener("click", () => applyDensity("3"));
         }
+        this.updateFloatingBarVisibility();
     },
 
     onTabActivated() {
@@ -1204,9 +1259,88 @@ const AudioPlayer = {
         }
     },
 
+    getHeaderCollapseOffset() {
+        return 0;
+    },
+
+    getMaxAllowedScroll() {
+        const controlsCard = document.getElementById("player-controls-card");
+        const contentCard = document.getElementById("player-content-card");
+        if (!controlsCard || !contentCard) return 0;
+
+        const controlsHeight = Math.round(controlsCard.getBoundingClientRect().height || controlsCard.offsetHeight || 140);
+        const viewportHeight = window.innerHeight || 800;
+        const controlsMargin = 16;
+
+        // Prise en compte dynamique de la barre persistante du bas (centre de commande)
+        const persistentBar = document.getElementById("persistent-player-bar");
+        const isBarVisible = Boolean(
+            persistentBar &&
+            persistentBar.style.display !== "none" &&
+            !persistentBar.classList.contains("hidden") &&
+            (persistentBar.offsetHeight || 0) > 0
+        );
+        const bottomDockHeight = isBarVisible ? Math.round(persistentBar.offsetHeight + 16) : 0;
+
+        // Espace libre visible sous le bandeau de commandes et au-dessus de la barre persistante
+        const availableBelowControls = Math.max(0, viewportHeight - controlsHeight - controlsMargin - bottomDockHeight);
+
+        const activePane = contentCard.querySelector(".player-view-pane:not([style*='display: none'])") || contentCard;
+        const panePaddingBottom = activePane ? (parseFloat(getComputedStyle(activePane).paddingBottom) || 0) : 0;
+        const naturalContentHeight = Math.max(0, (activePane ? activePane.scrollHeight : contentCard.scrollHeight) - panePaddingBottom);
+
+        // Si le contenu réel tient entièrement dans l'espace disponible sous le bandeau :
+        // Aucun défilement n'est nécessaire ni autorisé !
+        if (naturalContentHeight <= availableBelowControls) {
+            return 0;
+        }
+
+        // Si le contenu dépasse la hauteur visible, le scroll maximal permet d'atteindre
+        // le fond physique complet du document afin que tous les éléments (dernières pistes, jaquettes)
+        // soient 100% dégagés et visibles au-dessus du centre de commande du bas
+        const docScrollHeight = Math.max(
+            document.documentElement ? document.documentElement.scrollHeight : 0,
+            document.body ? document.body.scrollHeight : 0
+        );
+        const docMaxScroll = Math.max(0, docScrollHeight - viewportHeight);
+
+        return docMaxScroll;
+    },
+
+    updateScrollBounds() {
+        const controlsCard = document.getElementById("player-controls-card");
+        const contentCard = document.getElementById("player-content-card");
+        if (!controlsCard || !contentCard) return;
+
+        contentCard.style.minHeight = "auto";
+        const activePane = contentCard.querySelector(".player-view-pane:not([style*='display: none'])");
+        if (activePane) {
+            activePane.style.minHeight = "auto";
+        }
+
+        // Si la position de défilement actuelle dépasse la limite autorisée pour la vue, recaler immédiatement
+        const maxAllowed = this.getMaxAllowedScroll();
+        const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+        if (currentY > maxAllowed) {
+            try {
+                window.scrollTo({ top: maxAllowed, left: 0, behavior: "instant" });
+            } catch (_) {}
+            const cv = this.currentView;
+            if (cv && cv !== "now-playing") {
+                if (!this.savedScrollPositions) this.savedScrollPositions = {};
+                this.savedScrollPositions[cv] = maxAllowed;
+            }
+        }
+    },
+
     restoreScrollPosition(targetY) {
         if (typeof targetY !== "number" || isNaN(targetY) || targetY < 0) targetY = 0;
+        this.updateScrollBounds();
+        const maxAllowed = this.getMaxAllowedScroll();
+        if (targetY > maxAllowed) targetY = maxAllowed;
         this.cancelPendingScrolls();
+        this._isRestoringScroll = true;
+
         const doScroll = () => {
             try {
                 window.scrollTo({ top: targetY, left: 0, behavior: "instant" });
@@ -1226,10 +1360,17 @@ const AudioPlayer = {
         }
         this._restoreScrollTimer1 = setTimeout(() => { doScroll(); this._restoreScrollTimer1 = null; }, 25);
         this._restoreScrollTimer2 = setTimeout(() => { doScroll(); this._restoreScrollTimer2 = null; }, 80);
-        this._restoreScrollTimer3 = setTimeout(() => { doScroll(); this._restoreScrollTimer3 = null; }, 160);
+        this._restoreScrollTimer3 = setTimeout(() => {
+            doScroll();
+            this._restoreScrollTimer3 = null;
+            this._isRestoringScroll = false;
+        }, 180);
     },
 
     setView(view) {
+        if (document.activeElement && typeof document.activeElement.blur === "function" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+            try { document.activeElement.blur(); } catch (_) {}
+        }
         if (view === "all" && !this.isCatalogReady) {
             if (typeof showToast === "function") {
                 showToast("⏳ Préparation du catalogue en cours, disponible dans un instant...", "info");
@@ -1237,17 +1378,21 @@ const AudioPlayer = {
             view = "albums";
         }
 
+        if (view === this.currentView && !this.isAlbumDetailOpen) {
+            return;
+        }
+
         if (view === "now-playing" && window.isVideoPlayingInBackground && window.reopenVideoModal) {
             window.reopenVideoModal();
         }
 
         const prevV = this.currentView;
-        const wasNowPlaying = (prevV === "now-playing");
+        const currentY = window.scrollY || document.documentElement.scrollTop || 0;
 
         // Mémoriser la position de défilement de la vue qu'on quitte si ce n'est pas "now-playing"
         if (prevV && prevV !== "now-playing") {
             if (!this.savedScrollPositions) this.savedScrollPositions = {};
-            this.savedScrollPositions[prevV] = window.scrollY || document.documentElement.scrollTop || 0;
+            this.savedScrollPositions[prevV] = currentY;
         }
 
         // Mémoriser la vue précédente lors de la transition vers "now-playing"
@@ -1268,15 +1413,30 @@ const AudioPlayer = {
             window.UserPlaylists.closeDetail();
         }
 
-        this.currentView = view;
-        if (view === "now-playing") {
-            this.resetPlayerScrollRobust();
-        } else if (wasNowPlaying) {
-            const savedY = (this.savedScrollPositions && typeof this.savedScrollPositions[view] === "number")
-                ? this.savedScrollPositions[view]
-                : 0;
-            this.restoreScrollPosition(savedY);
+        // Gestion du scroll indépendant par onglet et initialisation au démarrage
+        if (!this._visitedTabs) {
+            this._visitedTabs = new Set();
+            if (prevV) this._visitedTabs.add(prevV);
         }
+
+        let targetY = 0;
+        if (view !== "now-playing") {
+            const isFirstVisit = !this._visitedTabs.has(view);
+            this._visitedTabs.add(view);
+
+            if (isFirstVisit) {
+                targetY = 0;
+                if (!this.savedScrollPositions) this.savedScrollPositions = {};
+                this.savedScrollPositions[view] = targetY;
+            } else {
+                targetY = (this.savedScrollPositions && typeof this.savedScrollPositions[view] === "number")
+                    ? this.savedScrollPositions[view]
+                    : 0;
+            }
+        }
+
+        this.currentView = view;
+
         // Mettre à jour les sous-onglets
         document.querySelectorAll(".player-subtab-btn").forEach(btn => {
             btn.classList.toggle("active", btn.getAttribute("data-pview") === view);
@@ -1284,6 +1444,7 @@ const AudioPlayer = {
 
         // Afficher/Masquer les panneaux
         const panes = {
+            "search": document.getElementById("player-view-search"),
             "albums": document.getElementById("player-view-albums"),
             "all": document.getElementById("player-view-all"),
             "artists": document.getElementById("player-view-artists"),
@@ -1300,14 +1461,11 @@ const AudioPlayer = {
             }
         });
 
-        // Masquer la barre de recherche/tri en mode Grand Écran "now-playing", vue clips "videos", "concerts", "playlists" ou détail d'album
+        // La barre de recherche/outils reste accessible sur tous les onglets de navigation (masquée uniquement en Grand Écran ou Détail d'album)
         const toolbar = document.getElementById("player-toolbar-row");
         if (toolbar) {
             const shouldHideToolbar = (
                 view === "now-playing" ||
-                view === "videos" ||
-                view === "concerts" ||
-                view === "playlists" ||
                 (view === "albums" && this.isAlbumDetailOpen)
             );
             toolbar.style.display = shouldHideToolbar ? "none" : "flex";
@@ -1318,11 +1476,13 @@ const AudioPlayer = {
         // Mettre à jour la barre de retour depuis "En cours d'écoute"
         this.updateNowPlayingBackLabel();
 
-        // Synchroniser le champ de recherche et son bouton d'effacement selon la vue
+        // Synchroniser le champ de recherche et son bouton d'effacement
         const searchInput = document.getElementById("player-search-input");
         const searchClearBtn = document.getElementById("player-search-clear-btn");
-        if (searchInput) {
-            if (view === "all") {
+        if (searchInput && document.activeElement !== searchInput) {
+            if (view === "search") {
+                searchInput.value = this.unifiedSearchQuery || "";
+            } else if (view === "all") {
                 searchInput.value = this.allSearchQuery || "";
             } else if (view === "albums" || view === "artists" || view === "genres") {
                 searchInput.value = this.searchFilter || "";
@@ -1330,6 +1490,8 @@ const AudioPlayer = {
             if (searchClearBtn) {
                 searchClearBtn.style.display = searchInput.value ? "block" : "none";
             }
+        } else if (searchInput && searchClearBtn) {
+            searchClearBtn.style.display = searchInput.value ? "block" : "none";
         }
 
         this.updateSortSelectForView(view);
@@ -1345,11 +1507,8 @@ const AudioPlayer = {
             setTimeout(() => {
                 this.scrollToActiveTrack(true);
             }, 180);
-        } else if (wasNowPlaying) {
-            const savedY = (this.savedScrollPositions && typeof this.savedScrollPositions[view] === "number")
-                ? this.savedScrollPositions[view]
-                : 0;
-            this.restoreScrollPosition(savedY);
+        } else {
+            this.restoreScrollPosition(targetY);
         }
     },
 
@@ -1429,22 +1588,54 @@ const AudioPlayer = {
                 : (window.innerHeight - (isBottomBarVisible ? 90 : 20));
 
             // Marges de confort indispensables (tampon anti-collision avec l'en-tête et le centre de commandes)
-            const safeMarginTop = 45;
-            const safeMarginBottom = 45;
+            const safeMarginTop = 15;
+            const safeMarginBottom = 20;
             const safetyTop = effectiveHeaderBottom + safeMarginTop;
             const safetyBottom = effectiveBottomTop - safeMarginBottom;
 
-            // Si le morceau est déjà confortablement visible dans la zone sécurisée et non forcé : ne pas faire bouger l'écran
+            // Détecter si la piste appartient à un conteneur d'album (bloc album ou ligne tableau)
+            const parentBlock = activeItem.closest(
+                ".player-all-album-block, #player-main-layout, #player-album-detail-block, tr.active-track-row"
+            );
+
+            // Si le morceau est déjà confortablement visible dans la zone sécurisée : NE PAS BOUGER L'ÉCRAN
             if (!force && rect.top >= safetyTop && rect.bottom <= safetyBottom) {
                 return;
             }
 
-            // Hors champ ou forcé : centrer parfaitement la piste dans la zone utile visible
+            // Calcul du scroll cible :
+            // Pour offrir la disposition visuelle idéale (l'album en cours positionné en premier au sommet,
+            // juste sous le cadre supérieur sticky, dégageant toute la liste de titres vers le bas) :
             const currentScrollY = window.scrollY || document.documentElement.scrollTop || 0;
-            const visibleHeight = Math.max(effectiveBottomTop - effectiveHeaderBottom, 150);
-            const targetCenterY = effectiveHeaderBottom + (visibleHeight / 2);
-            const itemAbsoluteCenterY = currentScrollY + rect.top + (rect.height / 2);
-            const targetScrollY = Math.max(0, Math.round(itemAbsoluteCenterY - targetCenterY));
+            let targetScrollY = currentScrollY;
+
+            if (parentBlock && parentBlock !== activeItem) {
+                // Aligner le haut du bloc album juste sous le cadre supérieur avec une marge aérée de 8px
+                const blockRect = parentBlock.getBoundingClientRect();
+                const idealBlockTopScrollY = Math.max(0, Math.round(currentScrollY + blockRect.top - effectiveHeaderBottom - 8));
+
+                // Vérifier si avec cette position au sommet de l'album, la piste active reste visible dans la zone de lecture
+                const projectedTrackTop = rect.top - (idealBlockTopScrollY - currentScrollY);
+                const projectedTrackBottom = rect.bottom - (idealBlockTopScrollY - currentScrollY);
+
+                if (projectedTrackTop >= safetyTop && projectedTrackBottom <= safetyBottom) {
+                    targetScrollY = idealBlockTopScrollY;
+                } else if (projectedTrackBottom > safetyBottom) {
+                    // Piste plus bas dans la liste d'un très long album : faire défiler juste assez depuis le sommet de l'album pour ramener la piste dans la vue
+                    targetScrollY = Math.max(0, idealBlockTopScrollY + Math.round(projectedTrackBottom - safetyBottom));
+                } else if (projectedTrackTop < safetyTop) {
+                    // Piste au-dessus de la vue : faire défiler pour la ramener en dessous de l'en-tête
+                    targetScrollY = Math.max(0, idealBlockTopScrollY - Math.round(safetyTop - projectedTrackTop));
+                } else {
+                    targetScrollY = idealBlockTopScrollY;
+                }
+            } else {
+                // Vue sans bloc parent (ex: vue recherche dense simple) : amener la piste dans la zone utile
+                const visibleHeight = Math.max(effectiveBottomTop - effectiveHeaderBottom, 150);
+                const targetCenterY = effectiveHeaderBottom + (visibleHeight / 2);
+                const itemAbsoluteCenterY = currentScrollY + rect.top + (rect.height / 2);
+                targetScrollY = Math.max(0, Math.round(itemAbsoluteCenterY - targetCenterY));
+            }
 
             // Ignorer les micro-deltas (< 6px) pour éviter les micro-saccades
             if (!force && Math.abs(targetScrollY - currentScrollY) < 6) {
@@ -1543,12 +1734,14 @@ const AudioPlayer = {
         const origin = this.playbackOrigin || null;
         const videoEl = document.getElementById("video-modal-player");
         const isVideoActive = Boolean(
-            window.isVideoPlayingInBackground ||
-            (videoEl && videoEl.src && !videoEl.paused)
+            (window.isVideoPlayingInBackground || (videoEl && videoEl.src && !videoEl.paused)) &&
+            window.currentModalVideoItem &&
+            videoEl &&
+            videoEl.src
         );
 
-        // Vidéo : rouvrir le lecteur vidéo
-        if ((isVideoActive || (origin && origin.type === "video")) && window.reopenVideoModal && videoEl && videoEl.src) {
+        // Vidéo active en arrière-plan : rouvrir le lecteur vidéo
+        if (isVideoActive && window.reopenVideoModal) {
             window.reopenVideoModal();
             return;
         }
@@ -1624,7 +1817,7 @@ const AudioPlayer = {
             }
 
             case "album": {
-                const albPath = o.path || this.activeAlbumPath;
+                const albPath = (this.currentAlbum && this.currentAlbum.path) || o.path || this.activeAlbumPath;
                 if (albPath && String(albPath).startsWith("online:")) {
                     if (this.currentView !== "now-playing") this.setView("now-playing");
                     this.renderPlayerTab();
@@ -1658,8 +1851,21 @@ const AudioPlayer = {
             }
 
             case "video": {
-                const v = o.view || "videos";
-                if (this.currentView !== v) this.setView(v);
+                // Si la piste vidéo fait partie d'un album de la collection (ex: album concert)
+                const albPath = (this.currentAlbum && this.currentAlbum.path) || o.path || this.activeAlbumPath;
+                if (albPath && albPath !== "video_standalone" && !String(albPath).startsWith("online:") && this.currentAlbum && this.currentAlbum.is_collection) {
+                    if (this.currentView !== "albums") this.setView("albums");
+                    this.openAlbumDetail(albPath);
+                    scrollLater(150);
+                    return;
+                }
+
+                // Pour un concert ou clip autonome fermé : afficher l'onglet Grand Écran / Now-Playing
+                if (this.currentView !== "now-playing") {
+                    this.setView("now-playing");
+                }
+                this.renderPlayerTab();
+                scrollLater(100);
                 return;
             }
         }
@@ -1813,29 +2019,12 @@ const AudioPlayer = {
         const searchInput = document.getElementById("player-search-input");
         const typeFilters = document.getElementById("player-type-filters");
         const artistsDensityToggle = document.getElementById("player-artists-density-toggle");
-        const allShuffleBtn = document.getElementById("player-btn-all-shuffle");
 
         if (typeFilters) {
             typeFilters.style.display = (view === "albums") ? "flex" : "none";
         }
         if (artistsDensityToggle) {
             artistsDensityToggle.style.display = (view === "artists" || view === "genres") ? "inline-flex" : "none";
-        }
-        if (allShuffleBtn) {
-            allShuffleBtn.style.display = (view === "all" || view === "albums") ? "inline-flex" : "none";
-            if (view === "all" && this.allSearchQuery && this.allSearchQuery.trim()) {
-                allShuffleBtn.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
-                    <span>Aléatoire (Résultats)</span>
-                `;
-                allShuffleBtn.title = "Lancer une lecture aléatoire des morceaux trouvés";
-            } else {
-                allShuffleBtn.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
-                    <span>Aléatoire (Collection)</span>
-                `;
-                allShuffleBtn.title = "Lancer une lecture aléatoire qui pioche dans tous les titres de la collection";
-            }
         }
         if (!sortSelect) return;
 
@@ -1921,24 +2110,15 @@ const AudioPlayer = {
         const bar = document.getElementById("persistent-player-bar");
         if (!bar) return;
 
-        const isAudioActive = Boolean(this.currentAlbum && this.playlist && this.playlist.length > 0);
-        const isVideoBgActive = Boolean(window.isVideoPlayingInBackground && (window.currentModalVideoItem || currentModalVideoItem));
-
-        if (!isAudioActive && !isVideoBgActive) {
-            bar.style.display = "none";
-            if (typeof updateHeaderNowPlayingButton === "function") updateHeaderNowPlayingButton();
-            return;
-        }
-
-        // La barre flottante du bas reste visible en permanence dès qu'un média est actif
+        // Le centre de commandes inférieur reste affiché en permanence en mode standard
+        // (En mode Ambiance, la règle body.ambient-mode-active applique display: none !important)
         bar.style.display = "flex";
         if (typeof updateHeaderNowPlayingButton === "function") updateHeaderNowPlayingButton();
     },
 
     async loadLibraryData(preservePlayback = false) {
         this.isLoadingLibrary = true;
-        const hasActivePlayback = Boolean(this.isPlaying || (this.playlist && this.playlist.length > 0));
-        if (this.albumInfoCache && !preservePlayback && !hasActivePlayback) {
+        if (this.albumInfoCache) {
             this.albumInfoCache.clear();
         }
         const grid = document.getElementById("player-albums-grid");
@@ -1991,7 +2171,13 @@ const AudioPlayer = {
 
             this.updateSourceButtonsUI();
             if (this.currentView !== "now-playing") {
-                this.renderCurrentView();
+                const allContainer = document.getElementById("player-all-container");
+                const hasAllBlocks = Boolean(allContainer && allContainer.querySelector(".player-all-album-block"));
+                if (this.currentView === "all" && hasAllBlocks) {
+                    this.updateActiveTrackInAllContainer();
+                } else {
+                    this.renderCurrentView();
+                }
             }
 
             if (window.UserPlaylists) {
@@ -2010,6 +2196,11 @@ const AudioPlayer = {
 
             // Pré-charger le catalogue global « Tout » dès l'ouverture de la collection
             this.prefetchAllCatalog();
+
+            // Si la vue détail d'un album est actuellement ouverte, la rafraîchir avec les données fraîches
+            if (this.isAlbumDetailOpen && this.detailAlbumPath) {
+                this.openAlbumDetail(this.detailAlbumPath, true);
+            }
         } catch (err) {
             console.error("Erreur loadLibraryData:", err);
             showToast("Impossible de charger la collection audio : " + err.message, "danger");
@@ -2018,6 +2209,28 @@ const AudioPlayer = {
             }
         } finally {
             this.isLoadingLibrary = false;
+        }
+    },
+
+    invalidateAlbumCache(albumPath = null) {
+        if (!this.albumInfoCache) this.albumInfoCache = new Map();
+        if (albumPath) {
+            this.albumInfoCache.delete(albumPath);
+            if (this.allCatalog && Array.isArray(this.allCatalog.albums)) {
+                const idx = this.allCatalog.albums.findIndex(a => a.path === albumPath);
+                if (idx >= 0) {
+                    this.allCatalog.albums.splice(idx, 1);
+                }
+            }
+            if (this.isAlbumDetailOpen && this.detailAlbumPath === albumPath) {
+                this.openAlbumDetail(albumPath, true);
+            }
+        } else {
+            this.albumInfoCache.clear();
+            this.allCatalog = null;
+            if (this.isAlbumDetailOpen && this.detailAlbumPath) {
+                this.openAlbumDetail(this.detailAlbumPath, true);
+            }
         }
     },
 
@@ -2229,7 +2442,9 @@ const AudioPlayer = {
                     .then(d => {
                         if (d && d.albums) {
                             this.libraryAlbums = d.albums;
-                            this.renderCurrentView();
+                            if (!this.isPlaying && this.currentView !== "all") {
+                                this.renderCurrentView();
+                            }
                         }
                     }).catch(() => {});
             }
@@ -2337,7 +2552,7 @@ const AudioPlayer = {
         const typesConfig = [
             { type: "album", label: "Albums", emoji: "💿", count: counts.album },
             { type: "single", label: "Singles", emoji: "⚡", count: counts.single },
-            { type: "rip", label: "Rips Audio", emoji: "🎙️", count: counts.rip },
+            { type: "rip", label: "Rips", emoji: "🎙️", count: counts.rip },
             { type: "playlist", label: "Listes", emoji: "📑", count: counts.playlist }
         ];
 
@@ -2494,7 +2709,10 @@ const AudioPlayer = {
     },
 
     async playFilteredCollection(opts = {}) {
-        const { artist, genre, shuffle = false } = opts;
+        if (this._isPlayingFilteredLock) return;
+        this._isPlayingFilteredLock = true;
+        try {
+            const { artist, genre, shuffle = false } = opts;
         const targetArtist = artist || this.selectedArtistFilter;
         const targetGenre = genre || this.selectedGenreFilter;
 
@@ -2604,6 +2822,9 @@ const AudioPlayer = {
         setTimeout(() => this.scrollToActiveTrack(true), 80);
 
         showToast(`Lecture ${shuffle ? "aléatoire " : ""}de « ${label} » (${this.playlist.length} titres)`, "success");
+        } finally {
+            this._isPlayingFilteredLock = false;
+        }
     },
 
     renderCurrentView() {
@@ -2654,11 +2875,14 @@ const AudioPlayer = {
             if (window.UserPlaylists && !window.UserPlaylists.isDetailOpen) {
                 window.UserPlaylists.loadAndRenderPlaylists();
             }
+        } else if (this.currentView === "search") {
+            this.renderUnifiedSearch();
         } else if (this.currentView === "now-playing") {
             this.updateMiniDockVisibility();
             this.renderPlayerTab();
             this.updateDisplayedAlbumUI();
         }
+        this.updateScrollBounds();
     },
 
     renderAlbumsGrid() {
@@ -2712,7 +2936,7 @@ const AudioPlayer = {
             const badgeInfo = this.getAlbumTypeBadgeInfo(albType);
             const genreStr = (alb.genre || "").trim();
             const genreTagHtml = genreStr
-                ? `<span class="player-card-genre-tag" title="Filtrer par le genre : ${escapeHtml(genreStr)}" data-genre="${escapeHtml(genreStr)}"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="genre-tag-icon"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg><span>${escapeHtml(genreStr)}</span></span>`
+                ? `<span class="player-card-genre-tag" title="Genre : ${escapeHtml(genreStr)}"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="genre-tag-icon"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg><span>${escapeHtml(genreStr)}</span></span>`
                 : `<span class="player-card-genre-tag is-empty" title="Genre non renseigné"><span>Non classé</span></span>`;
 
             htmlParts.push(`
@@ -2806,18 +3030,6 @@ const AudioPlayer = {
                     return;
                 }
 
-                const genreTag = e.target.closest(".player-card-genre-tag:not(.is-empty)");
-                if (genreTag) {
-                    e.stopPropagation();
-                    const gName = genreTag.getAttribute("data-genre");
-                    if (gName) {
-                        this.selectedGenreFilter = gName;
-                        this.selectedArtistFilter = null;
-                        this.renderAlbumsGrid();
-                    }
-                    return;
-                }
-
                 // Clic sur la carte (hors boutons d'action) → ouvrir le détail
                 if (!e.target.closest(".btn-card-quick-action") && !e.target.closest(".player-card-play-btn")) {
                     if (!this.savedScrollPositions) this.savedScrollPositions = {};
@@ -2846,9 +3058,10 @@ const AudioPlayer = {
                 }, 250);
             });
         }
+        this.updateScrollBounds();
     },
 
-    async openAlbumDetail(albumPath) {
+    async openAlbumDetail(albumPath, forceRefresh = false) {
         if (!albumPath) return;
         this.isAlbumDetailOpen = true;
         this.detailAlbumPath = albumPath;
@@ -2869,9 +3082,13 @@ const AudioPlayer = {
         const detailView = document.getElementById("player-album-detail-view");
         const detailBlock = document.getElementById("player-album-detail-block");
 
+        if (forceRefresh && this.albumInfoCache) {
+            this.albumInfoCache.delete(albumPath);
+        }
+
         // 1. Chercher dans le cache mémoire AudioPlayer ou synthétiser depuis allCatalog
-        let info = this.albumInfoCache ? this.albumInfoCache.get(albumPath) : null;
-        if (!info && this.allCatalog && Array.isArray(this.allCatalog.albums)) {
+        let info = (!forceRefresh && this.albumInfoCache) ? this.albumInfoCache.get(albumPath) : null;
+        if (!info && !forceRefresh && this.allCatalog && Array.isArray(this.allCatalog.albums)) {
             const foundAlb = this.allCatalog.albums.find(a => a.path === albumPath);
             if (foundAlb && Array.isArray(foundAlb.tracks) && foundAlb.tracks.length > 0) {
                 info = {
@@ -2895,23 +3112,23 @@ const AudioPlayer = {
             }
         }
 
-        // Si non présent en cache mémoire, afficher le spinner de chargement
+        // Si non présent en cache mémoire ou forceRefresh, afficher le spinner de chargement si bloc vide
         if (!info) {
             if (gridView) gridView.style.display = "none";
             if (detailView) detailView.style.display = "block";
-            if (detailBlock) {
+            if (detailBlock && (!forceRefresh || !detailBlock.firstElementChild)) {
                 detailBlock.innerHTML = `
                     <div style="padding: 60px 20px; text-align: center;">
                         <div class="spinner"></div>
                         <p class="text-muted" style="margin-top: 14px; font-size: 0.9rem;">Chargement des pistes de l'album...</p>
                     </div>
                 `;
+                this.cancelPendingScrolls();
+                this.restoreScrollPosition(0);
             }
-            this.cancelPendingScrolls();
-            window.scrollTo({ top: 0, left: 0, behavior: "instant" });
 
             try {
-                const res = await fetch(`/api/album/info?path=${encodeURIComponent(albumPath)}`);
+                const res = await fetch(`/api/album/info?path=${encodeURIComponent(albumPath)}${forceRefresh ? '&force=1' : ''}`);
                 if (res.ok) {
                     info = await res.json();
                     if (!this.albumInfoCache) this.albumInfoCache = new Map();
@@ -2939,14 +3156,22 @@ const AudioPlayer = {
             return;
         }
 
+        const albMatch = this.libraryAlbums ? this.libraryAlbums.find(a => a.path === albumPath) : null;
+        if (albMatch && info) {
+            if (albMatch.year && (!info.year || info.year !== albMatch.year)) info.year = albMatch.year;
+            if (albMatch.genre && (!info.genre || info.genre !== albMatch.genre)) info.genre = albMatch.genre;
+            if (albMatch.artist && (!info.album_artist || info.album_artist !== albMatch.artist)) info.album_artist = albMatch.artist;
+            if (albMatch.title && (!info.album_name || info.album_name !== albMatch.title)) info.album_name = albMatch.title;
+        }
+
         if (gridView) gridView.style.display = "none";
         if (detailView) detailView.style.display = "block";
 
         // Construction du rendu
         const folderName = albumPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "Album";
-        const albumTitle = info.album_name || folderName;
-        const albumArtist = info.album_artist || "Artiste inconnu";
-        const albMatch = this.libraryAlbums ? this.libraryAlbums.find(a => a.path === albumPath) : null;
+        const albumTitle = (albMatch && albMatch.title) || info.album_name || folderName;
+        const albumArtist = (albMatch && albMatch.artist) || info.album_artist || "Artiste inconnu";
+        const effectiveYear = (albMatch && albMatch.year) || (info && info.year) || "";
         const coverUrl = (albMatch && albMatch.cover_url) || (info && info.cover_url) || `/api/audio/cover?path=${encodeURIComponent(albumPath)}${albMatch && albMatch.mtime ? `&v=${Math.floor(albMatch.mtime)}` : ''}`;
         const rawTracks = (info.tracks || []).slice().sort((a, b) => {
             const na = parseInt(a.track_number, 10) || 0;
@@ -2960,9 +3185,16 @@ const AudioPlayer = {
         this.updateDetailContextBar();
 
         const firstFormat = (rawTracks[0] && (rawTracks[0].format || (rawTracks[0].filepath && rawTracks[0].filepath.split('.').pop()))) || "M4A";
-        const yearStr = info.year ? `📅 ${escapeHtml(String(info.year))} • ` : "";
+        const yearStr = effectiveYear ? `📅 ${escapeHtml(String(effectiveYear))} • ` : "";
         const tracksCountStr = `${rawTracks.length} titre${rawTracks.length > 1 ? "s" : ""}`;
         const isPlayingThisAlbum = Boolean(this.activeAlbumPath && this.activeAlbumPath === albumPath);
+
+        if (this.currentAlbum && this.currentAlbum.path === albumPath) {
+            if (effectiveYear) this.currentAlbum.year = effectiveYear;
+            if (albumTitle) this.currentAlbum.title = albumTitle;
+            if (albumArtist) this.currentAlbum.artist = albumArtist;
+            if (typeof this.updatePlayerBarUI === "function") this.updatePlayerBarUI();
+        }
 
         // OPT: Array.push + join au lieu de concaténation string (évite la pression O(n²))
         const trackParts = [];
@@ -2995,6 +3227,10 @@ const AudioPlayer = {
                             <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
                             <span>+ File</span>
                         </button>
+                        <button type="button" class="btn-track-action btn-detail-trk-playlist" title="Ajouter ce morceau à une playlist">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                            <span>+ Playlist</span>
+                        </button>
                     </div>
                     <span class="dense-track-format">${escapeHtml(this.formatTrackBadge(trk))}</span>
                     <span class="player-track-item-dur">${escapeHtml(trk.duration || "--:--")}</span>
@@ -3003,9 +3239,17 @@ const AudioPlayer = {
         });
         const tracksHtml = trackParts.join("");
 
-        const albObj = this.libraryAlbums.find(a => a.path === albumPath);
+        const albObj = albMatch || (this.libraryAlbums ? this.libraryAlbums.find(a => a.path === albumPath) : null);
         const albType = this.getAlbumType(albObj || { title: albumTitle, path: albumPath, tracks: rawTracks });
         const badgeInfo = this.getAlbumTypeBadgeInfo(albType);
+        const albumGenre = ((albMatch && albMatch.genre) || (info && info.genre) || (albObj && albObj.genre) || (rawTracks[0] && rawTracks[0].genre) || "").trim();
+        const genreTagHtml = albumGenre
+            ? `<span class="player-card-genre-tag" title="Genre : ${escapeHtml(albumGenre)}"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="genre-tag-icon"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg><span>${escapeHtml(albumGenre)}</span></span>`
+            : "";
+
+        if (this.currentAlbum && this.currentAlbum.path === albumPath && albumGenre) {
+            this.currentAlbum.genre = albumGenre;
+        }
 
         if (detailBlock) {
             detailBlock.innerHTML = `
@@ -3021,6 +3265,7 @@ const AudioPlayer = {
                             <div class="all-album-artist" title="${escapeHtml(albumArtist)}">${escapeHtml(albumArtist)}</div>
                             <div class="all-album-submeta">
                                 <span class="player-type-badge-inline ${badgeInfo.class}">${badgeInfo.label}</span>
+                                ${genreTagHtml}
                                 <span>${yearStr}${tracksCountStr}</span>
                             </div>
                         </div>
@@ -3059,9 +3304,7 @@ const AudioPlayer = {
                 this.scrollToActiveTrack(true);
             } else {
                 this.cancelPendingScrolls();
-                window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-                if (document.documentElement) document.documentElement.scrollTop = 0;
-                if (document.body) document.body.scrollTop = 0;
+                this.restoreScrollPosition(0);
             }
 
             // OPT: Délégation d'événements — 1 seul listener sur le container
@@ -3127,6 +3370,23 @@ const AudioPlayer = {
                         }
                         return;
                     }
+                    if (e.target.closest(".btn-detail-trk-playlist")) {
+                        if (rawTracks[trkIdx]) {
+                            const trk = rawTracks[trkIdx];
+                            if (typeof openAddToPlaylistModal === "function") {
+                                openAddToPlaylistModal({
+                                    type: trk.type === "video" ? "video" : "audio",
+                                    title: trk.title || trk.filename || "Piste",
+                                    artist: trk.artist || albumArtist || "Artiste",
+                                    duration: trk.duration_seconds || trk.duration || 0,
+                                    path: trk.path || (albumPath ? `${albumPath}\\${trk.filename}` : trk.filename),
+                                    album_title: albumTitle,
+                                    cover_url: coverUrl
+                                });
+                            }
+                        }
+                        return;
+                    }
 
                     // Clic direct sur la ligne de piste (hors boutons)
                     if (!e.target.closest(".btn-track-action")) {
@@ -3139,6 +3399,7 @@ const AudioPlayer = {
                 });
             }
         }
+        this.updateScrollBounds();
     },
 
     closeAlbumDetail(restoreScroll = true) {
@@ -3299,6 +3560,7 @@ const AudioPlayer = {
                 this.setView("albums");
             });
         }
+        this.updateScrollBounds();
     },
 
     renderGenresGrid() {
@@ -3437,6 +3699,7 @@ const AudioPlayer = {
                 this.setView("albums");
             });
         }
+        this.updateScrollBounds();
     },
 
     // =========================================================
@@ -3513,9 +3776,22 @@ const AudioPlayer = {
                     });
                 }
 
-                // Rendu silencieux en arrière-plan dans le conteneur #player-all-container
-                // (Prêt immédiatement et sans freeze dès que l'utilisateur bascule dessus)
-                this.renderCatalogAlbums();
+                // Rendu intelligent dans le conteneur #player-all-container
+                const allContainer = document.getElementById("player-all-container");
+                const hasExistingBlocks = Boolean(allContainer && allContainer.querySelector(".player-all-album-block"));
+
+                if (!hasExistingBlocks) {
+                    this.renderCatalogAlbums();
+                    if (this.currentView === "all" && (this.isPlaying || this.currentIndex >= 0)) {
+                        this.updateActiveTrackInAllContainer();
+                        setTimeout(() => this.scrollToActiveTrack(true), 60);
+                    }
+                } else {
+                    // Les blocs d'albums sont déjà rendus : ne JAMAIS écraser le DOM pendant la lecture !
+                    if (this.currentView === "all") {
+                        this.updateActiveTrackInAllContainer();
+                    }
+                }
 
                 this.isCatalogReady = true;
                 this.setAllCatalogPreparingState(false);
@@ -3534,8 +3810,9 @@ const AudioPlayer = {
 
     async loadAndRenderAllCatalog(force = false) {
         const container = document.getElementById("player-all-container");
+        const hasExistingBlocks = Boolean(container && container.querySelector(".player-all-album-block"));
         if (!this.isCatalogReady || force) {
-            if (container && (!this.allCatalog || force)) {
+            if (container && (!this.allCatalog || force) && !hasExistingBlocks) {
                 container.innerHTML = `
                     <div style="padding: 40px 20px; text-align: center;">
                         <span class="spinner" style="display:inline-block;width:24px;height:24px;margin-bottom:12px;vertical-align:middle;"></span>
@@ -3546,7 +3823,7 @@ const AudioPlayer = {
             try {
                 await this.prefetchAllCatalog(force);
             } catch (err) {
-                if (container) {
+                if (container && !hasExistingBlocks) {
                     container.innerHTML = `
                         <div class="empty-state" style="padding: 40px 20px; text-align: center;">
                             <div style="font-size: 2.5rem; opacity: 0.5; margin-bottom: 8px;">⚠️</div>
@@ -3561,6 +3838,7 @@ const AudioPlayer = {
         }
         if (this.currentView === "all") {
             this.renderAllView();
+            this.updateScrollBounds();
         }
     },
 
@@ -3716,9 +3994,11 @@ const AudioPlayer = {
         let tracksHtml = "";
         (alb.tracks || []).forEach((trk, trkIdx) => {
             const trkPath = trk.filepath || trk.path || "";
+            const normCurTrackPath = curTrackPath ? curTrackPath.replace(/\\/g, "/").toLowerCase() : "";
+            const normTrkPath = trkPath ? trkPath.replace(/\\/g, "/").toLowerCase() : "";
             const isThisTrackPlaying = Boolean(
-                (curTrackPath && trkPath && curTrackPath === trkPath) ||
-                (isPlayingThisAlbum && this.currentIndex === trkIdx)
+                (normCurTrackPath && normTrkPath && normCurTrackPath === normTrkPath) ||
+                (isPlayingThisAlbum && curTrack && curTrack.title && trk.title && curTrack.title.trim().toLowerCase() === trk.title.trim().toLowerCase())
             );
             const numStr = trk.track_number ? String(trk.track_number).padStart(2, '0') : String(trkIdx + 1).padStart(2, '0');
 
@@ -3746,6 +4026,10 @@ const AudioPlayer = {
                             <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
                             <span>+ File</span>
                         </button>
+                        <button type="button" class="btn-track-action btn-cat-track-playlist" title="Ajouter ce titre à une playlist">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                            <span>+ Playlist</span>
+                        </button>
                     </div>
                     <span class="dense-track-format">${escapeHtml(this.formatTrackBadge(trk))}</span>
                     <span class="player-track-item-dur">${escapeHtml(trk.duration || "--:--")}</span>
@@ -3755,6 +4039,10 @@ const AudioPlayer = {
 
         const albType = this.getAlbumType(alb);
         const badgeInfo = this.getAlbumTypeBadgeInfo(albType);
+        const albumGenre = (alb.genre || (alb.tracks && alb.tracks[0] && alb.tracks[0].genre) || "").trim();
+        const genreTagHtml = albumGenre
+            ? `<span class="player-card-genre-tag" title="Genre : ${escapeHtml(albumGenre)}"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="genre-tag-icon"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg><span>${escapeHtml(albumGenre)}</span></span>`
+            : "";
 
         return `
             <div class="player-all-album-block ${isPlayingThisAlbum ? "is-active-album" : ""}" data-alb-idx="${albIdx}" data-alb-path="${escapeHtml(alb.path)}">
@@ -3769,6 +4057,7 @@ const AudioPlayer = {
                         <div class="all-album-artist" title="${escapeHtml(alb.artist)}">${escapeHtml(alb.artist)}</div>
                         <div class="all-album-submeta">
                             <span class="player-type-badge-inline ${badgeInfo.class}">${badgeInfo.label}</span>
+                            ${genreTagHtml}
                             <span>${yearStr}${tracksCountStr}</span>
                         </div>
                     </div>
@@ -3788,6 +4077,10 @@ const AudioPlayer = {
                         <button type="button" class="btn-all-action btn-cat-alb-queue" title="Ajouter tout l'album à la file">
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
                             <span>+ File</span>
+                        </button>
+                        <button type="button" class="btn-all-action btn-cat-alb-playlist" title="Ajouter tout cet album à une playlist">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                            <span>+ Playlist</span>
                         </button>
                     </div>
                 </div>
@@ -3849,12 +4142,165 @@ const AudioPlayer = {
                             <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
                             <span>+ File</span>
                         </button>
+                        <button type="button" class="btn-track-action btn-dense-playlist" title="Ajouter ce titre à une playlist">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                            <span>+ Playlist</span>
+                        </button>
                     </div>
                     <span class="dense-track-format">${escapeHtml(this.formatTrackBadge(trk))}</span>
                     <span class="dense-track-dur">${escapeHtml(trk.duration || "--:--")}</span>
                 </div>
             </div>
         `;
+    },
+
+    async playTrackInAllCollection(alb, trkIdx, trackObj = null) {
+        if (!alb) return;
+
+        // Si la collection complète est déjà chargée dans this.playlist, retrouver directement le morceau sans tout reconstruire
+        if (this.currentAlbum && this.currentAlbum.path === "system:all-collection" && this.playlist && this.playlist.length > 0) {
+            let targetIdx = -1;
+            const targetFp = (trackObj && (trackObj.filepath || trackObj.path))
+                ? (trackObj.filepath || trackObj.path)
+                : (alb.tracks && alb.tracks[trkIdx] ? (alb.tracks[trkIdx].filepath || alb.tracks[trkIdx].path) : "");
+
+            if (targetFp) {
+                const normFp = targetFp.replace(/\\/g, "/").toLowerCase();
+                targetIdx = this.playlist.findIndex(t => (t.filepath || t.path || "").replace(/\\/g, "/").toLowerCase() === normFp);
+            }
+            if (targetIdx < 0 && alb.path) {
+                const normAlb = (alb.path || "").replace(/\\/g, "/").toLowerCase();
+                targetIdx = this.playlist.findIndex(t => (t.album_path || "").replace(/\\/g, "/").toLowerCase() === normAlb && (t.track_number === (trkIdx + 1) || String(t.id).endsWith(`-${trkIdx}`)));
+            }
+            if (targetIdx < 0) {
+                const trkTitle = trackObj ? trackObj.title : (alb.tracks && alb.tracks[trkIdx] ? alb.tracks[trkIdx].title : null);
+                if (trkTitle) {
+                    const normTitle = trkTitle.toLowerCase().trim();
+                    const normAlb = (alb.path || "").replace(/\\/g, "/").toLowerCase();
+                    targetIdx = this.playlist.findIndex(t => (t.album_path || "").replace(/\\/g, "/").toLowerCase() === normAlb && (t.title || "").toLowerCase().trim() === normTitle);
+                }
+            }
+
+            if (targetIdx >= 0) {
+                this.currentIndex = targetIdx;
+                if (this.playbackContext) this.playbackContext.currentIndex = targetIdx;
+                this.playTrackAtIndex(targetIdx);
+                if (typeof this.updateActiveTrackInAllContainer === "function") {
+                    this.updateActiveTrackInAllContainer();
+                }
+                setTimeout(() => this.scrollToActiveTrack(true), 100);
+                return;
+            }
+        }
+
+        // Sinon, construire la liste ordonnée des pistes de toute la collection
+        const catalogAlbums = (this._currentCatalogAlbums && this._currentCatalogAlbums.length > 0)
+            ? this._currentCatalogAlbums
+            : ((this.allCatalog && Array.isArray(this.allCatalog.albums)) ? this.allCatalog.albums : (this.libraryAlbums || []));
+
+        if (!catalogAlbums || catalogAlbums.length === 0) {
+            this.loadAlbum(alb.path, { autoPlay: true, startTrackIndex: trkIdx, isCollection: (this.librarySource === "library"), switchView: false });
+            return;
+        }
+
+        const allTracks = [];
+        for (const a of catalogAlbums) {
+            const cover = a.cover_url || `/api/audio/cover?path=${encodeURIComponent(a.path)}`;
+            const albTitle = a.title || "";
+            const albArtist = a.artist || "";
+            const albPath = a.path || "";
+            const rawTracks = (a.tracks || []).slice().sort((t1, t2) => (parseInt(t1.track_number, 10) || 0) - (parseInt(t2.track_number, 10) || 0));
+            for (let idx = 0; idx < rawTracks.length; idx++) {
+                const t = rawTracks[idx];
+                const fp = t.filepath || t.path || "";
+                const ext = fp.substring(fp.lastIndexOf(".")).toUpperCase().replace(".", "");
+                const isVid = Boolean(t.is_video || t.type === "video" || ext === "MP4" || ext === "MKV" || ext === "WEBM");
+                const isConc = Boolean(t.is_concert || a.is_concert || (isVid && (fp.toLowerCase().includes("[concert]") || fp.toLowerCase().includes("concert") || fp.toLowerCase().includes("live") || fp.toLowerCase().includes("tour"))));
+                allTracks.push({
+                    id: `collection-${albPath}-${idx}`,
+                    type: isVid ? "video" : "audio",
+                    title: t.title || t.filename || `Piste ${idx + 1}`,
+                    artist: t.artist || albArtist || "Artiste inconnu",
+                    album: t.album || albTitle || "Album",
+                    album_path: albPath,
+                    duration: t.duration || "--:--",
+                    duration_seconds: t.duration_seconds || 0,
+                    path: fp,
+                    filepath: fp,
+                    rel_path: fp,
+                    format: ext || t.format || "M4A",
+                    stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
+                    cover_url: cover,
+                    thumbnail_url: cover,
+                    track_number: t.track_number || (idx + 1),
+                    is_video: isVid,
+                    is_concert: isConc
+                });
+            }
+        }
+
+        if (allTracks.length === 0) {
+            this.loadAlbum(alb.path, { autoPlay: true, startTrackIndex: trkIdx, isCollection: (this.librarySource === "library"), switchView: false });
+            return;
+        }
+
+        let targetIdx = -1;
+        const targetFp = (trackObj && (trackObj.filepath || trackObj.path))
+            ? (trackObj.filepath || trackObj.path)
+            : (alb.tracks && alb.tracks[trkIdx] ? (alb.tracks[trkIdx].filepath || alb.tracks[trkIdx].path) : "");
+
+        if (targetFp) {
+            const normFp = targetFp.replace(/\\/g, "/").toLowerCase();
+            targetIdx = allTracks.findIndex(t => (t.filepath || t.path || "").replace(/\\/g, "/").toLowerCase() === normFp);
+        }
+        if (targetIdx < 0 && alb.path) {
+            const normAlb = (alb.path || "").replace(/\\/g, "/").toLowerCase();
+            targetIdx = allTracks.findIndex(t => (t.album_path || "").replace(/\\/g, "/").toLowerCase() === normAlb && (t.track_number === (trkIdx + 1) || String(t.id).endsWith(`-${trkIdx}`)));
+        }
+        if (targetIdx < 0) {
+            const trkTitle = trackObj ? trackObj.title : (alb.tracks && alb.tracks[trkIdx] ? alb.tracks[trkIdx].title : null);
+            if (trkTitle) {
+                const normTitle = trkTitle.toLowerCase().trim();
+                const normAlb = (alb.path || "").replace(/\\/g, "/").toLowerCase();
+                targetIdx = allTracks.findIndex(t => (t.album_path || "").replace(/\\/g, "/").toLowerCase() === normAlb && (t.title || "").toLowerCase().trim() === normTitle);
+            }
+        }
+        if (targetIdx < 0) targetIdx = 0;
+
+        // Conserver STRICTEMENT les options de lecture de l'utilisateur (isShuffle et repeatMode)
+        const currentTargetTrack = allTracks[targetIdx];
+        this.currentAlbum = {
+            title: "🌍 Toute la Collection",
+            artist: `${catalogAlbums.length} albums • ${allTracks.length} pistes`,
+            year: "",
+            genre: "Collection",
+            cover_url: currentTargetTrack?.cover_url || alb.cover_url || "/static/placeholder-cover.svg",
+            path: "system:all-collection",
+            is_playlist: true,
+            is_collection: true
+        };
+        this.activeAlbumPath = "system:all-collection";
+        this.playlist = allTracks;
+        this.activePlaylist = allTracks.slice();
+        this.currentIndex = targetIdx;
+        this.playbackContext = {
+            album: this.currentAlbum,
+            playlist: allTracks.slice(),
+            currentIndex: targetIdx
+        };
+        this.isUserPlaylistActive = true;
+        this.playbackOrigin = { view: "all", type: "all", path: "system:all-collection" };
+
+        this.renderPlayerTab();
+        if (typeof this.updateActiveTrackInAllContainer === "function") {
+            this.updateActiveTrackInAllContainer();
+        }
+        if (this.isQueueDrawerOpen && typeof this.renderQueueDrawer === "function") {
+            this.renderQueueDrawer();
+        }
+        this.updateMiniDockVisibility();
+        this.playTrackAtIndex(targetIdx);
+        setTimeout(() => this.scrollToActiveTrack(true), 100);
     },
 
     ensureAllContainerDelegation(container) {
@@ -3891,12 +4337,10 @@ const AudioPlayer = {
                     ? this._currentCatalogAlbums[albIdx]
                     : ((this.allCatalog && this.allCatalog.albums) ? this.allCatalog.albums.find(a => a.path === albBlock.getAttribute("data-alb-path")) : null);
 
-                if (!alb) return;
-
                 // Action Lire tout album
                 if (e.target.closest(".btn-cat-alb-play")) {
                     e.stopPropagation();
-                    this.loadAlbum(alb.path, { autoPlay: true, startTrackIndex: 0, isCollection: (this.librarySource === "library"), switchView: false });
+                    this.playTrackInAllCollection(alb, 0, alb.tracks ? alb.tracks[0] : null);
                     return;
                 }
                 // Action Aléatoire album
@@ -3917,6 +4361,21 @@ const AudioPlayer = {
                     this.enqueueAlbum(alb.path, false);
                     return;
                 }
+                // Action + Playlist album
+                if (e.target.closest(".btn-cat-alb-playlist")) {
+                    e.stopPropagation();
+                    if (typeof openAddToPlaylistModal === "function") {
+                        openAddToPlaylistModal({
+                            type: "album",
+                            title: alb.title || "Album",
+                            artist: alb.artist || "Artiste",
+                            path: alb.path,
+                            tracks_count: alb.tracks_count || (alb.tracks ? alb.tracks.length : 0),
+                            cover_url: alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`
+                        });
+                    }
+                    return;
+                }
 
                 // Actions Piste
                 const trkItem = e.target.closest(".player-track-item");
@@ -3924,11 +4383,7 @@ const AudioPlayer = {
                     const trkIdx = parseInt(trkItem.getAttribute("data-trk-idx"), 10);
                     if (e.target.closest(".btn-cat-track-play")) {
                         e.stopPropagation();
-                        if (this.currentAlbum && this.activeAlbumPath === alb.path && this.playlist && this.playlist.length > 0) {
-                            this.playTrackAtIndex(trkIdx);
-                        } else {
-                            this.loadAlbum(alb.path, { autoPlay: true, startTrackIndex: trkIdx, isCollection: (this.librarySource === "library"), switchView: false });
-                        }
+                        this.playTrackInAllCollection(alb, trkIdx, alb.tracks ? alb.tracks[trkIdx] : null);
                         return;
                     }
                     if (e.target.closest(".btn-cat-track-next")) {
@@ -3945,14 +4400,26 @@ const AudioPlayer = {
                         }
                         return;
                     }
+                    if (e.target.closest(".btn-cat-track-playlist")) {
+                        e.stopPropagation();
+                        if (alb.tracks && alb.tracks[trkIdx] && typeof openAddToPlaylistModal === "function") {
+                            const trk = alb.tracks[trkIdx];
+                            openAddToPlaylistModal({
+                                type: trk.type === "video" ? "video" : "audio",
+                                title: trk.title || trk.filename || "Piste",
+                                artist: trk.artist || alb.artist || "Artiste",
+                                duration: trk.duration_seconds || trk.duration || 0,
+                                path: trk.path || trk.filepath || (alb.path ? `${alb.path}\\${trk.filename}` : trk.filename),
+                                album_title: alb.title,
+                                cover_url: alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`
+                            });
+                        }
+                        return;
+                    }
 
                     // Clic direct sur la ligne de piste
                     if (!e.target.closest(".btn-track-action")) {
-                        if (this.currentAlbum && this.activeAlbumPath === alb.path && this.playlist && this.playlist.length > 0) {
-                            this.playTrackAtIndex(trkIdx);
-                        } else {
-                            this.loadAlbum(alb.path, { autoPlay: true, startTrackIndex: trkIdx, isCollection: (this.librarySource === "library"), switchView: false });
-                        }
+                        this.playTrackInAllCollection(alb, trkIdx, alb.tracks ? alb.tracks[trkIdx] : null);
                     }
                 }
                 return;
@@ -3972,11 +4439,7 @@ const AudioPlayer = {
 
                 if (e.target.closest(".btn-dense-play")) {
                     e.stopPropagation();
-                    if (this.currentAlbum && this.activeAlbumPath === albPath && this.playlist && this.playlist.length > 0) {
-                        this.playTrackAtIndex(trkIdx);
-                    } else {
-                        this.loadAlbum(albPath, { autoPlay: true, startTrackIndex: trkIdx, isCollection: (this.librarySource === "library"), switchView: false });
-                    }
+                    this.playTrackInAllCollection(match.album, trkIdx, match.track);
                     return;
                 }
                 if (e.target.closest(".btn-dense-next")) {
@@ -3989,14 +4452,27 @@ const AudioPlayer = {
                     this.enqueueTrack(match.track, match.album, false);
                     return;
                 }
+                if (e.target.closest(".btn-dense-playlist")) {
+                    e.stopPropagation();
+                    if (typeof openAddToPlaylistModal === "function") {
+                        const trk = match.track;
+                        const alb = match.album;
+                        openAddToPlaylistModal({
+                            type: trk.type === "video" ? "video" : "audio",
+                            title: trk.title || trk.filename || "Piste",
+                            artist: trk.artist || alb.artist || "Artiste",
+                            duration: trk.duration_seconds || trk.duration || 0,
+                            path: trk.path || trk.filepath || (alb.path ? `${alb.path}\\${trk.filename}` : trk.filename),
+                            album_title: alb.title,
+                            cover_url: alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`
+                        });
+                    }
+                    return;
+                }
 
                 // Clic direct sur la ligne dense
                 if (!e.target.closest(".btn-track-action")) {
-                    if (this.currentAlbum && this.activeAlbumPath === albPath && this.playlist && this.playlist.length > 0) {
-                        this.playTrackAtIndex(trkIdx);
-                    } else {
-                        this.loadAlbum(albPath, { autoPlay: true, startTrackIndex: trkIdx, isCollection: (this.librarySource === "library"), switchView: false });
-                    }
+                    this.playTrackInAllCollection(match.album, trkIdx, match.track);
                 }
             }
         });
@@ -4101,6 +4577,16 @@ const AudioPlayer = {
 
         container.innerHTML = allParts.join("");
         this.ensureAllContainerDelegation(container);
+
+        if (this.currentView === "all") {
+            if (this.isPlaying || this.currentIndex >= 0) {
+                this.updateActiveTrackInAllContainer();
+            }
+            const targetAllY = (this.savedScrollPositions && typeof this.savedScrollPositions["all"] === "number")
+                ? this.savedScrollPositions["all"]
+                : 0;
+            this.restoreScrollPosition(targetAllY);
+        }
     },
 
     bindCatalogAlbumEvents(container, albums) {
@@ -4271,6 +4757,905 @@ const AudioPlayer = {
     },
 
     // =========================================================
+    // RECHERCHE GLOBALE UNIFIÉE (OPTION A)
+    // =========================================================
+
+    onSearchInputChanged(rawQuery) {
+        const q = (rawQuery || "").trim();
+        if (!q) {
+            if (this.currentView === "search") {
+                this.clearUnifiedSearch(true);
+            }
+            return;
+        }
+
+        this.unifiedSearchQuery = q;
+
+        // Si on n'est pas encore sur la vue recherche, mémoriser la vue d'origine et basculer
+        if (this.currentView !== "search") {
+            this.preSearchView = (this.currentView && this.currentView !== "now-playing") ? this.currentView : "albums";
+            this.savedScrollPositions = this.savedScrollPositions || {};
+            this.savedScrollPositions[this.preSearchView] = window.scrollY || document.documentElement.scrollTop || 0;
+            this.setView("search");
+
+            const searchInput = document.getElementById("player-search-input");
+            if (searchInput && searchInput.value !== rawQuery) {
+                searchInput.value = rawQuery;
+            }
+        }
+
+        this.performUnifiedSearch(q);
+    },
+
+    clearUnifiedSearch(restoreView = true) {
+        clearTimeout(this._unifiedSearchDebounceTimer);
+        this.unifiedSearchQuery = "";
+        this.unifiedSearchResults = null;
+        this.activeUnifiedSearchChip = "all";
+
+        const searchInput = document.getElementById("player-search-input");
+        const searchClearBtn = document.getElementById("player-search-clear-btn");
+        if (searchInput) searchInput.value = "";
+        if (searchClearBtn) searchClearBtn.style.display = "none";
+
+        const searchContainer = document.getElementById("unified-search-view");
+        if (searchContainer) searchContainer.innerHTML = "";
+
+        if (restoreView) {
+            const target = (this.preSearchView && this.preSearchView !== "search" && this.preSearchView !== "now-playing")
+                ? this.preSearchView
+                : "albums";
+            this.setView(target);
+            const savedY = (this.savedScrollPositions && typeof this.savedScrollPositions[target] === "number")
+                ? this.savedScrollPositions[target]
+                : 0;
+            this.restoreScrollPosition(savedY);
+        }
+    },
+
+    performUnifiedSearch(query) {
+        this.unifiedSearchQuery = query || "";
+        const q = (query || "").toLowerCase().trim();
+        if (!q) {
+            this.unifiedSearchResults = null;
+            this.renderUnifiedSearch();
+            return;
+        }
+
+        const results = {
+            query: query,
+            tracks: [],
+            albums: [],
+            videos: [],
+            artists: [],
+            genres: [],
+            playlists: [],
+            topMatch: null
+        };
+
+        // 1. Titres et Albums depuis allCatalog ou libraryAlbums
+        const catAlbums = (this.allCatalog && Array.isArray(this.allCatalog.albums))
+            ? this.allCatalog.albums
+            : (this.libraryAlbums || []);
+
+        const matchedAlbums = [];
+        const matchedTracks = [];
+        const seenAlbumPaths = new Set();
+
+        for (const alb of catAlbums) {
+            const albTitle = (alb.title || "").toLowerCase();
+            const albArtist = (alb.artist || "").toLowerCase();
+            const albGenre = (alb.genre || "").toLowerCase();
+            const albPath = alb.path || "";
+
+            const albMatch = albTitle.includes(q) || albArtist.includes(q) || albGenre.includes(q);
+            if (albMatch && !seenAlbumPaths.has(albPath)) {
+                seenAlbumPaths.add(albPath);
+                let score = 0;
+                if (albTitle === q) score += 100;
+                else if (albTitle.startsWith(q)) score += 60;
+                else if (albTitle.includes(q)) score += 30;
+                if (albArtist === q) score += 50;
+                else if (albArtist.startsWith(q)) score += 30;
+                matchedAlbums.push({ album: alb, score });
+            }
+
+            // Recherche des morceaux : ne retenir STRICTEMENT que les pistes dont le TITRE correspond à la recherche
+            const tracks = alb.tracks || [];
+            for (let i = 0; i < tracks.length; i++) {
+                const trk = tracks[i];
+                const trkTitle = (trk.title || trk.filename || "").toLowerCase();
+
+                if (trkTitle.includes(q)) {
+                    let score = 0;
+                    if (trkTitle === q) score += 120;
+                    else if (trkTitle.startsWith(q)) score += 80;
+                    else score += 40;
+
+                    matchedTracks.push({
+                        track: trk,
+                        album: alb,
+                        trackIndex: i,
+                        score
+                    });
+                }
+            }
+        }
+
+        matchedAlbums.sort((a, b) => b.score - a.score);
+        matchedTracks.sort((a, b) => b.score - a.score);
+
+        results.albums = matchedAlbums.map(m => m.album);
+        results.tracks = matchedTracks;
+
+        // 2. Clips & Concerts depuis videosCatalog
+        const allVids = this.videosCatalog || [];
+        const matchedVids = [];
+        for (const v of allVids) {
+            const vTitle = (v.title || "").toLowerCase();
+            const vArtist = (v.artist || "").toLowerCase();
+            const vFile = (v.filename || "").toLowerCase();
+            if (vTitle.includes(q) || vArtist.includes(q) || vFile.includes(q)) {
+                let score = 0;
+                if (vTitle === q) score += 110;
+                else if (vTitle.startsWith(q)) score += 70;
+                else score += 30;
+                if (vArtist === q) score += 40;
+                matchedVids.push({ video: v, score });
+            }
+        }
+        matchedVids.sort((a, b) => b.score - a.score);
+        results.videos = matchedVids.map(m => m.video);
+
+        // 3. Artistes uniques
+        const artistMap = new Map();
+        for (const alb of (this.libraryAlbums || [])) {
+            const artName = (alb.artist || "").trim();
+            if (!artName || this.isUnknownArtist(artName)) continue;
+            const norm = artName.toLowerCase();
+            if (!artistMap.has(norm)) {
+                artistMap.set(norm, { name: artName, albumCount: 0, coverUrl: alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}` });
+            }
+            artistMap.get(norm).albumCount++;
+        }
+        // Ajouter artistes des vidéos
+        for (const v of (this.videosCatalog || [])) {
+            const artName = (v.artist || "").trim();
+            if (!artName || this.isUnknownArtist(artName)) continue;
+            const norm = artName.toLowerCase();
+            if (!artistMap.has(norm)) {
+                artistMap.set(norm, { name: artName, albumCount: 0, coverUrl: `/api/videos/thumbnail?path=${encodeURIComponent(v.rel_path || v.path)}` });
+            }
+        }
+        const matchedArtists = [];
+        for (const [norm, data] of artistMap.entries()) {
+            if (norm.includes(q)) {
+                let score = 0;
+                if (norm === q) score += 150;
+                else if (norm.startsWith(q)) score += 90;
+                else score += 40;
+                matchedArtists.push({ ...data, score });
+            }
+        }
+        matchedArtists.sort((a, b) => b.score - a.score || b.albumCount - a.albumCount);
+        results.artists = matchedArtists;
+
+        // 4. Genres uniques
+        const genreMap = new Map();
+        for (const alb of (this.libraryAlbums || [])) {
+            const gName = (alb.genre || "").trim();
+            if (!gName) continue;
+            const norm = gName.toLowerCase();
+            if (!genreMap.has(norm)) {
+                genreMap.set(norm, { name: gName, count: 0 });
+            }
+            genreMap.get(norm).count++;
+        }
+        const matchedGenres = [];
+        for (const [norm, data] of genreMap.entries()) {
+            if (norm.includes(q)) {
+                let score = (norm === q) ? 100 : (norm.startsWith(q) ? 60 : 30);
+                matchedGenres.push({ ...data, score });
+            }
+        }
+        matchedGenres.sort((a, b) => b.score - a.score || b.count - a.count);
+        results.genres = matchedGenres;
+
+        // 5. Playlists utilisateur
+        const userPlaylists = (window.UserPlaylists && Array.isArray(window.UserPlaylists.playlists))
+            ? window.UserPlaylists.playlists
+            : [];
+        const matchedPlaylists = [];
+        for (const pl of userPlaylists) {
+            const plName = (pl.name || "").toLowerCase();
+            if (plName.includes(q)) {
+                let score = (plName === q) ? 100 : (plName.startsWith(q) ? 60 : 30);
+                matchedPlaylists.push({ ...pl, score });
+            }
+        }
+        matchedPlaylists.sort((a, b) => b.score - a.score);
+        results.playlists = matchedPlaylists;
+
+        // 6. Détermination du Top Match (Meilleur résultat absolu)
+        let bestCandidate = null;
+        let highestScore = 0;
+
+        if (matchedArtists.length > 0 && matchedArtists[0].score >= 80) {
+            bestCandidate = { type: "artist", data: matchedArtists[0], score: matchedArtists[0].score };
+            highestScore = matchedArtists[0].score;
+        }
+        if (matchedAlbums.length > 0 && matchedAlbums[0].score > highestScore) {
+            bestCandidate = { type: "album", data: matchedAlbums[0].album, score: matchedAlbums[0].score };
+            highestScore = matchedAlbums[0].score;
+        }
+        if (matchedTracks.length > 0 && matchedTracks[0].score > highestScore) {
+            bestCandidate = { type: "track", data: matchedTracks[0], score: matchedTracks[0].score };
+            highestScore = matchedTracks[0].score;
+        }
+        if (matchedVids.length > 0 && matchedVids[0].score > highestScore) {
+            bestCandidate = { type: "video", data: matchedVids[0].video, score: matchedVids[0].score };
+            highestScore = matchedVids[0].score;
+        }
+
+        results.topMatch = bestCandidate;
+        this.unifiedSearchResults = results;
+        this.renderUnifiedSearch();
+    },
+
+    renderUnifiedSearch() {
+        const container = document.getElementById("unified-search-view");
+        if (!container) return;
+
+        this.bindUnifiedSearchEvents(container);
+
+        const results = this.unifiedSearchResults;
+        const query = this.unifiedSearchQuery || "";
+
+        if (!query.trim() || !results) {
+            container.innerHTML = `
+                <div class="search-empty-state">
+                    <div class="search-empty-icon">🔍</div>
+                    <div class="search-empty-title">Recherche unifiée dans votre collection</div>
+                    <div class="search-empty-hint">Tapez un titre, artiste, album, clip ou genre musical pour afficher instantanément tous les résultats.</div>
+                </div>
+            `;
+            return;
+        }
+
+        const totalCount = results.tracks.length + results.albums.length + results.videos.length + results.artists.length + results.genres.length + results.playlists.length;
+        const countIndicator = document.getElementById("player-count-indicator");
+        if (countIndicator) {
+            countIndicator.textContent = `${totalCount} résultat${totalCount > 1 ? "s" : ""}`;
+        }
+        if (totalCount === 0) {
+            container.innerHTML = `
+                <div class="unified-search-nav-row">
+                    <button type="button" class="btn btn-secondary player-context-back-btn" id="btn-unified-search-back">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                        <span>← Revenir</span>
+                    </button>
+                    <span class="search-results-summary-count">0 résultat pour « ${escapeHtml(query)} »</span>
+                </div>
+                <div class="search-empty-state">
+                    <div class="search-empty-icon">📂</div>
+                    <div class="search-empty-title">Aucun résultat trouvé</div>
+                    <div class="search-empty-hint">Aucun élément ne correspond à « <strong>${escapeHtml(query)}</strong> ». Vérifiez l'orthographe ou essayez un mot-clé plus court.</div>
+                </div>
+            `;
+            return;
+        }
+
+        const activeChip = this.activeUnifiedSearchChip || "all";
+
+        // Navigation & Barre de filtres (Pills)
+        const pillsHtml = `
+            <div class="unified-search-nav-row">
+                <button type="button" class="btn btn-secondary player-context-back-btn" id="btn-unified-search-back" title="Fermer la recherche et revenir à la vue précédente (Échap)">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                    <span>← Revenir</span>
+                </button>
+                <div class="search-pills-bar">
+                    <button type="button" class="search-pill ${activeChip === "all" ? "active" : ""}" data-chip="all">
+                        Tout <span class="search-pill-count">${totalCount}</span>
+                    </button>
+                    <button type="button" class="search-pill ${activeChip === "tracks" ? "active" : ""}" data-chip="tracks" ${results.tracks.length === 0 ? "style='display:none;'" : ""}>
+                        🎵 Titres <span class="search-pill-count">${results.tracks.length}</span>
+                    </button>
+                    <button type="button" class="search-pill ${activeChip === "albums" ? "active" : ""}" data-chip="albums" ${results.albums.length === 0 ? "style='display:none;'" : ""}>
+                        💿 Albums <span class="search-pill-count">${results.albums.length}</span>
+                    </button>
+                    <button type="button" class="search-pill ${activeChip === "videos" ? "active" : ""}" data-chip="videos" ${results.videos.length === 0 ? "style='display:none;'" : ""}>
+                        🎬 Clips & Concerts <span class="search-pill-count">${results.videos.length}</span>
+                    </button>
+                    <button type="button" class="search-pill ${activeChip === "artists" ? "active" : ""}" data-chip="artists" ${results.artists.length === 0 ? "style='display:none;'" : ""}>
+                        🎤 Artistes <span class="search-pill-count">${results.artists.length}</span>
+                    </button>
+                    <button type="button" class="search-pill ${activeChip === "genres" ? "active" : ""}" data-chip="genres" ${results.genres.length === 0 ? "style='display:none;'" : ""}>
+                        🏷️ Genres <span class="search-pill-count">${results.genres.length}</span>
+                    </button>
+                    <button type="button" class="search-pill ${activeChip === "playlists" ? "active" : ""}" data-chip="playlists" ${results.playlists.length === 0 ? "style='display:none;'" : ""}>
+                        📑 Playlists <span class="search-pill-count">${results.playlists.length}</span>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Section Top Match (affiché si mode "all" et topMatch présent)
+        let topMatchHtml = "";
+        if (activeChip === "all" && results.topMatch) {
+            topMatchHtml = this._buildTopMatchCardHtml(results.topMatch, query);
+        }
+
+        // Section Titres
+        let tracksHtml = "";
+        if ((activeChip === "all" || activeChip === "tracks") && results.tracks.length > 0) {
+            const limit = (activeChip === "all") ? 8 : results.tracks.length;
+            const slice = results.tracks.slice(0, limit);
+            const trkRows = slice.map((m, idx) => this._buildSearchTrackRowHtml(m, idx, query)).join("");
+            tracksHtml = `
+                <div class="search-section">
+                    <div class="search-section-header">
+                        <div class="search-section-title">
+                            🎵 Titres
+                            <span class="search-section-badge">${results.tracks.length}</span>
+                        </div>
+                        ${(activeChip === "all" && results.tracks.length > limit) ? `
+                            <button type="button" class="search-section-see-all" data-chip="tracks">Voir tous les titres (${results.tracks.length}) →</button>
+                        ` : ""}
+                    </div>
+                    <div class="search-tracks-list">
+                        ${trkRows}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Section Albums
+        let albumsHtml = "";
+        if ((activeChip === "all" || activeChip === "albums") && results.albums.length > 0) {
+            const limit = (activeChip === "all") ? 6 : results.albums.length;
+            const slice = results.albums.slice(0, limit);
+            const albCards = slice.map(a => this._buildSearchAlbumCardHtml(a, query)).join("");
+            albumsHtml = `
+                <div class="search-section">
+                    <div class="search-section-header">
+                        <div class="search-section-title">
+                            💿 Albums
+                            <span class="search-section-badge">${results.albums.length}</span>
+                        </div>
+                        ${(activeChip === "all" && results.albums.length > limit) ? `
+                            <button type="button" class="search-section-see-all" data-chip="albums">Voir tous les albums (${results.albums.length}) →</button>
+                        ` : ""}
+                    </div>
+                    <div class="search-albums-grid">
+                        ${albCards}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Section Vidéos & Concerts
+        let videosHtml = "";
+        if ((activeChip === "all" || activeChip === "videos") && results.videos.length > 0) {
+            const limit = (activeChip === "all") ? 4 : results.videos.length;
+            const slice = results.videos.slice(0, limit);
+            const vidCards = slice.map(v => this._buildSearchVideoCardHtml(v, query)).join("");
+            videosHtml = `
+                <div class="search-section">
+                    <div class="search-section-header">
+                        <div class="search-section-title">
+                            🎬 Clips & Concerts
+                            <span class="search-section-badge">${results.videos.length}</span>
+                        </div>
+                        ${(activeChip === "all" && results.videos.length > limit) ? `
+                            <button type="button" class="search-section-see-all" data-chip="videos">Voir tous les clips & concerts (${results.videos.length}) →</button>
+                        ` : ""}
+                    </div>
+                    <div class="search-videos-grid">
+                        ${vidCards}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Section Artistes
+        let artistsHtml = "";
+        if ((activeChip === "all" || activeChip === "artists") && results.artists.length > 0) {
+            const limit = (activeChip === "all") ? 6 : results.artists.length;
+            const slice = results.artists.slice(0, limit);
+            const artCards = slice.map(art => `
+                <div class="player-artist-card" data-action="open-artist" data-artist="${escapeHtml(art.name)}" style="cursor: pointer;">
+                    <div class="player-artist-avatar" style="background-image: url('${art.coverUrl}'); background-size: cover; background-position: center;"></div>
+                    <div class="player-artist-info">
+                        <div class="player-artist-name">${this.highlightMatch(art.name, query)}</div>
+                        <div class="player-artist-count">${art.albumCount} album${art.albumCount > 1 ? "s" : ""}</div>
+                    </div>
+                </div>
+            `).join("");
+            artistsHtml = `
+                <div class="search-section">
+                    <div class="search-section-header">
+                        <div class="search-section-title">
+                            🎤 Artistes
+                            <span class="search-section-badge">${results.artists.length}</span>
+                        </div>
+                        ${(activeChip === "all" && results.artists.length > limit) ? `
+                            <button type="button" class="search-section-see-all" data-chip="artists">Voir tous les artistes (${results.artists.length}) →</button>
+                        ` : ""}
+                    </div>
+                    <div class="search-artists-grid">
+                        ${artCards}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Section Genres
+        let genresHtml = "";
+        if ((activeChip === "all" || activeChip === "genres") && results.genres.length > 0) {
+            const chips = results.genres.map(g => `
+                <button type="button" class="search-genre-chip" data-action="open-genre" data-genre="${escapeHtml(g.name)}">
+                    <span>🏷️</span>
+                    <span>${this.highlightMatch(g.name, query)}</span>
+                    <span style="font-size: 0.75rem; opacity: 0.65; margin-left: 2px;">(${g.count})</span>
+                </button>
+            `).join("");
+            genresHtml = `
+                <div class="search-section">
+                    <div class="search-section-header">
+                        <div class="search-section-title">
+                            🏷️ Genres
+                            <span class="search-section-badge">${results.genres.length}</span>
+                        </div>
+                    </div>
+                    <div class="search-genres-cloud">
+                        ${chips}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Section Playlists
+        let playlistsHtml = "";
+        if ((activeChip === "all" || activeChip === "playlists") && results.playlists.length > 0) {
+            const plCards = results.playlists.map(pl => `
+                <div class="playlist-card" data-action="open-playlist" data-playlist-id="${escapeHtml(pl.id)}" style="cursor: pointer;">
+                    <div class="playlist-card-inner">
+                        <div class="playlist-card-title">${this.highlightMatch(pl.name, query)}</div>
+                        <div class="playlist-card-count text-muted">${(pl.tracks && pl.tracks.length) || 0} pistes</div>
+                    </div>
+                </div>
+            `).join("");
+            playlistsHtml = `
+                <div class="search-section">
+                    <div class="search-section-header">
+                        <div class="search-section-title">
+                            📑 Playlists
+                            <span class="search-section-badge">${results.playlists.length}</span>
+                        </div>
+                    </div>
+                    <div class="search-playlists-grid">
+                        ${plCards}
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = `
+            ${pillsHtml}
+            ${topMatchHtml}
+            ${tracksHtml}
+            ${albumsHtml}
+            ${videosHtml}
+            ${artistsHtml}
+            ${genresHtml}
+            ${playlistsHtml}
+        `;
+
+        this.bindUnifiedSearchEvents(container);
+    },
+
+    _buildTopMatchCardHtml(topMatch, query) {
+        if (!topMatch) return "";
+        const { type, data } = topMatch;
+        let thumbUrl = "/static/placeholder-cover.svg";
+        let title = "";
+        let subtitle = "";
+        let badge = "MEILLEUR RÉSULTAT";
+        let cardAction = "";
+        let playAction = "";
+
+        if (type === "artist") {
+            badge = "🎤 ARTISTE";
+            title = data.name;
+            subtitle = `${data.albumCount} album${data.albumCount > 1 ? "s" : ""} dans votre discographie`;
+            thumbUrl = data.coverUrl || thumbUrl;
+            cardAction = `data-action="open-artist" data-artist="${escapeHtml(data.name)}"`;
+            playAction = `data-action="play-artist" data-artist="${escapeHtml(data.name)}"`;
+        } else if (type === "album") {
+            badge = "💿 ALBUM";
+            title = data.title || "Album";
+            subtitle = data.artist || "Artiste inconnu";
+            thumbUrl = data.cover_url || `/api/audio/cover?path=${encodeURIComponent(data.path)}`;
+            cardAction = `data-action="open-album" data-path="${escapeHtml(data.path)}"`;
+            playAction = `data-action="play-album" data-path="${escapeHtml(data.path)}"`;
+        } else if (type === "track") {
+            const trk = data.track;
+            const alb = data.album;
+            badge = "🎵 TITRE";
+            title = trk.title || trk.filename || "Piste";
+            subtitle = `${trk.artist || alb.artist || "Artiste"} • ${alb.title || "Album"}`;
+            thumbUrl = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
+            cardAction = `data-action="play-track" data-album-path="${escapeHtml(alb.path)}" data-trk-idx="${data.trackIndex}"`;
+            playAction = `data-action="play-track" data-album-path="${escapeHtml(alb.path)}" data-trk-idx="${data.trackIndex}"`;
+        } else if (type === "video") {
+            badge = data.is_concert ? "🎸 CONCERT" : "🎬 CLIP VIDÉO";
+            title = data.title;
+            subtitle = data.artist || "Artiste";
+            thumbUrl = `/api/videos/thumbnail?path=${encodeURIComponent(data.rel_path || data.path)}`;
+            cardAction = `data-action="play-video" data-video-path="${escapeHtml(data.rel_path || data.path)}"`;
+            playAction = `data-action="play-video" data-video-path="${escapeHtml(data.rel_path || data.path)}"`;
+        }
+
+        return `
+            <div class="search-top-match-card" ${cardAction} style="cursor: pointer;">
+                <img class="search-top-match-thumb" src="${thumbUrl}" alt="Cover" onerror="this.src='/static/placeholder-cover.svg';">
+                <div class="search-top-match-info">
+                    <span class="search-top-match-badge">⭐ ${badge}</span>
+                    <div class="search-top-match-title">${this.highlightMatch(title, query)}</div>
+                    <div class="search-top-match-subtitle">${escapeHtml(subtitle)}</div>
+                </div>
+                <button type="button" class="search-top-match-play-btn" ${playAction} title="Lire immédiatement">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+            </div>
+        `;
+    },
+
+    _buildSearchTrackRowHtml(matchItem, idx, query) {
+        const trk = matchItem.track;
+        const alb = matchItem.album;
+        const trkIdx = matchItem.trackIndex;
+        const trkTitle = trk.title || trk.filename || "Piste";
+        const trkArtist = trk.artist || alb.artist || "Artiste inconnu";
+        const albTitle = alb.title || "Album";
+        const coverUrl = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
+        const durStr = trk.duration || "--:--";
+
+        const curTrk = this.playlist && this.playlist[this.currentIndex];
+        const isCurrentActive = Boolean(
+            curTrk &&
+            ((curTrk.filepath && curTrk.filepath === trk.filepath) ||
+             (this.activeAlbumPath === alb.path && this.currentIndex === trkIdx))
+        );
+
+        return `
+            <div class="search-track-item ${isCurrentActive ? "active" : ""}" data-action="play-track" data-album-path="${escapeHtml(alb.path)}" data-trk-idx="${trkIdx}">
+                <div class="search-track-cover-wrap">
+                    <img class="search-track-cover" src="${coverUrl}" alt="Cover" onerror="this.src='/static/placeholder-cover.svg';">
+                    <span class="player-equalizer-bars" style="display: ${isCurrentActive && this.isPlaying ? "inline-flex" : "none"};">
+                        <span class="player-equalizer-bar"></span>
+                        <span class="player-equalizer-bar"></span>
+                        <span class="player-equalizer-bar"></span>
+                    </span>
+                </div>
+                <div class="search-track-main-info">
+                    <div class="search-track-title">${this.highlightMatch(trkTitle, query)}</div>
+                    <div class="search-track-sub">${this.highlightMatch(trkArtist, query)} • ${escapeHtml(albTitle)}</div>
+                </div>
+                <div class="search-track-actions">
+                    <button type="button" class="btn-track-action" data-action="queue-track-next" data-album-path="${escapeHtml(alb.path)}" data-trk-idx="${trkIdx}" title="Lire ensuite en priorité">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                        <span>Ensuite</span>
+                    </button>
+                    <button type="button" class="btn-track-action" data-action="queue-track-end" data-album-path="${escapeHtml(alb.path)}" data-trk-idx="${trkIdx}" title="Ajouter à la file d'attente">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+                        <span>+ File</span>
+                    </button>
+                    <button type="button" class="btn-track-action" data-action="playlist-track" data-album-path="${escapeHtml(alb.path)}" data-trk-idx="${trkIdx}" title="Ajouter à une playlist">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                        <span>+ Playlist</span>
+                    </button>
+                </div>
+                <span class="search-track-dur">${escapeHtml(durStr)}</span>
+            </div>
+        `;
+    },
+
+    _buildSearchAlbumCardHtml(alb, query) {
+        const coverUrl = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
+        const albType = this.getAlbumType(alb);
+        const badgeInfo = this.getAlbumTypeBadgeInfo(albType);
+        const albumGenre = (alb.genre || (alb.tracks && alb.tracks[0] && alb.tracks[0].genre) || "").trim();
+        const trkCount = (alb.tracks && alb.tracks.length) || parseInt(alb.tracks_count, 10) || 0;
+        const genreTagHtml = albumGenre
+            ? `<div class="player-card-genre"><span class="player-card-genre-tag" title="Genre : ${escapeHtml(albumGenre)}"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" class="genre-tag-icon"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg><span>${escapeHtml(albumGenre)}</span></span></div>`
+            : "";
+
+        return `
+            <div class="player-album-card" data-action="open-album" data-path="${escapeHtml(alb.path)}" style="cursor: pointer;">
+                <div class="player-card-thumb-wrap">
+                    <span class="player-card-type-badge ${badgeInfo.class}">${badgeInfo.label}</span>
+                    <img class="player-card-thumb" src="${coverUrl}" alt="Cover" onerror="window.handleCoverError(this);">
+                    <button type="button" class="player-card-play-btn" data-action="play-album" data-path="${escapeHtml(alb.path)}" title="Lire l'album immédiatement">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </button>
+                </div>
+                <div class="player-card-info">
+                    <div class="player-card-title">${this.highlightMatch(alb.title, query)}</div>
+                    ${genreTagHtml}
+                    <div class="player-card-artist">${this.highlightMatch(alb.artist, query)}</div>
+                    <div class="player-card-meta">
+                        <span>${trkCount} titre${trkCount > 1 ? "s" : ""}</span>
+                        ${alb.year ? `<span>• ${alb.year}</span>` : ""}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    _buildSearchVideoCardHtml(v, query) {
+        const thumbUrl = `/api/videos/thumbnail?path=${encodeURIComponent(v.rel_path || v.path)}`;
+        const durStr = v.duration_str || (v.duration_seconds ? formatTime(v.duration_seconds) : "");
+        const isConcert = v.is_concert || v.video_type === "concert";
+
+        return `
+            <div class="player-video-card" data-action="play-video" data-video-path="${escapeHtml(v.rel_path || v.path)}" style="cursor: pointer;">
+                <div class="player-video-thumb-wrap">
+                    <img class="player-video-thumb" src="${thumbUrl}" alt="Thumb" onerror="this.src='/static/placeholder-cover.svg';">
+                    ${isConcert ? `<span class="player-video-badge-concert">🎸 Concert</span>` : ""}
+                    ${durStr ? `<span class="player-video-badge-dur">${durStr}</span>` : ""}
+                    <div class="player-video-play-overlay">
+                        <div class="player-video-play-icon-btn">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="player-video-body">
+                    <h4 class="player-video-title">${this.highlightMatch(v.title, query)}</h4>
+                    <div class="player-video-artist">
+                        <span>${this.highlightMatch(v.artist, query)}</span>
+                    </div>
+                    <div class="player-video-footer">
+                        <span>${durStr || ""}</span>
+                        <div class="player-video-actions">
+                            <button type="button" class="player-video-action-btn" data-action="queue-video-next" data-video-path="${escapeHtml(v.rel_path || v.path)}" title="Lire ce clip ensuite (priorité)">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                            </button>
+                            <button type="button" class="player-video-action-btn" data-action="queue-video-end" data-video-path="${escapeHtml(v.rel_path || v.path)}" title="Ajouter ce clip à la file d'attente">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+                            </button>
+                            <button type="button" class="player-video-action-btn" data-action="add-video-playlist" data-video-path="${escapeHtml(v.rel_path || v.path)}" title="Ajouter ce clip à une playlist">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    bindUnifiedSearchEvents(container) {
+        if (!container) return;
+        // OPT / Anti-flood : délégation d'événements unique et permanente sur le conteneur de recherche
+        if (container._unifiedSearchBound) return;
+        container._unifiedSearchBound = true;
+
+        // Délégation globale des clics sur les résultats et contrôles de recherche
+        container.addEventListener("click", (e) => {
+            // 1. Bouton Retour
+            const backBtn = e.target.closest("#btn-unified-search-back");
+            if (backBtn) {
+                e.stopPropagation();
+                this.clearUnifiedSearch(true);
+                return;
+            }
+
+            // 2. Filtres catégories (Pills & Voir tout)
+            const pillBtn = e.target.closest(".search-pill, .search-section-see-all");
+            if (pillBtn) {
+                e.stopPropagation();
+                const chip = pillBtn.getAttribute("data-chip");
+                if (chip) {
+                    this.activeUnifiedSearchChip = chip;
+                    this.renderUnifiedSearch();
+                    this.restoreScrollPosition(0);
+                }
+                return;
+            }
+
+            // 3. Actions sur les cartes / pistes / boutons
+            const actionEl = e.target.closest("[data-action]");
+            if (!actionEl) return;
+
+            const action = actionEl.getAttribute("data-action");
+            e.stopPropagation();
+
+            // 1. Lecture directe de piste
+            if (action === "play-track") {
+                const albPath = actionEl.getAttribute("data-album-path");
+                const trkIdx = parseInt(actionEl.getAttribute("data-trk-idx"), 10);
+                if (albPath && !isNaN(trkIdx)) {
+                    this.loadAlbum(albPath, {
+                        autoPlay: true,
+                        startTrackIndex: trkIdx,
+                        isCollection: (this.librarySource === "library"),
+                        switchView: false
+                    });
+                }
+                return;
+            }
+
+            // 2. File d'attente : ensuite
+            if (action === "queue-track-next") {
+                const albPath = actionEl.getAttribute("data-album-path");
+                const trkIdx = parseInt(actionEl.getAttribute("data-trk-idx"), 10);
+                const results = this.unifiedSearchResults;
+                const match = results?.tracks?.find(m => m.album?.path === albPath && m.trackIndex === trkIdx);
+                if (match) {
+                    this.enqueueTrack(match.track, {
+                        title: match.album.title,
+                        artist: match.album.artist,
+                        path: match.album.path
+                    }, true);
+                }
+                return;
+            }
+
+            // 3. File d'attente : à la fin
+            if (action === "queue-track-end") {
+                const albPath = actionEl.getAttribute("data-album-path");
+                const trkIdx = parseInt(actionEl.getAttribute("data-trk-idx"), 10);
+                const results = this.unifiedSearchResults;
+                const match = results?.tracks?.find(m => m.album?.path === albPath && m.trackIndex === trkIdx);
+                if (match) {
+                    this.enqueueTrack(match.track, {
+                        title: match.album.title,
+                        artist: match.album.artist,
+                        path: match.album.path
+                    }, false);
+                }
+                return;
+            }
+
+            // 4. Ajouter la piste à une playlist
+            if (action === "playlist-track") {
+                const albPath = actionEl.getAttribute("data-album-path");
+                const trkIdx = parseInt(actionEl.getAttribute("data-trk-idx"), 10);
+                const results = this.unifiedSearchResults;
+                const match = results?.tracks?.find(m => m.album?.path === albPath && m.trackIndex === trkIdx);
+                if (match && typeof openAddToPlaylistModal === "function") {
+                    const trk = match.track;
+                    const alb = match.album;
+                    openAddToPlaylistModal({
+                        type: "audio",
+                        title: trk.title || trk.filename || "Piste",
+                        artist: trk.artist || alb.artist || "Artiste",
+                        duration: trk.duration || 0,
+                        path: trk.path || trk.filepath || (albPath ? `${albPath}\\${trk.filename}` : trk.filename),
+                        album_title: alb.title,
+                        cover_url: alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(albPath)}`
+                    });
+                }
+                return;
+            }
+
+            // 5. Lecture d'un album complet
+            if (action === "play-album") {
+                const p = actionEl.getAttribute("data-path");
+                if (p) {
+                    this.loadAlbum(p, {
+                        autoPlay: true,
+                        startTrackIndex: 0,
+                        isCollection: (this.librarySource === "library"),
+                        switchView: false
+                    });
+                }
+                return;
+            }
+
+            // 6. Ouvrir les détails de l'album
+            if (action === "open-album") {
+                const p = actionEl.getAttribute("data-path") || actionEl.getAttribute("data-album-path");
+                if (p) {
+                    this.clearUnifiedSearch(false);
+                    this.setView("albums");
+                    this.openAlbumDetail(p);
+                }
+                return;
+            }
+
+            // 7. Lecture d'un clip ou concert vidéo
+            if (action === "play-video") {
+                const vPath = actionEl.getAttribute("data-video-path");
+                const vMatch = (this.videosCatalog || []).find(v => (v.rel_path || v.path) === vPath);
+                if (vMatch) {
+                    if (typeof window.captureAudioStateBeforeVideo === "function") {
+                        window.captureAudioStateBeforeVideo();
+                    }
+                    if (typeof openLocalVideoModal === "function") {
+                        openLocalVideoModal(vMatch);
+                    }
+                }
+                return;
+            }
+
+            if (action === "queue-video-next") {
+                const vPath = actionEl.getAttribute("data-video-path");
+                const vMatch = (this.videosCatalog || []).find(v => (v.rel_path || v.path) === vPath);
+                if (vMatch) this.enqueueVideo(vMatch, true);
+                return;
+            }
+
+            if (action === "queue-video-end") {
+                const vPath = actionEl.getAttribute("data-video-path");
+                const vMatch = (this.videosCatalog || []).find(v => (v.rel_path || v.path) === vPath);
+                if (vMatch) this.enqueueVideo(vMatch, false);
+                return;
+            }
+
+            if (action === "add-video-playlist") {
+                const vPath = actionEl.getAttribute("data-video-path");
+                const vMatch = (this.videosCatalog || []).find(v => (v.rel_path || v.path) === vPath);
+                if (vMatch && typeof openAddToPlaylistModal === "function") {
+                    openAddToPlaylistModal({
+                        type: "video",
+                        title: vMatch.title,
+                        artist: vMatch.artist,
+                        path: vMatch.rel_path || vMatch.filepath || vMatch.path,
+                        filepath: vMatch.filepath || vMatch.path || vMatch.rel_path,
+                        rel_path: vMatch.rel_path || "",
+                        duration: vMatch.duration || vMatch.duration_seconds || 0,
+                        height: vMatch.height || 1080,
+                        cover_url: `/api/videos/thumbnail?path=${encodeURIComponent(vMatch.rel_path || vMatch.path || vMatch.filepath)}`
+                    });
+                }
+                return;
+            }
+
+            // 8. Ouvrir et filtrer par artiste
+            if (action === "open-artist" || action === "play-artist") {
+                const art = actionEl.getAttribute("data-artist");
+                if (art) {
+                    this.clearUnifiedSearch(false);
+                    this.selectedArtistFilter = art;
+                    this.selectedGenreFilter = null;
+                    this.setView("albums");
+                    if (action === "play-artist") {
+                        this.playFilteredCollection({ artist: art, shuffle: false });
+                    }
+                }
+                return;
+            }
+
+            // 9. Ouvrir et filtrer par genre
+            if (action === "open-genre") {
+                const g = actionEl.getAttribute("data-genre");
+                if (g) {
+                    this.clearUnifiedSearch(false);
+                    this.selectedGenreFilter = g;
+                    this.selectedArtistFilter = null;
+                    this.setView("albums");
+                }
+                return;
+            }
+
+            // 10. Ouvrir une playlist
+            if (action === "open-playlist") {
+                const plId = actionEl.getAttribute("data-playlist-id");
+                if (plId) {
+                    this.clearUnifiedSearch(false);
+                    this.setView("playlists");
+                    if (window.UserPlaylists && typeof window.UserPlaylists.openDetail === "function") {
+                        window.UserPlaylists.openDetail(plId);
+                    }
+                }
+                return;
+            }
+        });
+    },
+
+    // =========================================================
     // HUB VIDÉO MUSICAL (CLIPS & VIDÉOS 16:9)
     // =========================================================
 
@@ -4279,6 +5664,12 @@ const AudioPlayer = {
         if (this.videosCatalog && this.videosCatalog.length > 0 && !force) {
             this.updateVideoBadges();
             this.renderVideosGrid();
+            if (this.currentView === "videos") {
+                const targetVideosY = (this.savedScrollPositions && typeof this.savedScrollPositions["videos"] === "number")
+                    ? this.savedScrollPositions["videos"]
+                    : 0;
+                this.restoreScrollPosition(targetVideosY);
+            }
             return;
         }
 
@@ -4300,6 +5691,13 @@ const AudioPlayer = {
             this.videosCatalog = data.videos || [];
             this.updateVideoBadges();
             this.renderVideosGrid();
+            this.updateScrollBounds();
+            if (this.currentView === "videos") {
+                const targetVideosY = (this.savedScrollPositions && typeof this.savedScrollPositions["videos"] === "number")
+                    ? this.savedScrollPositions["videos"]
+                    : 0;
+                this.restoreScrollPosition(targetVideosY);
+            }
         } catch (err) {
             console.error("Erreur loadAndRenderVideosCatalog:", err);
             if (grid) {
@@ -4324,6 +5722,12 @@ const AudioPlayer = {
         if (this.videosCatalog && this.videosCatalog.length > 0 && !force) {
             this.updateVideoBadges();
             this.renderConcertsGrid();
+            if (this.currentView === "concerts") {
+                const targetConcertsY = (this.savedScrollPositions && typeof this.savedScrollPositions["concerts"] === "number")
+                    ? this.savedScrollPositions["concerts"]
+                    : 0;
+                this.restoreScrollPosition(targetConcertsY);
+            }
             return;
         }
 
@@ -4345,6 +5749,13 @@ const AudioPlayer = {
             this.videosCatalog = data.videos || [];
             this.updateVideoBadges();
             this.renderConcertsGrid();
+            this.updateScrollBounds();
+            if (this.currentView === "concerts") {
+                const targetConcertsY = (this.savedScrollPositions && typeof this.savedScrollPositions["concerts"] === "number")
+                    ? this.savedScrollPositions["concerts"]
+                    : 0;
+                this.restoreScrollPosition(targetConcertsY);
+            }
         } catch (err) {
             console.error("Erreur loadAndRenderConcertsCatalog:", err);
             if (grid) {
@@ -4412,9 +5823,9 @@ const AudioPlayer = {
             switchTab("tab-editor");
         }
 
-        // Charger l'élément dans l'éditeur de tags (mode collection / vidéothèque)
+        // Charger l'élément dans l'éditeur de tags (mode vidéothèque)
         if (typeof window.loadAlbumInEditor === "function") {
-            await window.loadAlbumInEditor(targetPath, true);
+            await window.loadAlbumInEditor(targetPath, "videos");
         }
 
         // Donner le focus immédiat au champ de saisie de l'artiste
@@ -4553,6 +5964,12 @@ const AudioPlayer = {
                                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
                                     </button>
                                 ` : ""}
+                                <button type="button" class="player-video-action-btn btn-video-enqueue-next" title="Lire ce clip ensuite (priorité)" data-video-idx="${idx}">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                                </button>
+                                <button type="button" class="player-video-action-btn btn-video-enqueue" title="Ajouter ce clip à la file d'attente" data-video-idx="${idx}">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+                                </button>
                                 <button type="button" class="player-video-action-btn btn-video-add-playlist" title="Ajouter ce clip à une playlist" data-video-idx="${idx}">
                                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
                                 </button>
@@ -4584,12 +6001,35 @@ const AudioPlayer = {
         grid.querySelectorAll(".player-video-card").forEach(card => {
             card.addEventListener("click", (e) => {
                 // Si l'utilisateur clique sur un bouton d'action, ne pas ouvrir la vidéo
-                if (e.target.closest(".btn-extract-audio") || e.target.closest(".btn-video-add-playlist") || e.target.closest(".btn-send-to-tagger") || e.target.closest(".btn-tag-unknown-artist")) return;
+                if (e.target.closest(".player-video-action-btn") || e.target.closest(".btn-tag-unknown-artist")) return;
                 const idx = parseInt(card.getAttribute("data-video-idx"), 10);
                 const item = list[idx];
                 if (item) {
+                    if (typeof window.captureAudioStateBeforeVideo === "function") {
+                        window.captureAudioStateBeforeVideo();
+                    }
                     openLocalVideoModal(item);
                 }
+            });
+        });
+
+        // Écouteur pour lire la vidéo ensuite
+        grid.querySelectorAll(".btn-video-enqueue-next").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-video-idx"), 10);
+                const item = list[idx];
+                if (item) this.enqueueVideo(item, true);
+            });
+        });
+
+        // Écouteur pour ajouter la vidéo à la file d'attente
+        grid.querySelectorAll(".btn-video-enqueue").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-video-idx"), 10);
+                const item = list[idx];
+                if (item) this.enqueueVideo(item, false);
             });
         });
 
@@ -4814,6 +6254,12 @@ const AudioPlayer = {
                                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
                                     </button>
                                 ` : ""}
+                                <button type="button" class="player-video-action-btn btn-concert-enqueue-next" title="Lire ce concert ensuite (priorité)" data-concert-idx="${idx}">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                                </button>
+                                <button type="button" class="player-video-action-btn btn-concert-enqueue" title="Ajouter ce concert à la file d'attente" data-concert-idx="${idx}">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+                                </button>
                                 <button type="button" class="player-video-action-btn btn-concert-add-playlist" title="Ajouter ce concert à une playlist" data-concert-idx="${idx}">
                                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
                                 </button>
@@ -4844,12 +6290,35 @@ const AudioPlayer = {
         // Écouteurs de clics sur les cartes concert (lancement direct en grand écran)
         grid.querySelectorAll(".player-concert-card").forEach(card => {
             card.addEventListener("click", (e) => {
-                if (e.target.closest(".btn-extract-concert-audio") || e.target.closest(".btn-concert-add-playlist") || e.target.closest(".btn-send-to-tagger") || e.target.closest(".btn-tag-unknown-artist")) return;
+                if (e.target.closest(".player-video-action-btn") || e.target.closest(".btn-tag-unknown-artist")) return;
                 const idx = parseInt(card.getAttribute("data-concert-idx"), 10);
                 const item = list[idx];
                 if (item) {
+                    if (typeof window.captureAudioStateBeforeVideo === "function") {
+                        window.captureAudioStateBeforeVideo();
+                    }
                     openLocalVideoModal(item);
                 }
+            });
+        });
+
+        // Écouteur pour lire le concert ensuite
+        grid.querySelectorAll(".btn-concert-enqueue-next").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-concert-idx"), 10);
+                const item = list[idx];
+                if (item) this.enqueueVideo(item, true);
+            });
+        });
+
+        // Écouteur pour ajouter le concert à la file d'attente
+        grid.querySelectorAll(".btn-concert-enqueue").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute("data-concert-idx"), 10);
+                const item = list[idx];
+                if (item) this.enqueueVideo(item, false);
             });
         });
 
@@ -5043,6 +6512,8 @@ const AudioPlayer = {
         if (!this.audio.src) {
             if (this.playlist.length > 0 && this.currentIndex >= 0) {
                 this.playTrackAtIndex(this.currentIndex);
+            } else if ((this.libraryAlbums && this.libraryAlbums.length > 0) || (this.allCatalog && this.allCatalog.albums && this.allCatalog.albums.length > 0)) {
+                this.playEntireCollection({ shuffle: false });
             }
             return;
         }
@@ -5093,11 +6564,26 @@ const AudioPlayer = {
             }
         }
 
-        // Lecture séquentielle ou aléatoire dans l'album actif
+        // Lecture séquentielle ou aléatoire
         const list = (this.activePlaylist && this.activePlaylist.length > 0) ? this.activePlaylist : this.playlist;
         if (!list || list.length === 0) return;
 
         if (this.isShuffle) {
+            // Si la répétition d'album est active (repeatMode === 'all') et qu'on lit un album individuel hors collection
+            const isSingleAlbumRestricted = (this.repeatMode === "all" && this.currentAlbum && !this.currentAlbum.path.startsWith("playlist:") && this.currentAlbum.path !== "system:all-collection" && this.playlist && this.playlist.length > 0);
+            if (isSingleAlbumRestricted) {
+                // Aléatoire confiné aux pistes de l'album en cours
+                let nextIdx = Math.floor(Math.random() * list.length);
+                if (list.length > 1 && nextIdx === this.currentIndex) {
+                    nextIdx = (nextIdx + 1) % list.length;
+                }
+                if (this.playbackContext) this.playbackContext.currentIndex = nextIdx;
+                this.playTrackAtIndex(nextIdx);
+                if (this.isQueueDrawerOpen) this.renderQueueDrawer();
+                return;
+            }
+
+            // Aléatoire standard (sur la liste active / toute la collection)
             let nextIdx = Math.floor(Math.random() * list.length);
             if (list.length > 1 && nextIdx === this.currentIndex) {
                 nextIdx = (nextIdx + 1) % list.length;
@@ -5108,6 +6594,7 @@ const AudioPlayer = {
             return;
         }
 
+        // Lecture séquentielle stricte : piste suivante dans la liste
         let nextIdx = this.currentIndex + 1;
         if (nextIdx < list.length) {
             if (this.playbackContext) this.playbackContext.currentIndex = nextIdx;
@@ -5161,6 +6648,13 @@ const AudioPlayer = {
         }
 
         if (this.repeatMode === "all" || this.endOfAlbumBehavior === "repeat") {
+            const list = (this.activePlaylist && this.activePlaylist.length > 0) ? this.activePlaylist : this.playlist;
+            if (this.currentAlbum && this.currentAlbum.path === "system:all-collection" && list && list.length > 0) {
+                if (this.playbackContext) this.playbackContext.currentIndex = 0;
+                this.playTrackAtIndex(0);
+                showToast("🔁 Répétition de la collection", "info");
+                return;
+            }
             if (this.playbackContext) this.playbackContext.currentIndex = 0;
             this.playTrackAtIndex(0);
             showToast("🔁 Répétition de l'album", "info");
@@ -5179,7 +6673,28 @@ const AudioPlayer = {
             }
         }
 
+        // Enchaînement séquentiel continu dans l'onglet Tout (Catalogue Intégral)
+        const isFromAll = (this.currentView === "all" || (this.playbackOrigin && this.playbackOrigin.view === "all") || (this.playbackOrigin && this.playbackOrigin.type === "all"));
+        if (isFromAll && !this.isShuffle && this.currentAlbum && this.currentAlbum.path) {
+            const catalogAlbums = (this._currentCatalogAlbums && this._currentCatalogAlbums.length > 0)
+                ? this._currentCatalogAlbums
+                : ((this.allCatalog && Array.isArray(this.allCatalog.albums)) ? this.allCatalog.albums : null);
+            if (catalogAlbums && catalogAlbums.length > 0) {
+                const curNorm = (this.currentAlbum.path || "").replace(/\\/g, "/").toLowerCase();
+                const curIdx = catalogAlbums.findIndex(a => (a.path || "").replace(/\\/g, "/").toLowerCase() === curNorm);
+                if (curIdx >= 0 && curIdx + 1 < catalogAlbums.length) {
+                    const nextAlb = catalogAlbums[curIdx + 1];
+                    showToast(`▶ Album suivant : « ${nextAlb.title || "Album"} » (${nextAlb.artist || "Artiste"})`, "info", 3000);
+                    this.loadAlbum(nextAlb.path, { autoPlay: true, startTrackIndex: 0, isCollection: (this.librarySource === "library"), switchView: false });
+                    return;
+                }
+            }
+        }
+
         // Par défaut : arrêt propre
+        if (window.closeVideoModal) {
+            window.closeVideoModal(true);
+        }
         if (this.audio && !this.audio.paused && AudioFader.enabled) {
             AudioFader.fadeOut(this.audio, 400).then(() => {
                 this.audio.pause();
@@ -5198,6 +6713,45 @@ const AudioPlayer = {
         if (!track) return;
         this.currentTrackIsFromQueue = true;
         this.currentQueueTrack = track;
+        this.currentTrack = track;
+
+        const isVideo = Boolean(
+            track.type === "video" ||
+            track.is_video ||
+            (track.filepath && /\.(mp4|mkv|webm)$/i.test(track.filepath)) ||
+            (track.rel_path && /\.(mp4|mkv|webm)$/i.test(track.rel_path))
+        );
+
+        if (isVideo) {
+            window._savedAudioStateBeforeVideo = null;
+            this.isPlaying = true;
+            if (this.audio) {
+                this.audio.pause();
+            }
+            this.updateCurrentTrackUI(track);
+            this.updatePlayStateUI();
+            let vidPath = track.filepath || track.path || track.rel_path || "";
+            const isConc = Boolean(track.is_concert || (vidPath && (vidPath.toLowerCase().includes('[concert]') || vidPath.toLowerCase().includes('/concerts/') || vidPath.toLowerCase().includes('\\concerts\\'))));
+            if (typeof openLocalVideoModal === "function") {
+                openLocalVideoModal({
+                    title: track.title,
+                    artist: track.artist,
+                    path: vidPath,
+                    rel_path: track.rel_path || vidPath,
+                    is_concert: isConc,
+                    thumbnail: track.cover_url || (vidPath ? `/api/videos/thumbnail?path=${encodeURIComponent(vidPath)}` : ""),
+                    isPlaylistTrack: true
+                });
+            }
+            if (this.isQueueDrawerOpen) this.renderQueueDrawer();
+            this.syncSystemMediaState();
+            return;
+        }
+
+        // Lecture Audio classique : fermer toute vidéo active
+        if (window.closeVideoModal && (window.isVideoPlayingInBackground || document.getElementById("video-modal-backdrop")?.classList.contains("active") || (document.getElementById("video-modal-player") && !document.getElementById("video-modal-player").paused))) {
+            window.closeVideoModal(true);
+        }
 
         const startPlayback = () => {
             this.audio.src = track.stream_url;
@@ -5224,8 +6778,6 @@ const AudioPlayer = {
         if (miniTitle) miniTitle.textContent = track.title;
         if (miniArtist) miniArtist.textContent = `${track.artist} • ${track.album}`;
 
-
-
         // Vue Grand Lecteur
         const pCover = document.getElementById("player-cover-img");
         const pFmt = document.getElementById("player-format-badge");
@@ -5244,10 +6796,86 @@ const AudioPlayer = {
         this.syncSystemMediaState();
     },
 
+    enqueueVideo(videoItem, playNext = false) {
+        if (!videoItem) return;
+        const vidPath = videoItem.filepath || videoItem.path || videoItem.rel_path || "";
+        const relPath = videoItem.rel_path || vidPath;
+        const isConc = Boolean(
+            videoItem.is_concert ||
+            videoItem.video_type === "concert" ||
+            (videoItem.duration_seconds && videoItem.duration_seconds >= 1200) ||
+            (vidPath && (vidPath.toLowerCase().includes('[concert]') || vidPath.toLowerCase().includes('/concerts/') || vidPath.toLowerCase().includes('\\concerts\\'))) ||
+            (videoItem.title && (videoItem.title.toLowerCase().includes(' en concert') || videoItem.title.toLowerCase().includes('full concert') || videoItem.title.toLowerCase().includes('live at') || videoItem.title.toLowerCase().includes('arena tour')))
+        );
+        const thumbUrl = videoItem.thumbnail || videoItem.thumbnail_url || `/api/videos/thumbnail?path=${encodeURIComponent(relPath || vidPath)}`;
+        const durStr = videoItem.duration_str || (videoItem.duration_seconds ? formatTime(videoItem.duration_seconds) : (videoItem.duration || "--:--"));
+
+        const queueItem = {
+            title: videoItem.title || "Clip Vidéo",
+            artist: videoItem.artist || "Artiste inconnu",
+            album: isConc ? "Concert Vidéo" : "Clip Vidéo",
+            year: videoItem.year || "",
+            filepath: vidPath,
+            rel_path: relPath,
+            duration: durStr,
+            duration_seconds: videoItem.duration_seconds || 0,
+            format: "MP4",
+            track_number: "",
+            cover_url: thumbUrl,
+            album_path: "",
+            stream_url: `/api/video/stream?path=${encodeURIComponent(relPath || vidPath)}`,
+            type: "video",
+            is_video: true,
+            is_concert: isConc
+        };
+
+        const isAudioPlaying = this.isPlaying && this.audio && !this.audio.paused;
+        const isVideoPlaying = (window.isVideoPlayingInBackground || document.getElementById("video-modal-backdrop")?.classList.contains("active") || (document.getElementById("video-modal-player") && !document.getElementById("video-modal-player").paused));
+
+        if (!isAudioPlaying && !isVideoPlaying) {
+            this.userQueue.push(queueItem);
+            this.updateQueueBadges();
+            this.playNext();
+            showToast(`▶ Lecture de « ${queueItem.title} »`, "info");
+            return;
+        }
+
+        if (playNext) {
+            this.userQueue.unshift(queueItem);
+            showToast(`⏭️ Clip « ${queueItem.title} » sera lu ensuite`, "info");
+        } else {
+            this.userQueue.push(queueItem);
+            showToast(`➕ Clip « ${queueItem.title} » ajouté à la file d'attente`, "info");
+        }
+
+        this.updateQueueBadges();
+        if (this.isQueueDrawerOpen) this.renderQueueDrawer();
+    },
+
     enqueueTrack(track, album = null, playNext = false) {
         if (!track) return;
         const alb = album || this.currentAlbum || {};
-        const fp = track.filepath || "";
+        const fp = track.filepath || track.path || "";
+        const isVideo = Boolean(
+            track.type === "video" ||
+            track.is_video ||
+            (fp && /\.(mp4|mkv|webm)$/i.test(fp)) ||
+            (track.rel_path && /\.(mp4|mkv|webm)$/i.test(track.rel_path))
+        );
+        if (isVideo) {
+            return this.enqueueVideo({
+                title: track.title,
+                artist: track.artist || alb.artist,
+                path: fp,
+                filepath: fp,
+                rel_path: track.rel_path || "",
+                duration: track.duration,
+                duration_seconds: track.duration_seconds,
+                is_concert: Boolean(track.is_concert),
+                thumbnail: track.cover_url || track.thumbnail_url
+            }, playNext);
+        }
+
         const queueItem = {
             title: track.title || "Piste",
             artist: track.artist || alb.artist || "Artiste inconnu",
@@ -5558,6 +7186,18 @@ const AudioPlayer = {
                         this.removeFromQueue(idx);
                     });
                 });
+                prioList.querySelectorAll(".queue-track-item").forEach(itemEl => {
+                    itemEl.addEventListener("click", (e) => {
+                        if (e.target.closest(".queue-item-actions")) return;
+                        const idx = parseInt(itemEl.getAttribute("data-qidx"), 10);
+                        if (idx >= 0 && idx < this.userQueue.length) {
+                            const track = this.userQueue.splice(idx, 1)[0];
+                            this.updateQueueBadges();
+                            this.playQueueTrack(track);
+                            this.renderQueueDrawer();
+                        }
+                    });
+                });
             }
         }
 
@@ -5656,13 +7296,264 @@ const AudioPlayer = {
         }
     },
 
-    toggleShuffle() {
+    async remapCurrentTrackToAlbum() {
+        const curTrack = (this.playlist && this.playlist[this.currentIndex]) || (this.activePlaylist && this.activePlaylist[this.currentIndex]);
+        if (!curTrack) return false;
+
+        const curTrackPath = curTrack.filepath || curTrack.path || "";
+        const curAlbPath = curTrack.album_path || (this.activeAlbumPath && !this.activeAlbumPath.startsWith("system:") ? this.activeAlbumPath : "");
+
+        const catalogList = (this.allCatalog && Array.isArray(this.allCatalog.albums) && this.allCatalog.albums.length > 0)
+            ? this.allCatalog.albums
+            : (this.libraryAlbums || []);
+
+        let foundAlb = null;
+
+        // 1. Recherche par chemin d'album
+        if (curAlbPath && curAlbPath !== "system:all-collection" && curAlbPath !== "system:search-results") {
+            const normPath = curAlbPath.replace(/\\/g, "/").toLowerCase();
+            foundAlb = catalogList.find(a => (a.path || "").replace(/\\/g, "/").toLowerCase() === normPath);
+        }
+
+        // 2. Recherche par chemin de fichier de la piste
+        if (!foundAlb && curTrackPath) {
+            const normFp = curTrackPath.replace(/\\/g, "/").toLowerCase();
+            foundAlb = catalogList.find(a => (a.tracks || []).some(t => ((t.filepath || t.path || "").replace(/\\/g, "/").toLowerCase() === normFp)));
+        }
+
+        // 3. Recherche par titre et artiste d'album
+        if (!foundAlb && curTrack.album) {
+            const albTitleNorm = (curTrack.album || "").toLowerCase().trim();
+            const artNorm = (curTrack.artist || "").toLowerCase().trim();
+            foundAlb = catalogList.find(a => (a.title || "").toLowerCase().trim() === albTitleNorm && (!artNorm || (a.artist || "").toLowerCase().trim() === artNorm));
+            if (!foundAlb) {
+                foundAlb = catalogList.find(a => (a.title || "").toLowerCase().trim() === albTitleNorm);
+            }
+        }
+
+        // 4. Si pas trouvé dans allCatalog mais curAlbPath existe, essayer via albumInfoCache ou API
+        let albumInfo = null;
+        if (foundAlb && Array.isArray(foundAlb.tracks) && foundAlb.tracks.length > 0) {
+            albumInfo = {
+                album_name: foundAlb.title,
+                album_artist: foundAlb.artist,
+                year: foundAlb.year || "",
+                genre: foundAlb.genre || "",
+                path: foundAlb.path,
+                cover_url: foundAlb.cover_url,
+                is_video: foundAlb.is_video,
+                is_concert: foundAlb.is_concert,
+                tracks: foundAlb.tracks
+            };
+        } else if (curAlbPath && curAlbPath !== "system:all-collection" && curAlbPath !== "system:search-results") {
+            if (this.albumInfoCache && this.albumInfoCache.has(curAlbPath)) {
+                albumInfo = this.albumInfoCache.get(curAlbPath);
+                albumInfo.path = curAlbPath;
+            } else {
+                try {
+                    const res = await fetch(`/api/album/info?path=${encodeURIComponent(curAlbPath)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && Array.isArray(data.tracks)) {
+                            albumInfo = data;
+                            albumInfo.path = curAlbPath;
+                            if (!this.albumInfoCache) this.albumInfoCache = new Map();
+                            this.albumInfoCache.set(curAlbPath, data);
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Erreur fetch album-info pour remapCurrentTrackToAlbum:", e);
+                }
+            }
+        }
+
+        if (!albumInfo || !Array.isArray(albumInfo.tracks) || albumInfo.tracks.length === 0) {
+            return false;
+        }
+
+        const albPathFinal = albumInfo.path || curAlbPath;
+        const folderName = albPathFinal.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "Album";
+        const coverUrl = albumInfo.cover_url || `/api/audio/cover?path=${encodeURIComponent(albPathFinal)}&t=${Date.now()}`;
+
+        const rawTracks = albumInfo.tracks.slice().sort((a, b) => {
+            const na = parseInt(a.track_number, 10) || 0;
+            const nb = parseInt(b.track_number, 10) || 0;
+            return na - nb;
+        });
+
+        const albTracks = rawTracks.map((t, idx) => {
+            const fp = t.filepath || t.path || "";
+            const ext = fp.substring(fp.lastIndexOf(".")).toUpperCase().replace(".", "");
+            const isVid = Boolean(t.is_video || t.type === "video" || ext === "MP4" || ext === "MKV" || ext === "WEBM");
+            return {
+                id: `track-${albPathFinal}-${idx}`,
+                title: t.title || t.filename || `Piste ${idx + 1}`,
+                artist: t.artist || albumInfo.album_artist || "Artiste inconnu",
+                album: albumInfo.album_name || albumInfo.title || folderName,
+                album_path: albPathFinal,
+                track_number: t.track_number || (idx + 1),
+                duration: t.duration || "--:--",
+                duration_seconds: t.duration_seconds || 0,
+                filepath: fp,
+                path: fp,
+                rel_path: fp,
+                format: ext || t.format || "M4A",
+                stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
+                cover_url: coverUrl,
+                thumbnail_url: coverUrl,
+                type: isVid ? "video" : "audio"
+            };
+        });
+
+        let trackIdxInAlb = -1;
+        const normCurFp = curTrackPath.replace(/\\/g, "/").toLowerCase();
+        if (normCurFp) {
+            trackIdxInAlb = albTracks.findIndex(t => (t.filepath || t.path || "").replace(/\\/g, "/").toLowerCase() === normCurFp);
+        }
+        if (trackIdxInAlb < 0 && curTrack.title) {
+            const curTitle = curTrack.title.toLowerCase().trim();
+            trackIdxInAlb = albTracks.findIndex(t => (t.title || "").toLowerCase().trim() === curTitle);
+        }
+        if (trackIdxInAlb < 0) trackIdxInAlb = 0;
+
+        this.currentAlbum = {
+            title: albumInfo.album_name || albumInfo.title || folderName,
+            artist: albumInfo.album_artist || albumInfo.artist || "Artiste inconnu",
+            year: albumInfo.year || "",
+            genre: albumInfo.genre || "",
+            cover_url: coverUrl,
+            path: albPathFinal,
+            is_collection: (this.librarySource === "library"),
+            is_video: Boolean(albumInfo.is_video),
+            is_concert: Boolean(albumInfo.is_concert)
+        };
+        this.activeAlbumPath = albPathFinal;
+        this.playlist = albTracks;
+        this.activePlaylist = albTracks.slice();
+        this.currentIndex = trackIdxInAlb;
+        this.playbackContext = {
+            album: this.currentAlbum,
+            playlist: albTracks.slice(),
+            currentIndex: trackIdxInAlb
+        };
+        this.isUserPlaylistActive = false;
+
+        if (!this.playbackOrigin || this.currentView === "all") {
+            this.playbackOrigin = { view: "all", type: "all", path: albPathFinal };
+        }
+
+        this.renderPlayerTab();
+        if (this.currentView === "all" && typeof this.updateActiveTrackInAllContainer === "function") {
+            this.updateActiveTrackInAllContainer();
+        }
+        if (this.isQueueDrawerOpen) this.renderQueueDrawer();
+        this.updatePlayStateUI();
+
+        return true;
+    },
+
+    expandCurrentTrackToAllCollection() {
+        const curTrack = (this.playlist && this.playlist[this.currentIndex]) || (this.activePlaylist && this.activePlaylist[this.currentIndex]);
+        const curTrackPath = curTrack ? (curTrack.filepath || curTrack.path || "") : "";
+
+        const catalogAlbums = (this.allCatalog && Array.isArray(this.allCatalog.albums) && this.allCatalog.albums.length > 0)
+            ? this.allCatalog.albums
+            : (this.libraryAlbums || []);
+
+        if (!catalogAlbums || catalogAlbums.length === 0) return false;
+
+        let allTracks = [];
+        for (const alb of catalogAlbums) {
+            const cover = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
+            const albTitle = alb.title || "";
+            const albArtist = alb.artist || "";
+            const albPath = alb.path || "";
+            for (let idx = 0; idx < (alb.tracks || []).length; idx++) {
+                const t = alb.tracks[idx];
+                const fp = t.filepath || t.path || "";
+                allTracks.push({
+                    id: `collection-${albPath}-${idx}`,
+                    type: "audio",
+                    title: t.title || `Piste ${idx + 1}`,
+                    artist: t.artist || albArtist,
+                    album: t.album || albTitle,
+                    album_path: albPath,
+                    duration: t.duration || "--:--",
+                    duration_seconds: t.duration_seconds || 0,
+                    path: fp,
+                    filepath: fp,
+                    rel_path: fp,
+                    stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
+                    cover_url: cover,
+                    thumbnail_url: cover,
+                    track_number: t.track_number || (idx + 1),
+                    format: t.format || "M4A"
+                });
+            }
+        }
+
+        if (allTracks.length === 0) return false;
+
+        // Mélange Fisher-Yates
+        for (let i = allTracks.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allTracks[i], allTracks[j]] = [allTracks[j], allTracks[i]];
+        }
+
+        // Morceau actuel positionné en tête
+        let foundIdx = -1;
+        if (curTrackPath) {
+            const normCur = curTrackPath.replace(/\\/g, "/").toLowerCase();
+            foundIdx = allTracks.findIndex(t => (t.path || t.filepath || "").replace(/\\/g, "/").toLowerCase() === normCur);
+        }
+        if (foundIdx >= 0) {
+            const [current] = allTracks.splice(foundIdx, 1);
+            allTracks.unshift(current);
+        }
+
+        this.playlist = allTracks;
+        this.activePlaylist = allTracks.slice();
+        this.currentIndex = 0;
+        this.currentAlbum = {
+            title: "🌍 Toute la Collection",
+            artist: `${catalogAlbums.length} albums • ${allTracks.length} pistes`,
+            year: "",
+            genre: "Collection",
+            cover_url: curTrack?.cover_url || allTracks[0]?.cover_url || "/static/placeholder-cover.svg",
+            path: "system:all-collection",
+            is_playlist: true,
+            is_collection: true
+        };
+        this.activeAlbumPath = this.currentAlbum.path;
+        this.playbackContext = {
+            album: this.currentAlbum,
+            playlist: allTracks.slice(),
+            currentIndex: 0
+        };
+        this.isUserPlaylistActive = true;
+
+        this.renderPlayerTab();
+        if (this.currentView === "all" && typeof this.updateActiveTrackInAllContainer === "function") {
+            this.updateActiveTrackInAllContainer();
+        }
+        if (this.isQueueDrawerOpen) this.renderQueueDrawer();
+        this.updatePlayStateUI();
+
+        return true;
+    },
+
+    async toggleShuffle() {
         this.isShuffle = !this.isShuffle;
         this.updateShuffleUI();
+
+        if (this.isQueueDrawerOpen && typeof this.renderQueueDrawer === "function") {
+            this.renderQueueDrawer();
+        }
+
         showToast(this.isShuffle ? "🔀 Lecture aléatoire activée" : "Lecture séquentielle activée", "info");
     },
 
-    cycleRepeat() {
+    async cycleRepeat() {
         if (this.repeatMode === "all") {
             this.repeatMode = "one";
         } else if (this.repeatMode === "one") {
@@ -5674,14 +7565,20 @@ const AudioPlayer = {
             localStorage.setItem("ytm_player_repeat_mode", this.repeatMode);
         } catch (e) {}
         this.updateRepeatUI();
-        const msg = this.repeatMode === "all" ? "🔁 Répéter tout l'album" : (this.repeatMode === "one" ? "🔂 Répéter la piste actuelle" : "Répétition désactivée");
+
+        const isFromAll = (this.currentView === "all" || (this.playbackOrigin && this.playbackOrigin.view === "all") || (this.currentAlbum && (this.currentAlbum.path === "system:all-collection" || this.currentAlbum.path === "system:search-results")));
+
+        const msg = this.repeatMode === "all"
+            ? (isFromAll ? "🔁 Répéter toute la collection" : "🔁 Répéter tout l'album")
+            : (this.repeatMode === "one" ? "🔂 Répéter la piste actuelle" : "Répétition désactivée");
         showToast(msg, "info");
     },
 
     updateRepeatUI() {
         const isOne = this.repeatMode === "one";
         const isActive = this.repeatMode !== "none";
-        const label = this.repeatMode === "all" ? "Tout l'album" : (this.repeatMode === "one" ? "Répéter la piste" : "Désactivée");
+        const isFromAll = (this.currentView === "all" || (this.playbackOrigin && this.playbackOrigin.view === "all") || (this.currentAlbum && (this.currentAlbum.path === "system:all-collection" || this.currentAlbum.path === "system:search-results")));
+        const label = this.repeatMode === "all" ? (isFromAll ? "Toute la collection" : "Tout l'album") : (this.repeatMode === "one" ? "Répéter la piste" : "Désactivée");
         const titleText = `Mode répétition (${label})`;
 
         // Repeat All (two looping arrows)
@@ -6498,6 +8395,15 @@ const AudioPlayer = {
             }
         }
 
+        // 4. Appliquer à l'AudioContext du lecteur vidéo (VideoAudioManager)
+        if (window.VideoAudioManager && typeof window.VideoAudioManager.applyOutputDevice === "function") {
+            try {
+                await window.VideoAudioManager.applyOutputDevice(deviceId);
+            } catch (err) {
+                console.warn("[AudioPlayer] VideoAudioManager.applyOutputDevice error:", err);
+            }
+        }
+
         // Trouver le libellé pour le toast
         let activeLabel = "Par défaut (Windows)";
         if (deviceId !== "default") {
@@ -6639,7 +8545,8 @@ const AudioPlayer = {
         // ── Auto-scroll intelligent vers la piste active quelle que soit la vue active ──────
         // (Appelé impérativement APRÈS la mise à jour des classes .active sur le DOM pour cibler instantanément le bon élément)
         if (this.currentView === "now-playing" || (this.currentView === "albums" && this.isAlbumDetailOpen) || this.currentView === "playlists" || this.currentView === "all") {
-            this.scrollToActiveTrack(this.isShuffle || Boolean(this.userQueue && this.userQueue.length > 0));
+            const trackChanged = (this._lastScrolledTrackIndex !== this.currentIndex);
+            this.scrollToActiveTrack(trackChanged);
         }
 
         const queueEq = document.querySelector("#queue-current-card .player-equalizer-bars");
@@ -6759,6 +8666,7 @@ const AudioPlayer = {
     async loadAlbum(albumPath, optsOrAutoPlayIndex = 0, isCollection = false, switchView = true) {
         if (!albumPath) return;
 
+        this.isUserPlaylistActive = false;
         let autoPlay = false;
         let startTrackIndex = 0;
         let isCol = (this.librarySource === "library");
@@ -6983,7 +8891,7 @@ const AudioPlayer = {
         }
     },
 
-    playTrackAtIndex(index) {
+    playTrackAtIndex(index, seekTime = 0) {
         if (!this.playlist || index < 0 || index >= this.playlist.length) return;
         this.currentIndex = index;
         this.currentTrackIsFromQueue = false;
@@ -7005,6 +8913,7 @@ const AudioPlayer = {
         this.activeAlbumPath = this.currentAlbum ? this.currentAlbum.path : null;
         this.activePlaylist = this.playlist.slice();
         const trk = this.playlist[index];
+        this.currentTrack = trk;
 
         const isVideo = Boolean(
             trk.type === "video" ||
@@ -7014,12 +8923,11 @@ const AudioPlayer = {
         );
 
         if (isVideo) {
-            // Lecture Vidéo / Concert au sein de la playlist ou de l'album
+            // Lecture Vidéo / Concert au sein de la playlist ou de l'album (enchaînement normal, ne pas capturer comme audio à restaurer)
+            window._savedAudioStateBeforeVideo = null;
             this.isPlaying = true;
             if (this.audio) {
                 this.audio.pause();
-                this.audio.removeAttribute("src");
-                this.audio.load();
             }
             this.updateCurrentTrackUI(trk);
             this.updatePlayStateUI();
@@ -7046,7 +8954,8 @@ const AudioPlayer = {
                 path: vidPath,
                 rel_path: trk.rel_path || vidPath,
                 is_concert: isConc,
-                thumbnail: trk.thumbnail_url || trk.cover_url || (this.currentAlbum ? this.currentAlbum.cover_url : "")
+                thumbnail: trk.thumbnail_url || trk.cover_url || (this.currentAlbum ? this.currentAlbum.cover_url : ""),
+                isPlaylistTrack: true
             });
             if (this.isQueueDrawerOpen) this.renderQueueDrawer();
             return;
@@ -7065,6 +8974,11 @@ const AudioPlayer = {
             }
             this.audio.src = streamUrl;
             this.audio.load();
+            if (seekTime > 0) {
+                this.audio.addEventListener("loadedmetadata", () => {
+                    try { this.audio.currentTime = seekTime; } catch (e) {}
+                }, { once: true });
+            }
             AudioFader.fadeIn(this.audio, this.isMuted ? 0 : this.volume, 500);
             this.audio.play().catch(e => console.warn("Lecture différée:", e));
         };
@@ -7153,15 +9067,17 @@ const AudioPlayer = {
         }
         if (pAlbum) {
             const yr = (this.currentAlbum && this.currentAlbum.year) ? String(this.currentAlbum.year) : "";
+            const gn = (this.currentAlbum && this.currentAlbum.genre) ? String(this.currentAlbum.genre) : ((firstTrk && firstTrk.genre) ? String(firstTrk.genre) : "");
             const cnt = (this.playlist && this.playlist.length) ? `${this.playlist.length} titre(s)` : "";
-            pAlbum.textContent = [yr, cnt].filter(Boolean).join(" • ");
+            pAlbum.textContent = [yr, gn, cnt].filter(Boolean).join(" • ");
         }
     },
 
     updateCurrentTrackUI(trk) {
         const coverUrl = (trk && (trk.thumbnail_url || trk.cover_url)) || (this.currentAlbum ? (this.currentAlbum.cover_url || this.currentAlbum.thumbnail_url) : "/static/placeholder-cover.svg");
-        const albumName = this.currentAlbum ? this.currentAlbum.title : "";
-        const albumYear = this.currentAlbum && this.currentAlbum.year ? ` • ${this.currentAlbum.year}` : "";
+        const isAllCollection = Boolean(this.currentAlbum && this.currentAlbum.path === "system:all-collection");
+        const albumName = isAllCollection ? (trk?.album || "") : (this.currentAlbum ? this.currentAlbum.title : "");
+        const albumYear = this.currentAlbum && this.currentAlbum.year ? ` • ${this.currentAlbum.year}` : (trk?.year ? ` • ${trk.year}` : "");
 
         // Mini bar flottante (persistance globale)
         const miniThumb = document.getElementById("mini-player-thumb");
@@ -7206,19 +9122,20 @@ const AudioPlayer = {
         }
 
         if (pTitle) {
-            const albTitle = albumName || trk.album || trk.title;
+            const albTitle = isAllCollection ? (trk.album || trk.title) : (albumName || trk.album || trk.title);
             pTitle.textContent = albTitle;
             pTitle.title = albTitle;
         }
         if (pArtist) {
-            const albArtist = (this.currentAlbum && this.currentAlbum.artist) ? this.currentAlbum.artist : trk.artist;
+            const albArtist = isAllCollection ? (trk.artist || (this.currentAlbum && this.currentAlbum.artist)) : ((this.currentAlbum && this.currentAlbum.artist) ? this.currentAlbum.artist : trk.artist);
             pArtist.textContent = albArtist;
             pArtist.title = albArtist;
         }
         if (pAlbum) {
             const yr = (this.currentAlbum && this.currentAlbum.year) ? String(this.currentAlbum.year) : (trk.year ? String(trk.year) : "");
+            const gn = (this.currentAlbum && this.currentAlbum.genre) ? String(this.currentAlbum.genre) : (trk.genre ? String(trk.genre) : "");
             const cnt = (this.playlist && this.playlist.length) ? `${this.playlist.length} titre(s)` : "";
-            pAlbum.textContent = [yr, cnt].filter(Boolean).join(" • ");
+            pAlbum.textContent = [yr, gn, cnt].filter(Boolean).join(" • ");
         }
 
         // Mode Ambiance Dock
@@ -7433,24 +9350,24 @@ const AudioPlayer = {
         const labelLeft = isSingle ? "Télécharger ce titre" : (isPlaylist ? "Télécharger la playlist" : "Télécharger tout l'album");
         const labelHeader = isSingle ? "Télécharger le titre" : (isPlaylist ? "Télécharger la playlist" : "Télécharger l'album");
 
-        // Vérification de l'état dans la file d'attente
+        // Vérification dynamique réelle de l'état dans la file d'attente
         const onlineItem = this.currentAlbum.online_item;
         const currentUrl = (this.currentAlbum.online_url || (onlineItem && onlineItem.url) || "").trim();
-        
-        let isQueued = Boolean(onlineItem && onlineItem.status === "queued");
-        let isDownloading = Boolean(onlineItem && onlineItem.status === "downloading");
+        const queueList = window.currentDownloadQueue || [];
+        const currentDl = window.currentDownloadingItem;
 
-        // Vérification dynamique via la file globale WebSocket
-        if (!isQueued && !isDownloading && currentUrl) {
-            const queueList = window.currentDownloadQueue || [];
-            if (queueList.some(q => q.url && q.url.trim() === currentUrl)) {
-                isQueued = true;
-            }
-            const currentDl = window.currentDownloadingItem;
-            if (currentDl && currentDl.url && currentDl.url.trim() === currentUrl) {
-                isDownloading = true;
+        const isInQueue = currentUrl ? queueList.some(q => q.url && q.url.trim() === currentUrl) : false;
+        const isCurrent = Boolean(currentDl && currentDl.url && currentUrl && (currentDl.url.trim() === currentUrl));
+
+        // Si l'élément avait un statut 'queued' ou 'downloading' mais qu'il n'est plus actif, réinitialiser
+        if (onlineItem && (onlineItem.status === "queued" || onlineItem.status === "downloading")) {
+            if (!isInQueue && !isCurrent) {
+                onlineItem.status = null;
             }
         }
+
+        let isQueued = isInQueue || Boolean(onlineItem && onlineItem.status === "queued");
+        let isDownloading = isCurrent || Boolean(onlineItem && onlineItem.status === "downloading");
 
         if (onlineBox) onlineBox.style.display = "block";
         if (headerBtn) headerBtn.style.display = "inline-flex";
@@ -7615,6 +9532,11 @@ const AudioPlayer = {
     },
 
     async stopAndHide() {
+        window._savedAudioStateBeforeVideo = null;
+        window._isPlayingRandomClipChain = false;
+        if (window.closeVideoModal) {
+            window.closeVideoModal(true);
+        }
         if (this.isPlaying && this.audio && !this.audio.paused && AudioFader.enabled) {
             await AudioFader.fadeOut(this.audio, 300);
         } else {
@@ -7623,10 +9545,28 @@ const AudioPlayer = {
         this.audio.pause();
         this.audio.src = "";
         this.isPlaying = false;
+        this.currentAlbum = null;
+        this.currentTrack = null;
+        this.playlist = [];
+        this.activePlaylist = [];
+        this.currentIndex = -1;
         this.updatePlayStateUI();
-        const bar = document.getElementById("persistent-player-bar");
-        if (bar) bar.style.display = "none";
-        this.updateMiniDockVisibility();
+
+        // Réinitialisation de l'affichage du centre de commandes en mode repos
+        const miniThumb = document.getElementById("mini-player-thumb");
+        const miniTitle = document.getElementById("mini-player-title");
+        const miniArtist = document.getElementById("mini-player-artist");
+        const curTime = document.getElementById("mini-player-time-current");
+        const totTime = document.getElementById("mini-player-time-total");
+        const seekBar = document.getElementById("mini-player-seek-bar");
+        if (miniThumb) miniThumb.src = "/static/placeholder-cover.svg";
+        if (miniTitle) miniTitle.textContent = "Aucune lecture en cours";
+        if (miniArtist) miniArtist.textContent = "SoundStash • Prêt pour la lecture";
+        if (curTime) curTime.textContent = "0:00";
+        if (totTime) totTime.textContent = "0:00";
+        if (seekBar) seekBar.value = 0;
+
+        this.updateFloatingBarVisibility();
         this.closeQueueDrawer();
         if (window.AmbientVisualizer && window.AmbientVisualizer.isActive) {
             window.AmbientVisualizer.exit();
@@ -7786,15 +9726,6 @@ const AudioPlayer = {
 
         const shouldShuffle = (opts && opts.shuffle !== undefined) ? Boolean(opts.shuffle) : true;
 
-        // Fonction utilitaire : mélange Fisher-Yates
-        const shuffleArr = (arr) => {
-            for (let i = arr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
-            }
-            return arr;
-        };
-
         try {
             let tracks = [];
             let totalAlbumsCount = (albums && albums.length) || 0;
@@ -7846,7 +9777,8 @@ const AudioPlayer = {
                 return;
             }
 
-            const playListTracks = shouldShuffle ? shuffleArr(tracks.slice()) : tracks.slice();
+            const playListTracks = tracks.slice();
+            const startIdx = shouldShuffle ? Math.floor(Math.random() * playListTracks.length) : 0;
             this.isShuffle = shouldShuffle;
             this.updateShuffleUI();
             this.isUserPlaylistActive = true;
@@ -7855,7 +9787,7 @@ const AudioPlayer = {
                 artist: `${totalAlbumsCount} albums • ${playListTracks.length} pistes`,
                 year: "",
                 genre: "Collection",
-                cover_url: playListTracks[0]?.cover_url || "/static/placeholder-cover.svg",
+                cover_url: playListTracks[startIdx]?.cover_url || "/static/placeholder-cover.svg",
                 path: "system:all-collection",
                 is_playlist: true,
                 is_collection: true
@@ -7864,11 +9796,12 @@ const AudioPlayer = {
             this.playbackContext = {
                 album: this.currentAlbum,
                 playlist: playListTracks.slice(),
-                currentIndex: 0
+                currentIndex: startIdx
             };
-            this.currentIndex = 0;
+            this.currentIndex = startIdx;
             this.activeAlbumPath = this.currentAlbum.path;
             this.activePlaylist = this.playlist.slice();
+            this.playbackOrigin = { view: "all", type: "all", path: "system:all-collection" };
 
             this.renderPlayerTab();
             if (this.currentView === "all") {
@@ -7878,7 +9811,7 @@ const AudioPlayer = {
             } else if (this.currentView !== "playlists") {
                 this.resetPlayerScrollRobust();
             }
-            this.playTrackAtIndex(0);
+            this.playTrackAtIndex(startIdx);
             setTimeout(() => this.scrollToActiveTrack(true), 120);
 
             showToast(`▶ Lecture ${shouldShuffle ? "aléatoire " : ""}démarrée : 🌍 Toute la Collection (${playListTracks.length} pistes)`, "success", 3000);
@@ -8059,6 +9992,138 @@ const AudioPlayer = {
         this.playTrackAtIndex(startIndex);
         setTimeout(() => this.scrollToActiveTrack(true), 80);
         showToast(`Lecture de la playlist « ${pObj.name} » démarrée !`, "success");
+    },
+
+    syncActiveUserPlaylist(updatedPlaylist) {
+        if (!updatedPlaylist || !updatedPlaylist.id) return;
+        const targetPath = (updatedPlaylist.id === "system:all-collection" || (typeof updatedPlaylist.id === "string" && updatedPlaylist.id.startsWith("system:")))
+            ? updatedPlaylist.id
+            : `playlist:${updatedPlaylist.id}`;
+
+        const isCurrentActive = Boolean(
+            this.isUserPlaylistActive &&
+            this.currentAlbum &&
+            (this.currentAlbum.path === targetPath || this.activeAlbumPath === targetPath)
+        );
+
+        if (!isCurrentActive) return;
+
+        const currentTrack = (this.playlist && this.playlist.length > 0 && this.currentIndex >= 0 && this.currentIndex < this.playlist.length)
+            ? this.playlist[this.currentIndex]
+            : null;
+
+        const rawItems = Array.isArray(updatedPlaylist.items) ? updatedPlaylist.items : [];
+        const newTracks = rawItems.map((item, idx) => {
+            let itemPath = item.path || item.filepath || item.rel_path || "";
+            if (!itemPath && (item.thumbnail_url || item.cover_url)) {
+                const targetUrl = item.thumbnail_url || item.cover_url || "";
+                if (targetUrl.includes("path=")) {
+                    try {
+                        const m = targetUrl.match(/[?&]path=([^&]+)/);
+                        if (m && m[1]) itemPath = decodeURIComponent(m[1]);
+                    } catch (e) {}
+                }
+            }
+            return {
+                id: item.id,
+                type: item.type || "audio",
+                title: item.title,
+                artist: item.artist,
+                duration: item.duration_str || (item.duration_seconds ? this.formatTime(item.duration_seconds) : "--:--"),
+                duration_seconds: item.duration_seconds || 0,
+                path: itemPath,
+                filepath: item.filepath || itemPath,
+                rel_path: item.rel_path || itemPath,
+                stream_url: item.type === "video" ? `/api/videos/stream?path=${encodeURIComponent(itemPath)}` : `/api/audio/stream-local?path=${encodeURIComponent(itemPath)}`,
+                cover_url: item.cover_url || item.thumbnail_url || "/static/placeholder-cover.svg",
+                thumbnail_url: item.thumbnail_url || item.cover_url || "/static/placeholder-cover.svg",
+                track_number: idx + 1,
+                format: item.type === "video" ? "MP4" : "M4A"
+            };
+        });
+
+        if (this.currentAlbum) {
+            this.currentAlbum.title = updatedPlaylist.name || this.currentAlbum.title;
+            const newCover = updatedPlaylist.cover_url || (rawItems.length > 0 && (rawItems[0].thumbnail_url || rawItems[0].cover_url));
+            if (newCover) {
+                this.currentAlbum.cover_url = newCover;
+            }
+        }
+
+        if (newTracks.length === 0) {
+            this.playlist = [];
+            this.activePlaylist = [];
+            if (this.playbackContext) {
+                this.playbackContext.playlist = [];
+                this.playbackContext.currentIndex = 0;
+            }
+            this.currentIndex = 0;
+            this.pause();
+            this.renderPlayerTab();
+            if (this.isQueueDrawerOpen && typeof this.renderQueueDrawer === "function") {
+                this.renderQueueDrawer();
+            }
+            this.updatePlayStateUI();
+            return;
+        }
+
+        let newIndex = -1;
+        if (currentTrack) {
+            if (currentTrack.id) {
+                newIndex = newTracks.findIndex(t => t.id === currentTrack.id);
+            }
+            if (newIndex === -1 && currentTrack.path) {
+                newIndex = newTracks.findIndex(t => t.path === currentTrack.path);
+            }
+        }
+
+        if (newIndex !== -1) {
+            this.playlist = newTracks;
+            this.activePlaylist = newTracks.slice();
+            this.currentIndex = newIndex;
+            if (this.playbackContext) {
+                this.playbackContext.playlist = newTracks.slice();
+                this.playbackContext.currentIndex = newIndex;
+            }
+        } else {
+            const nextIndex = Math.min(Math.max(0, this.currentIndex), newTracks.length - 1);
+            this.playlist = newTracks;
+            this.activePlaylist = newTracks.slice();
+            this.currentIndex = nextIndex;
+            if (this.playbackContext) {
+                this.playbackContext.playlist = newTracks.slice();
+                this.playbackContext.currentIndex = nextIndex;
+            }
+            if (this.isPlaying) {
+                this.playTrackAtIndex(nextIndex);
+            }
+        }
+
+        this.renderPlayerTab();
+        if (this.isQueueDrawerOpen && typeof this.renderQueueDrawer === "function") {
+            this.renderQueueDrawer();
+        }
+        this.updatePlayStateUI();
+    },
+
+    handlePlaylistDeleted(playlistId) {
+        if (!playlistId) return;
+        const targetPath = (playlistId === "system:all-collection" || (typeof playlistId === "string" && playlistId.startsWith("system:")))
+            ? playlistId
+            : `playlist:${playlistId}`;
+
+        if (this.isUserPlaylistActive && this.currentAlbum && (this.currentAlbum.path === targetPath || this.activeAlbumPath === targetPath)) {
+            this.pause();
+            this.isUserPlaylistActive = false;
+            this.playlist = [];
+            this.activePlaylist = [];
+            this.playbackContext = null;
+            this.renderPlayerTab();
+            if (this.isQueueDrawerOpen && typeof this.renderQueueDrawer === "function") {
+                this.renderQueueDrawer();
+            }
+            this.updatePlayStateUI();
+        }
     }
 };
 

@@ -14,6 +14,8 @@ window.lastWorkflowTab = "tab-search";
 // isPlayerModeActive on window // Le lecteur audio est le socle permanent
 // lastWorkflowTab on window
 
+let savedPlayerScrollY = 0;
+
 function openWorkshopDrawer(targetTab = null) {
     if (window.isPartyLockActive) {
         if (window.PartyLock) {
@@ -22,6 +24,7 @@ function openWorkshopDrawer(targetTab = null) {
         return;
     }
 
+    savedPlayerScrollY = window.scrollY || document.documentElement.scrollTop || 0;
     isWorkshopDrawerOpen = true;
     document.body.classList.add("workshop-drawer-open");
 
@@ -54,6 +57,7 @@ function closeWorkshopDrawer() {
 
     isWorkshopDrawerOpen = false;
     document.body.classList.remove("workshop-drawer-open");
+    window.scrollTo(0, savedPlayerScrollY);
     if (typeof updateHeaderNowPlayingButton === "function") updateHeaderNowPlayingButton();
 
     const drawer = document.getElementById("workshop-drawer");
@@ -173,7 +177,7 @@ function switchWorkflowTab(tabId) {
         if (typeof ensureLibraryTagSuggestions === "function") {
             ensureLibraryTagSuggestions();
         }
-        if (window.editorSubMode === "genres") {
+        if (window.editorSubMode === "genres" || window.editorWorkMode === "batch") {
             if (typeof loadGenreBatchAlbums === "function") {
                 loadGenreBatchAlbums(true);
             }
@@ -185,6 +189,10 @@ function switchWorkflowTab(tabId) {
             resetEditorState("Dossier temporaire vide", "Aucun album à taguer");
         } else {
             verifyAndValidateEditorActiveAlbum();
+        }
+    } else if (tabId === "tab-export") {
+        if (typeof refreshExportEstimate === "function") {
+            refreshExportEstimate();
         }
     }
     if (typeof AudioPlayer !== "undefined" && AudioPlayer.updateFloatingBarVisibility) {
@@ -276,6 +284,43 @@ function setupTabs() {
         drawerBackdrop.addEventListener("click", () => {
             closeWorkshopDrawer();
         });
+        // Empêcher tout défilement en arrière-plan lorsque la souris survole le backdrop
+        drawerBackdrop.addEventListener("wheel", (e) => {
+            if (isWorkshopDrawerOpen) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    }
+
+    // Empêcher tout défilement du lecteur en arrière-plan lors du survol ou du scroll dans l'Atelier
+    const drawerEl = document.getElementById("workshop-drawer");
+    if (drawerEl) {
+        drawerEl.addEventListener("wheel", (e) => {
+            if (!isWorkshopDrawerOpen) return;
+
+            let el = e.target;
+            let canScroll = false;
+
+            while (el && el !== drawerEl && el !== document.body) {
+                const style = window.getComputedStyle(el);
+                const overflowY = style.overflowY;
+                const isScrollable = (overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight;
+
+                if (isScrollable) {
+                    const atTop = el.scrollTop <= 0 && e.deltaY < 0;
+                    const atBottom = Math.ceil(el.scrollTop) + el.clientHeight >= el.scrollHeight && e.deltaY > 0;
+                    if (!atTop && !atBottom) {
+                        canScroll = true;
+                        break;
+                    }
+                }
+                el = el.parentElement;
+            }
+
+            if (!canScroll) {
+                e.preventDefault();
+            }
+        }, { passive: false });
     }
 
     // Switch Header Mode Lecteur (Curseur et conteneur interactifs - compatibilité)

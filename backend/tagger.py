@@ -69,6 +69,18 @@ def is_empty_or_na(val: Optional[str]) -> bool:
         "INCONNU", "ARTISTE INCONNU", "ALBUM INCONNU", "UNDEFINED", "NULL"
     }
 
+def is_generic_or_empty_genre(genre: Optional[str]) -> bool:
+    """Vérifie si un tag de genre est vide, invalide ou un placeholder générique tel que 'Music'."""
+    if not genre:
+        return True
+    if is_empty_or_na(genre):
+        return True
+    g = str(genre).strip().lower()
+    return g in {
+        "music", "musique", "sound", "audio", "other", "autre",
+        "inconnu", "unknown", "non classé", "non classe", "genre", "undefined"
+    }
+
 def is_playlist_url(url: str) -> bool:
     """Détermine si une URL correspond à une playlist (et non à un album officiel studio OLAK/MPREb_)."""
     if not url:
@@ -91,27 +103,36 @@ def classify_album_type(
     path: str = "",
     track_count: int = 0,
     is_concert: bool = False,
-    is_playlist: bool = False
+    is_playlist: bool = False,
+    is_video: bool = False
 ) -> str:
     """
     Détermine de manière robuste et déterministe le type d'un album ou regroupement :
     - 'album' (Album Studio officiel)
     - 'single' (Single / EP, 1 à 3 pistes ou tag explicite [Single])
     - 'rip' (Rips Audio vidéo, conteneur Singles & Rips)
+    - 'video' (Clips et Vidéos musicales autonomes)
     - 'playlist' (Playlist)
     - 'concert' (Concert & Live)
     """
-    # 1. Choix manuel forcé enregistré dans le dossier
+    # 1. Choix manuel forcé enregistré dans le fichier ou le dossier
     if path:
         try:
-            p_dir = Path(path)
-            if p_dir.is_file():
-                p_dir = p_dir.parent
+            p_obj = Path(path)
+            if p_obj.is_file():
+                type_file_single = p_obj.with_suffix(".type")
+                if type_file_single.exists():
+                    forced = type_file_single.read_text(encoding="utf-8").strip().lower()
+                    if forced in ("album", "single", "rip", "playlist", "concert", "video", "clip"):
+                        return "video" if forced == "clip" else forced
+                p_dir = p_obj.parent
+            else:
+                p_dir = p_obj
             type_file = p_dir / ".album_type"
             if type_file.exists():
                 forced = type_file.read_text(encoding="utf-8").strip().lower()
-                if forced in ("album", "single", "rip", "playlist", "concert"):
-                    return forced
+                if forced in ("album", "single", "rip", "playlist", "concert", "video", "clip"):
+                    return "video" if forced == "clip" else forced
         except Exception:
             pass
 
@@ -125,7 +146,11 @@ def classify_album_type(
     if is_playlist or "[playlist]" in t or "[playlist]" in p or "playlist" in t:
         return "playlist"
 
-    # 3. Rips audio
+    # 3. Clips & Vidéos musicales
+    if is_video or "[vidéo]" in p or "[video]" in p or "[clip]" in p or "[vidéo]" in t or "[video]" in t or "[clip]" in t:
+        return "video"
+
+    # 4. Rips audio
     if (
         "singles & rips" in t
         or "singles & rips" in p
@@ -138,16 +163,16 @@ def classify_album_type(
     ):
         return "rip"
 
-    # 4. Bouclier absolu : un album avec plus de 3 titres ne peut JAMAIS être un single
+    # 5. Bouclier absolu : un album avec plus de 3 titres ne peut JAMAIS être un single
     # (ex: "Singles Collection", "The Singles", compilations de singles)
     if track_count > 3:
         return "album"
 
-    # 5. Tag explicite entre crochets [Single] ou [single]
+    # 6. Tag explicite entre crochets [Single] ou [single]
     if "[single]" in t or "[single]" in p:
         return "single"
 
-    # 6. Format court naturel (1 à 3 pistes)
+    # 7. Format court naturel (1 à 3 pistes)
     if 0 < track_count <= 3:
         return "single"
 
@@ -160,6 +185,7 @@ NOISE_PATTERNS = [
     r"\s*[\(\[](?:(?:4k|1080p|720p|hd|hdr|uhd|hq|full\s*hd)[\s,]+)?(?:paroles|lyrics|visualizer|remaster(?:ed)?(?:\s+\d{4})?)(?:[,\s]+(?:60fps|\d+fps|hdr))*[)\]]",
     r"\s*[\(\[](?:(?:4k|1080p|720p|hd|hdr|uhd|hq|full\s*hd)(?:[,\s]+(?:60fps|\d+fps|hdr))*|\d+fps)[)\]]",
     r"\s*[\(\[](?:(?:official\s+)?live\s+(?:video|clip|session|stream)|video\s+live)[)\]]",
+    r"\s*[\(\[](?:high\s+quality|hq)[\)\]]",
     r"\s*[\(\[](?:ft\.|feat\.)\s*(?:\[[^\]]*\]|\([^\)]*\)|[^)\]])*[)\]]",
     r"\s*[\(\[](?:avec)\s*(?:\[[^\]]*\]|\([^\)]*\)|[^)\]])*[)\]]",
     r"\s*[\(\[](?:officiel|official)[\)\]]",
@@ -221,8 +247,9 @@ def extract_artist_and_title(raw_title: str, existing_artist: str = "", uploader
         cand_artist = clean_artist_name(sep_match.group(1).strip())
         cand_title = sep_match.group(2).strip()
         if cand_artist and cand_title:
-            if is_empty_or_na(clean_exist) or clean_exist.lower() in cand_artist.lower() or cand_artist.lower() in clean_exist.lower():
-                artist = cand_artist if is_empty_or_na(clean_exist) else clean_exist
+            is_uploader_only = bool(clean_exist and clean_up and clean_exist.lower() == clean_up.lower())
+            if is_empty_or_na(clean_exist) or is_uploader_only or clean_exist.lower() in cand_artist.lower() or cand_artist.lower() in clean_exist.lower():
+                artist = cand_artist if (is_empty_or_na(clean_exist) or is_uploader_only) else clean_exist
                 return clean_artist_name(artist), clean_track_title(cand_title, preserve_feat=True)
 
     artist = clean_exist if not is_empty_or_na(clean_exist) else ""
@@ -324,7 +351,7 @@ _MB_TRACK_ARTISTS_CACHE: Dict[Tuple[str, str], Optional[Dict[str, str]]] = {}
 _MB_TRACKS_CACHE: Dict[Tuple[str, str], Optional[Dict[int, Dict[str, str]]]] = {}
 
 # MusicBrainz exige ce format : AppName/version (email) — sans email, les requêtes sont rejetées
-_MB_HEADERS = {"User-Agent": "SoundStash/4.0.1 (soundstash@helmicretro.local)"}
+_MB_HEADERS = {"User-Agent": "SoundStash/4.0.2 (soundstash@helmicretro.local)"}
 
 _LAST_MB_REQUEST_TIME = 0
 
@@ -1158,8 +1185,8 @@ def check_track_gaps(tracks: list) -> tuple[list[int], int]:
     return missing, max_num
 
 # Cache mémoire haute performance pour get_album_info :
-# p_key -> (dir_mtime, file_count, draft_mtime, playlist_meta_mtime, result_dict)
-_ALBUM_INFO_CACHE: dict[str, tuple[float, int, float, float, dict]] = {}
+# p_key -> (dir_mtime, file_count, draft_mtime, playlist_meta_mtime, album_meta_mtime, latest_audio_mtime, result_dict)
+_ALBUM_INFO_CACHE: dict[str, tuple[float, int, float, float, float, float, dict]] = {}
 
 def invalidate_album_cache(album_dir: Optional[Path | str] = None) -> None:
     """
@@ -1208,7 +1235,10 @@ def get_album_info(album_dir: Path | str) -> dict:
 
     meta_file = target_dir / ".playlist_meta.json"
     meta_mtime = meta_file.stat().st_mtime if meta_file.exists() else 0.0
-    
+
+    album_meta_file = target_dir / ".album_meta.json"
+    album_meta_mtime = album_meta_file.stat().st_mtime if album_meta_file.exists() else 0.0
+
     def sort_key(f: Path):
         num, _ = parse_track_filename(f.name)
         return (0, num) if num is not None else (1, f.name.lower())
@@ -1229,12 +1259,22 @@ def get_album_info(album_dir: Path | str) -> dict:
                 sub_audio.sort(key=sort_key)
                 audio_files.extend(sub_audio)
 
+    latest_audio_mtime = 0.0
+    if audio_files:
+        try:
+            latest_audio_mtime = max(f.stat().st_mtime for f in audio_files[:5])
+        except Exception:
+            pass
+
     # Vérification ultra-rapide dans le cache mémoire st_mtime (< 0.5ms)
     if p_key in _ALBUM_INFO_CACHE:
-        c_dmtime, c_count, c_draft_mtime, c_meta_mtime, cached_data = _ALBUM_INFO_CACHE[p_key]
-        if (c_dmtime == dir_mtime and c_count == len(audio_files) and 
-            c_draft_mtime == draft_mtime and c_meta_mtime == meta_mtime):
-            return cached_data
+        c_entry = _ALBUM_INFO_CACHE[p_key]
+        if len(c_entry) == 7:
+            c_dmtime, c_count, c_draft_mtime, c_meta_mtime, c_album_meta_mtime, c_audio_mtime, cached_data = c_entry
+            if (c_dmtime == dir_mtime and c_count == len(audio_files) and 
+                c_draft_mtime == draft_mtime and c_meta_mtime == meta_mtime and
+                c_album_meta_mtime == album_meta_mtime and c_audio_mtime == latest_audio_mtime):
+                return cached_data
 
     tracks = get_album_tracks_metadata_batch(audio_files)
     if is_multidisc_virtual:
@@ -1247,7 +1287,7 @@ def get_album_info(album_dir: Path | str) -> dict:
     valid_album_artists = [clean_artist_name(t["album_artist"]) for t in tracks if not is_empty_or_na(t["album_artist"])]
     years = [extract_4digit_year(t["year"]) for t in tracks if t["year"]]
     years = [y for y in years if y]
-    genres = [t["genre"] for t in tracks if t["genre"] and not is_empty_or_na(t["genre"])]
+    genres = [t["genre"] for t in tracks if t.get("genre") and not is_generic_or_empty_genre(t["genre"])]
 
     cover_art = consolidate_album_cover(album_dir)
 
@@ -1263,6 +1303,16 @@ def get_album_info(album_dir: Path | str) -> dict:
             is_playlist_folder = True
     elif "[playlist]" in album_dir.name.lower() or (len(tracks) > 1 and len(set(valid_albums)) > 1):
         is_playlist_folder = True
+
+    CONCERT_KEYWORDS_RE = re.compile(
+        r'\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b',
+        re.IGNORECASE
+    )
+    is_video_folder = (
+        "[vidéo]" in str(album_dir).lower()
+        or "[video]" in str(album_dir).lower()
+        or any(f.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"} for f in audio_files)
+    )
 
     if is_playlist_folder:
         if saved_playlist_title and not is_empty_or_na(saved_playlist_title):
@@ -1307,10 +1357,12 @@ def get_album_info(album_dir: Path | str) -> dict:
         else:
             album_artist = "Various Artists"
     else:
-        real_albums = [a for a in valid_albums if a not in {"Singles & Rips", "Extrait Vidéo", "Extrait Video"}]
+        real_albums = [a for a in valid_albums if a not in {"Singles & Rips", "Extrait Vidéo", "Extrait Video", "Vidéos"}]
         if real_albums:
             album_name = max(set(real_albums), key=real_albums.count)
-        elif not is_empty_or_na(album_dir.name) and not any(k in album_dir.name.lower() for k in ["[audio rip]", "[rip]", "[extrait vidéo]", "[extrait video]", "[vidéo]", "[video]"]):
+        elif is_video_folder:
+            album_name = "Vidéos"
+        elif not is_empty_or_na(album_dir.name) and not any(k in album_dir.name.lower() for k in ["[audio rip]", "[rip]", "[extrait vidéo]", "[extrait video]"]):
             album_name = album_dir.name
         else:
             album_name = "Singles & Rips"
@@ -1334,7 +1386,7 @@ def get_album_info(album_dir: Path | str) -> dict:
     else:
         genre = ""
 
-    if not genre and not is_playlist_folder and album_name not in {"Singles & Rips", "Extrait Vidéo"}:
+    if not genre and not is_playlist_folder and album_name not in {"Singles & Rips", "Extrait Vidéo", "Vidéos"}:
         auto_alb_g = detect_genre_sync(album_artist, album_name, is_album=True)
         if not auto_alb_g and tracks:
             auto_alb_g = detect_genre_sync(album_artist, tracks[0].get("title", ""), is_album=False)
@@ -1344,6 +1396,20 @@ def get_album_info(album_dir: Path | str) -> dict:
         auto_alb_g = detect_genre_sync(album_artist, "", is_album=False)
         if auto_alb_g:
             genre = auto_alb_g
+
+    # Alignement avec .album_meta.json si présent (priorité tags explicites de l'album)
+    if album_meta_file.exists():
+        try:
+            with open(album_meta_file, "r", encoding="utf-8") as amf:
+                amd = json.load(amf)
+            if amd.get("year"):
+                year = str(amd["year"]).strip()
+            if amd.get("genre") and (not genre or is_generic_or_empty_genre(genre)):
+                genre = str(amd["genre"]).strip()
+            if amd.get("artist") and (not album_artist or album_artist in ("Artiste inconnu", "Various Artists")):
+                album_artist = str(amd["artist"]).strip()
+        except Exception:
+            pass
 
     missing_tracks, max_track = check_track_gaps(tracks)
     warning = None
@@ -1359,15 +1425,6 @@ def get_album_info(album_dir: Path | str) -> dict:
         except Exception as e:
             logger.warning(f"Lecture .editor_draft.json: {e}")
 
-    CONCERT_KEYWORDS_RE = re.compile(
-        r'\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b',
-        re.IGNORECASE
-    )
-    is_video_folder = (
-        "[vidéo]" in str(album_dir).lower()
-        or "[video]" in str(album_dir).lower()
-        or any(f.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"} for f in audio_files)
-    )
     is_concert = False
     if is_video_folder:
         dir_name = album_dir.name.lower()
@@ -1397,21 +1454,33 @@ def get_album_info(album_dir: Path | str) -> dict:
     # Détection ou lecture du type d'album (Auto vs Manuel)
     target_check_dir = p.parent if is_single_file_mode else album_dir
     manual_type = None
-    type_file = target_check_dir / ".album_type"
-    if type_file.exists():
-        try:
-            val = type_file.read_text(encoding="utf-8").strip().lower()
-            if val in ("album", "single", "rip", "playlist", "concert"):
-                manual_type = val
-        except Exception:
-            pass
+    if is_single_file_mode:
+        type_file_single = p.with_suffix(".type")
+        if type_file_single.exists():
+            try:
+                val = type_file_single.read_text(encoding="utf-8").strip().lower()
+                if val in ("album", "single", "rip", "playlist", "concert", "video", "clip"):
+                    manual_type = "video" if val == "clip" else val
+            except Exception:
+                pass
+
+    if not manual_type:
+        type_file = target_check_dir / ".album_type"
+        if type_file.exists():
+            try:
+                val = type_file.read_text(encoding="utf-8").strip().lower()
+                if val in ("album", "single", "rip", "playlist", "concert", "video", "clip"):
+                    manual_type = "video" if val == "clip" else val
+            except Exception:
+                pass
 
     detected_type = manual_type or classify_album_type(
         title=album_name,
-        path=str(target_check_dir),
+        path=str(p if is_single_file_mode else target_check_dir),
         track_count=len(tracks),
         is_concert=is_concert,
-        is_playlist=is_playlist_folder
+        is_playlist=is_playlist_folder,
+        is_video=is_video_folder
     )
 
     result_info = {
@@ -1435,7 +1504,7 @@ def get_album_info(album_dir: Path | str) -> dict:
         "manual_type": manual_type,
         "editor_draft": editor_draft
     }
-    _ALBUM_INFO_CACHE[p_key] = (dir_mtime, len(audio_files), draft_mtime, meta_mtime, result_info)
+    _ALBUM_INFO_CACHE[p_key] = (dir_mtime, len(audio_files), draft_mtime, meta_mtime, album_meta_mtime, latest_audio_mtime, result_info)
     return result_info
 
 def save_editor_draft(album_dir: Path, draft: dict) -> dict:
@@ -1746,7 +1815,8 @@ def uniformize_album(
     custom_tracks: Optional[list] = None,
     is_playlist: Optional[bool] = None,
     origin_album: Optional[str] = None,
-    custom_album_type: Optional[str] = None
+    custom_album_type: Optional[str] = None,
+    allow_dedup: bool = False
 ) -> dict:
     """Applique le retaggage uniforme sur toutes les pistes d'un album ou d'une playlist via kid3-cli."""
     if not album_dir or not str(album_dir).strip():
@@ -1762,140 +1832,149 @@ def uniformize_album(
     if not tracks:
         return {"success": False, "message": "Aucun fichier média trouvé dans le dossier."}
 
-    # ── Déduplication automatique renforcée ─────────────────────────────────
-    # yt-dlp télécharge parfois la même piste deux fois (anomalie YouTube).
-    # Trois niveaux de détection :
-    #   1. Titre normalisé identique (sans accents, ponctuation, espaces)
-    #   2. Taille de fichier identique au byte près (même contenu, titres légèrement différents)
-    #   3. Taille quasi-identique (<1% d'écart) + titre similaire (≥70% de mots communs)
+    # ── Déduplication sécurisée (UNIQUEMENT post-téléchargement si allow_dedup=True et pas de custom_tracks) ──
+    # yt-dlp peut exceptionnellement télécharger deux fois le même flux en cas d'anomalie réseau.
+    # RÈGLE ABSOLUE DE SÉCURITÉ :
+    # - En mode retag/édition (custom_tracks présent ou allow_dedup=False), AUCUN fichier n'est JAMAIS supprimé automatiquement !
+    # - Si les pistes ont des numéros différents (ex: piste 7 vs piste 20), ce sont deux pistes distinctes de l'album !
+    # - Deux morceaux homonymes (ex: version live + version acoustique sur un même album) ne sont JAMAIS des doublons !
     dedup_warnings = []
     tracks_to_remove = []
-    _GENERIC_ARTISTS = {"na", "n/a", "various artists", "artiste inconnu", ""}
 
-    def _artist_quality(t: dict) -> int:
-        """Score de qualité de l'artiste (plus élevé = meilleur)."""
-        a = (t.get("artist") or "").strip().lower()
-        if a in _GENERIC_ARTISTS:
-            return 0
-        if a.endswith("- topic") or a.endswith("-topic"):
-            return 1
-        return 2
+    if allow_dedup and custom_tracks is None:
+        _GENERIC_ARTISTS = {"na", "n/a", "various artists", "artiste inconnu", ""}
 
-    # Table de translittération pour normaliser les accents
-    _ACCENT_MAP = str.maketrans(
-        "àâäéèêëîïôùûüç", "aaaeeeeiioouuc"
-    )
+        def _artist_quality(t: dict) -> int:
+            """Score de qualité de l'artiste (plus élevé = meilleur)."""
+            a = (t.get("artist") or "").strip().lower()
+            if a in _GENERIC_ARTISTS:
+                return 0
+            if a.endswith("- topic") or a.endswith("-topic"):
+                return 1
+            return 2
 
-    def _normalize_title(title: str) -> str:
-        """Normalise un titre : minuscules, sans accents, sans ponctuation, espaces uniques."""
-        t = (title or "").lower().translate(_ACCENT_MAP)
-        t = re.sub(r"[^\w\s]", " ", t)   # ponctuation → espace
-        t = re.sub(r"\s+", " ", t).strip()
-        return t
+        _ACCENT_MAP = str.maketrans("àâäéèêëîïôùûüç", "aaaeeeeiioouuc")
 
-    def _file_size(t: dict) -> int:
-        """Retourne la taille du fichier audio en bytes (0 si inaccessible)."""
-        try:
-            return Path(t["filepath"]).stat().st_size
-        except Exception:
-            return 0
+        def _normalize_title(title: str) -> str:
+            """Normalise un titre : minuscules, sans accents, sans ponctuation, espaces uniques."""
+            t = (title or "").lower().translate(_ACCENT_MAP)
+            t = re.sub(r"[^\w\s]", " ", t)
+            t = re.sub(r"\s+", " ", t).strip()
+            return t
 
-    def _title_similarity(a: str, b: str) -> float:
-        """Ratio de mots communs entre deux titres normalisés (0.0 – 1.0)."""
-        wa = set(_normalize_title(a).split())
-        wb = set(_normalize_title(b).split())
-        if not wa or not wb:
-            return 0.0
-        return len(wa & wb) / max(len(wa), len(wb))
-
-    def _is_duplicate(t1: dict, t2: dict) -> bool:
-        """Retourne True si t1 et t2 sont des doublons selon les 3 critères."""
-        # Critère 1 : titre normalisé identique
-        if _normalize_title(t1.get("title", "")) == _normalize_title(t2.get("title", "")):
-            return True
-        # Critère 2 : taille identique au byte près ET titre ayant une parenté évidente (≥30% mots communs ou inclusion)
-        s1, s2 = _file_size(t1), _file_size(t2)
-        if s1 > 0 and s1 == s2:
-            norm1 = _normalize_title(t1.get("title", ""))
-            norm2 = _normalize_title(t2.get("title", ""))
-            sim = _title_similarity(t1.get("title", ""), t2.get("title", ""))
-            if sim >= 0.30 or (norm1 and norm1 in norm2) or (norm2 and norm2 in norm1):
-                logger.info(f"Doublon par taille exacte et titre similaire : '{t1.get('title')}' == '{t2.get('title')}' ({s1} bytes)")
-                return True
-        # Critère 3 : taille très proche (<1%) + titre similaire (≥70% mots communs)
-        if s1 > 0 and s2 > 0:
-            size_diff_pct = abs(s1 - s2) / max(s1, s2)
-            sim = _title_similarity(t1.get("title", ""), t2.get("title", ""))
-            if size_diff_pct < 0.002 and sim >= 0.85:
-                logger.info(f"Doublon probable (taille Δ={size_diff_pct:.3%}, sim={sim:.0%}) : "
-                           f"'{t1.get('title')}' ≈ '{t2.get('title')}'")
-                return True
-        return False
-
-    # Comparer chaque paire de pistes
-    n = len(tracks)
-    removed_set = set()
-    for i in range(n):
-        if i in removed_set:
-            continue
-        for j in range(i + 1, n):
-            if j in removed_set:
-                continue
-            if _is_duplicate(tracks[i], tracks[j]):
-                # Garder la piste avec le meilleur artiste ; en cas d'égalité, garder la première (i)
-                if _artist_quality(tracks[j]) > _artist_quality(tracks[i]):
-                    removed_set.add(i)
-                    break  # tracks[i] supprimé, passer au prochain i
-                else:
-                    removed_set.add(j)
-
-    tracks_to_remove = [tracks[k] for k in removed_set]
-
-    if tracks_to_remove:
-        removed_titles = []
-        for dup in tracks_to_remove:
-            dup_path = Path(dup["filepath"])
-            removed_titles.append(dup_path.name)
-            logger.warning(
-                f"Doublon supprimé : '{dup_path.name}' "
-                f"(artiste='{dup.get('artist')}', taille={_file_size(dup):,} bytes, qualité={_artist_quality(dup)})"
-            )
+        def _file_size(t: dict) -> int:
+            """Retourne la taille du fichier audio en bytes (0 si inaccessible)."""
             try:
-                dup_path.unlink(missing_ok=True)
-            except Exception as e:
-                logger.error(f"Impossible de supprimer le doublon {dup_path.name}: {e}")
-        dedup_warnings.append(
-            f"Doublon(s) supprimé(s) automatiquement : {', '.join(removed_titles)}"
-        )
-        logger.warning(f"Déduplication : {len(tracks_to_remove)} doublon(s) supprimé(s) dans '{album_dir.name}'")
-        # Rechargement pour recalculer les numéros de pistes
-        info = get_album_info(album_dir)
-        tracks = info.get("tracks", [])
+                return Path(t["filepath"]).stat().st_size
+            except Exception:
+                return 0
+
+        def _title_similarity(a: str, b: str) -> float:
+            """Ratio de mots communs entre deux titres normalisés (0.0 – 1.0)."""
+            wa = set(_normalize_title(a).split())
+            wb = set(_normalize_title(b).split())
+            if not wa or not wb:
+                return 0.0
+            return len(wa & wb) / max(len(wa), len(wb))
+
+        def _is_duplicate(t1: dict, t2: dict) -> bool:
+            """Retourne True UNIQUEMENT si t1 et t2 sont d'incontestables doublons techniques de téléchargement."""
+            # Garde-fou 1 : Si les deux pistes ont des numéros de piste valides et distincts,
+            # ce sont deux pistes différentes de l'album (ex: piste 07 vs piste 20).
+            num1 = extract_track_num(t1)
+            num2 = extract_track_num(t2)
+            if num1 is not None and num2 is not None and num1 != num2:
+                return False
+
+            s1, s2 = _file_size(t1), _file_size(t2)
+            if s1 <= 0 or s2 <= 0:
+                return False
+
+            # Doublon certain : taille de fichier identique au byte près
+            if s1 == s2:
+                # Même numéro de piste explicite : c'est le même fichier audio
+                if num1 is not None and num2 is not None and num1 == num2:
+                    logger.info(f"Doublon exact par numéro et taille : '{t1.get('title')}' == '{t2.get('title')}' ({s1} bytes)")
+                    return True
+                norm1 = _normalize_title(t1.get("title", ""))
+                norm2 = _normalize_title(t2.get("title", ""))
+                sim = _title_similarity(t1.get("title", ""), t2.get("title", ""))
+                if (norm1 and norm1 == norm2) or sim >= 0.70 or (norm1 and norm1 in norm2) or (norm2 and norm2 in norm1):
+                    logger.info(f"Doublon par taille exacte et titre similaire : '{t1.get('title')}' == '{t2.get('title')}' ({s1} bytes)")
+                    return True
+
+            return False
+
+        # Comparer chaque paire de pistes
+        n = len(tracks)
+        removed_set = set()
+        for i in range(n):
+            if i in removed_set:
+                continue
+            for j in range(i + 1, n):
+                if j in removed_set:
+                    continue
+                if _is_duplicate(tracks[i], tracks[j]):
+                    if _artist_quality(tracks[j]) > _artist_quality(tracks[i]):
+                        removed_set.add(i)
+                        break
+                    else:
+                        removed_set.add(j)
+
+        tracks_to_remove = [tracks[k] for k in removed_set]
+
+        if tracks_to_remove:
+            removed_titles = []
+            for dup in tracks_to_remove:
+                dup_path = Path(dup["filepath"])
+                removed_titles.append(dup_path.name)
+                logger.warning(
+                    f"Doublon supprimé : '{dup_path.name}' "
+                    f"(artiste='{dup.get('artist')}', taille={_file_size(dup):,} bytes, qualité={_artist_quality(dup)})"
+                )
+                try:
+                    dup_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.error(f"Impossible de supprimer le doublon {dup_path.name}: {e}")
+            dedup_warnings.append(
+                f"Doublon(s) supprimé(s) automatiquement : {', '.join(removed_titles)}"
+            )
+            logger.warning(f"Déduplication : {len(tracks_to_remove)} doublon(s) supprimé(s) dans '{album_dir.name}'")
+            # Rechargement pour recalculer les numéros de pistes
+            info = get_album_info(album_dir)
+            tracks = info.get("tracks", [])
 
     if is_playlist is None:
         is_playlist = info.get("is_playlist", False)
 
-    is_single = len(tracks) == 1 and not is_playlist
-    has_video = any(Path(t["filepath"]).suffix.lower() in {".mp4", ".mkv", ".webm"} for t in tracks)
+    has_video = any(Path(t["filepath"]).suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"} for t in tracks)
+    is_video_category = has_video or (bool(custom_album_type) and custom_album_type.lower() in ("video", "clip"))
+
+    is_single = len(tracks) == 1 and not is_playlist and not is_video_category
 
     # Pour un single, on mémorise l'album natif extrait par yt-dlp AVANT de l'écraser par "Singles & Rips"
     # afin de pouvoir le mentionner comme album d'origine dans le titre et le tag 'original album'.
     native_album_name = info["album_name"]
 
-    final_album = custom_album.strip() if custom_album and not is_empty_or_na(custom_album) else info["album_name"]
-    if is_empty_or_na(final_album) or (is_single and final_album in {"Extrait Vidéo", "Extrait Video"}):
-        final_album = "Singles & Rips" if is_single else info["album_name"]
-        if is_empty_or_na(final_album):
-            final_album = "Playlist" if is_playlist else "Singles & Rips"
+    if is_video_category:
+        final_album = custom_album.strip() if custom_album and not is_empty_or_na(custom_album) else (info.get("album_name") or "Vidéos")
+        if is_empty_or_na(final_album) or final_album in {"Singles & Rips", "Extrait Vidéo", "Extrait Video"}:
+            final_album = "Vidéos"
+    else:
+        final_album = custom_album.strip() if custom_album and not is_empty_or_na(custom_album) else info["album_name"]
+        if is_empty_or_na(final_album) or (is_single and final_album in {"Extrait Vidéo", "Extrait Video"}):
+            final_album = "Singles & Rips" if is_single else info["album_name"]
+            if is_empty_or_na(final_album):
+                final_album = "Playlist" if is_playlist else "Singles & Rips"
 
-    # Si c'est un single et que l'album résolu n'est PAS déjà "Singles & Rips",
-    # forcer le conteneur "Singles & Rips" et conserver l'album studio comme album d'origine.
-    _is_singles_rips = final_album.lower() == "singles & rips"
-    if is_single and not _is_singles_rips:
-        # Sauvegarder le nom de l'album studio comme album d'origine (si origin_album non fourni)
-        if not origin_album and not is_empty_or_na(final_album):
-            origin_album = final_album
-        final_album = "Singles & Rips"
+        # Si c'est un single et que l'album résolu n'est PAS déjà "Singles & Rips",
+        # forcer le conteneur "Singles & Rips" et conserver l'album studio comme album d'origine.
+        _is_singles_rips = final_album.lower() == "singles & rips"
+        if is_single and not _is_singles_rips:
+            # Sauvegarder le nom de l'album studio comme album d'origine (si origin_album non fourni)
+            if not origin_album and not is_empty_or_na(final_album):
+                origin_album = final_album
+            final_album = "Singles & Rips"
 
     if is_playlist:
         if not re.search(r'\s*\[playlist\]\s*$', final_album, flags=re.IGNORECASE):
@@ -1961,7 +2040,24 @@ def uniformize_album(
                 final_artist = "Various Artists"
 
     final_year = extract_4digit_year(custom_year) if custom_year else info["year"]
-    final_genre = custom_genre.strip() if custom_genre and not is_empty_or_na(custom_genre) else (info.get("genre") or "")
+
+    # Détection automatique de l'année officielle originale (MusicBrainz release-group / iTunes)
+    # Remplace l'année brute d'upload YouTube par la véritable première sortie studio historique
+    if not custom_year and final_album and final_artist and not is_playlist:
+        try:
+            detected_official_year = detect_original_release_year(final_album, final_artist)
+            if detected_official_year:
+                logger.info(
+                    f"[Année Officielle Auto] Détectée pour '{final_artist} - {final_album}': {detected_official_year} "
+                    f"(remplace l'année brute '{final_year}')"
+                )
+                final_year = detected_official_year
+        except Exception as e:
+            logger.debug(f"[Année Officielle Auto] Erreur pour '{final_album}': {e}")
+
+    raw_custom_genre = custom_genre.strip() if custom_genre and not is_generic_or_empty_genre(custom_genre) else ""
+    info_genre = info.get("genre") or ""
+    final_genre = raw_custom_genre or (info_genre if not is_generic_or_empty_genre(info_genre) else "")
 
     # Si c'est un album studio complet et qu'aucun genre n'est défini, résoudre le genre officiel de l'album
     if not is_playlist and not is_single and not final_genre:
@@ -2098,7 +2194,8 @@ def uniformize_album(
                 if feat_part and feat_part.lower() != track_artist.lower() and "(feat." not in final_title.lower():
                     final_title = f"{final_title} (feat. {feat_part})"
         
-        if is_single:
+        if is_single or is_video_category:
+            track_idx = index
             track_num_str = ""
             tag_num_cmd = ["-c", "set 'track number' ''", "-c", "set 'disc number' ''"]
         elif is_playlist:
@@ -2141,14 +2238,17 @@ def uniformize_album(
                 cmd.extend(["-c", f"set 'original album' \"{_kid3_escape(clean_oa)}\""])
 
         if final_year:
-            cmd.extend(["-c", f"set year \"{_kid3_escape(final_year)}\""])
+            cmd.extend([
+                "-c", f"set year \"{_kid3_escape(final_year)}\"",
+                "-c", f"set date \"{_kid3_escape(final_year)}\""
+            ])
 
         # Détermination du genre spécifique de la piste
         track_genre = custom_t.get("genre")
-        if is_empty_or_na(track_genre):
+        if is_generic_or_empty_genre(track_genre):
             if is_playlist or is_single:
                 auto_track_g = detect_genre_sync(track_artist, clean_tit, is_album=False)
-                track_genre = auto_track_g if auto_track_g else (final_genre or "")
+                track_genre = auto_track_g if auto_track_g and not is_generic_or_empty_genre(auto_track_g) else (final_genre or "")
             else:
                 track_genre = final_genre or ""
 
@@ -2160,8 +2260,10 @@ def uniformize_album(
                 if track_artist and final_artist and (track_artist.lower().strip() == final_artist.lower().strip() or final_artist.lower().strip() in track_artist.lower().strip()):
                     track_genre = final_genre
 
-        if track_genre:
+        if track_genre and not is_generic_or_empty_genre(track_genre):
             cmd.extend(["-c", f"set genre \"{_kid3_escape(track_genre)}\""])
+        else:
+            cmd.extend(["-c", "set genre \"\""])
 
         cmd.extend(["-c", "save"])
 
@@ -2177,7 +2279,14 @@ def uniformize_album(
             safe_title = re.sub(r'[\\/*?:"<>|]', "", final_title).strip()
             if not safe_title or safe_title.startswith("(") or safe_title.startswith("["):
                 safe_title = f"Sans titre {safe_title}".strip()
-            if is_single:
+            if is_video_category:
+                # Clips et concerts : JAMAIS de préfixe de numéro de piste !
+                # Le nom de fichier est simplement le titre de la vidéo (sans préfixe d'artiste superflu)
+                safe_title = re.sub(r'^\s*\d{1,3}(?:\s*[\.\-_]\s*|\s+)', '', safe_title).strip()
+                if final_artist and final_artist.strip() and final_artist not in ("Various Artists", "Artiste Inconnu", "Artiste inconnu"):
+                    safe_title = re.sub(r'^' + re.escape(final_artist.strip()) + r'\s*[\-–—\/:|_~]+\s*', '', safe_title, flags=re.IGNORECASE).strip()
+                new_filename = f"{safe_title}{ext}"
+            elif is_single:
                 safe_artist = re.sub(r'[\\/*?:"<>|]', "_", final_artist).strip() or "Artiste inconnu"
                 new_filename = f"{safe_artist} - {safe_title}{ext}"
             else:
@@ -2268,15 +2377,39 @@ def uniformize_album(
 
     if is_single_file_mode:
         # En mode fichier unique (ex: vidéo ou clip individuel), on ne renomme JAMAIS le dossier parent !
-        # Si l'artiste a changé et qu'on est dans la vidéothèque :
         final_file = new_path
+        
+        # Enregistrer ou supprimer le marqueur de type d'album (.type compagne et .album_type)
+        effective_single_cat = None
+        if custom_album_type:
+            cat = custom_album_type.strip().lower()
+            effective_single_cat = "clip" if cat in ("video", "clip") else cat
+            type_f_single = final_file.with_suffix(".type")
+            if cat in ("album", "single", "rip", "playlist", "concert", "video", "clip"):
+                try:
+                    type_f_single.write_text("clip" if cat == "video" else cat, encoding="utf-8")
+                except Exception:
+                    pass
+            elif cat == "auto" and type_f_single.exists():
+                try:
+                    type_f_single.unlink()
+                except Exception:
+                    pass
+
+        # Si l'artiste a changé ou si le type vidéo (concert vs clip) a changé et qu'on est dans la vidéothèque :
         if final_artist and final_artist not in {"Artiste inconnu", "Various Artists"}:
             from backend.library_sync import sanitize_name
             from backend.video_indexer import video_indexer
             v_dir = video_indexer.get_video_dir()
             try:
                 if v_dir and v_dir.exists() and final_file.resolve().is_relative_to(v_dir.resolve()):
-                    is_concert_dest = "concert" in str(final_file.parent).lower() or "[concert]" in str(final_file).lower() or is_concert
+                    if effective_single_cat == "concert":
+                        is_concert_dest = True
+                    elif effective_single_cat == "clip":
+                        is_concert_dest = False
+                    else:
+                        is_concert_dest = "concert" in str(final_file.parent).lower() or "[concert]" in str(final_file).lower() or is_concert
+
                     dest_parent = v_dir / sanitize_name(final_artist) / ("Concerts" if is_concert_dest else "")
                     dest_parent.mkdir(parents=True, exist_ok=True)
                     target_file = dest_parent / final_file.name
@@ -2284,17 +2417,32 @@ def uniformize_album(
                         if target_file.exists():
                             target_file.unlink()
                         shutil.move(str(final_file), str(target_file))
-                        # Déplacer aussi les miniatures compagnes si présentes
-                        for ext_t in [".jpg", ".png", ".webp"]:
-                            old_thumb = final_file.with_suffix(ext_t)
-                            if old_thumb.exists():
-                                new_thumb = target_file.with_suffix(ext_t)
-                                shutil.move(str(old_thumb), str(new_thumb))
-                        # Nettoyer l'ancien dossier s'il est vide
+                        # Déplacer aussi les miniatures compagnes et marqueur .type si présents
+                        for ext_t in [".jpg", ".png", ".webp", ".type"]:
+                            old_companion = final_file.with_suffix(ext_t)
+                            if old_companion.exists():
+                                new_companion = target_file.with_suffix(ext_t)
+                                shutil.move(str(old_companion), str(new_companion))
+
+                        # Nettoyer l'ancien dossier s'il ne contient plus de vidéos
                         old_p = final_file.parent
-                        if old_p.exists() and not any(old_p.iterdir()):
-                            try: old_p.rmdir()
-                            except Exception: pass
+                        if old_p.exists() and old_p.resolve() != target_file.parent.resolve() and old_p.resolve() != v_dir.resolve():
+                            from backend.video_indexer import VIDEO_EXTENSIONS
+                            remaining_videos = [f for f in old_p.iterdir() if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS]
+                            if not remaining_videos:
+                                # Aucun fichier vidéo ne reste dans ce dossier : supprimer les résidus (cover.jpg, desktop.ini, miniatures)
+                                for res_file in list(old_p.iterdir()):
+                                    if res_file.is_file():
+                                        try:
+                                            os.chmod(str(res_file), stat.S_IWRITE)
+                                            res_file.unlink(missing_ok=True)
+                                        except Exception:
+                                            pass
+                                try:
+                                    os.chmod(str(old_p), stat.S_IWRITE)
+                                    old_p.rmdir()
+                                except Exception:
+                                    pass
                         final_file = target_file
             except Exception as e:
                 logger.warning(f"Routage fichier unique post-retag: {e}")
@@ -2305,21 +2453,6 @@ def uniformize_album(
             video_indexer.invalidate_cache()
         except Exception:
             pass
-
-        # Enregistrer ou supprimer le marqueur de type d'album (.album_type)
-        if custom_album_type:
-            cat = custom_album_type.strip().lower()
-            type_f = final_file.parent / ".album_type"
-            if cat in ("album", "single", "rip", "playlist", "concert"):
-                try:
-                    type_f.write_text(cat, encoding="utf-8")
-                except Exception:
-                    pass
-            elif cat == "auto" and type_f.exists():
-                try:
-                    type_f.unlink()
-                except Exception:
-                    pass
 
         invalidate_album_cache(p)
         invalidate_album_cache(final_file)
@@ -2404,11 +2537,14 @@ def uniformize_album(
 
     # Enregistrer ou supprimer le marqueur de type d'album (.album_type)
     type_file = current_dir / ".album_type"
-    if custom_album_type:
-        cat = custom_album_type.strip().lower()
-        if cat in ("album", "single", "rip", "playlist", "concert"):
+    eff_type = custom_album_type
+    if not eff_type and is_video_category:
+        eff_type = "video"
+    if eff_type:
+        cat = eff_type.strip().lower()
+        if cat in ("album", "single", "rip", "playlist", "concert", "video", "clip"):
             try:
-                type_file.write_text(cat, encoding="utf-8")
+                type_file.write_text("video" if cat == "clip" else cat, encoding="utf-8")
             except Exception as e:
                 logger.warning(f"Erreur écriture .album_type : {e}")
         elif cat == "auto" and type_file.exists():
@@ -2417,7 +2553,38 @@ def uniformize_album(
             except Exception:
                 pass
 
+    # Synchroniser les métadonnées consolidées dans .album_meta.json si présent
+    meta_json = current_dir / ".album_meta.json"
+    if meta_json.is_file():
+        try:
+            import json
+            with open(meta_json, "r", encoding="utf-8") as mf:
+                md = json.load(mf)
+            if final_artist:
+                md["artist"] = final_artist
+                md["album_artist"] = final_artist
+            if final_album:
+                md["album"] = final_album
+                md["title"] = final_album
+            if final_genre:
+                md["genre"] = final_genre
+            if final_year:
+                md["year"] = final_year
+            with open(meta_json, "w", encoding="utf-8") as mf:
+                json.dump(md, mf, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.debug(f"Mise à jour .album_meta.json post-retag: {e}")
+
     dedup_warning_msg = " | ".join(dedup_warnings) if dedup_warnings else None
+
+    # Nettoyer systématiquement tout éventuel brouillon (.editor_draft.json)
+    # puisque les tags viennent d'être enregistrés définitivement sur le disque
+    try:
+        clear_editor_draft(current_dir)
+        if album_dir != current_dir:
+            clear_editor_draft(album_dir)
+    except Exception:
+        pass
 
     logger.info(
         f"TAGS ENREGISTRÉS | Artiste='{final_artist}' | Album='{final_album}' | "
@@ -2450,7 +2617,8 @@ def export_album(
     custom_tracks: Optional[list] = None,
     is_playlist: Optional[bool] = None,
     is_concert: Optional[bool] = None,
-    conflict_policy: Optional[str] = None
+    conflict_policy: Optional[str] = None,
+    custom_album_type: Optional[str] = None
 ) -> dict:
     """
     Exporte un album finalisé dans la structure :
@@ -2466,7 +2634,7 @@ def export_album(
     if not p.exists() or not p.is_dir():
         return {"success": False, "message": "Dossier d'album source introuvable."}
     album_dir = p
-    if custom_album or custom_artist or custom_tracks or is_playlist is not None:
+    if custom_album or custom_artist or custom_tracks or is_playlist is not None or custom_album_type is not None:
         res = uniformize_album(
             album_dir=album_dir,
             custom_album=custom_album,
@@ -2474,7 +2642,8 @@ def export_album(
             custom_year=custom_year,
             custom_genre=custom_genre,
             custom_tracks=custom_tracks,
-            is_playlist=is_playlist
+            is_playlist=is_playlist,
+            custom_album_type=custom_album_type
         )
         if res.get("success") and res.get("album_dir"):
             album_dir = Path(res["album_dir"])
@@ -2484,8 +2653,14 @@ def export_album(
     if not tracks:
         return {"success": False, "message": "Aucun fichier à exporter."}
 
-    # Détecter si le dossier contient des fichiers vidéo (.mp4, .mkv, .webm)
-    is_video_folder = any(Path(t["filepath"]).suffix.lower() in {".mp4", ".mkv", ".webm"} for t in tracks)
+    # Détecter si le dossier contient des fichiers vidéo (.mp4, .mkv, .webm, etc.)
+    has_video_files = any(Path(t["filepath"]).suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"} for t in tracks)
+    is_video_folder = (
+        has_video_files
+        or (bool(custom_album_type) and custom_album_type.lower() in ("video", "clip"))
+        or info.get("album_type") == "video"
+        or (has_video_files and (bool(custom_album_type) and custom_album_type.lower() == "concert" or info.get("album_type") == "concert"))
+    )
     is_pl = is_playlist if is_playlist is not None else info.get("is_playlist", False)
 
     raw_art = custom_artist or info.get("album_artist") or ("Various Artists" if is_pl else "Artiste Inconnu")
@@ -2529,21 +2704,39 @@ def export_album(
         artist_name = smart_res["artist_folder"]
         album_name = smart_res["album_folder"]
     else:
-        if not target_base_dir:
-            target_base_dir = Path(config.video_export_dir if is_video_folder else config.export_dir)
+        if is_video_folder:
+            # Pour une vidéo, si target_base_dir pointe sur la bibliothèque audio par défaut,
+            # rediriger impérativement vers la vidéothèque !
+            from backend.config import DEFAULT_VIDEO_EXPORT_DIR
+            video_root = Path(config.video_export_dir or getattr(config, "video_library_dir", "") or DEFAULT_VIDEO_EXPORT_DIR)
+            if not target_base_dir or target_str == lib_str or target_str == exp_str:
+                target_base_dir = video_root
+        elif not target_base_dir:
+            target_base_dir = Path(config.export_dir)
 
         clean_target_base = sanitize_path(target_base_dir)
 
         if is_video_folder:
             # Vérifier si c'est un concert / live
             is_concert_dest = False
-            if is_concert is True:
+            if is_concert is True or (bool(custom_album_type) and custom_album_type.lower() == "concert"):
                 is_concert_dest = True
+            elif is_concert is False or (bool(custom_album_type) and custom_album_type.lower() in ("video", "clip")):
+                is_concert_dest = False
             elif is_concert is None:
+                def _is_long_duration(tr_dur) -> bool:
+                    if isinstance(tr_dur, (int, float)):
+                        return tr_dur >= 600
+                    if isinstance(tr_dur, str) and tr_dur:
+                        parts = [int(p) for p in tr_dur.split(":") if p.isdigit()]
+                        if len(parts) >= 3 or (len(parts) == 2 and parts[0] >= 10):
+                            return True
+                    return False
+
                 is_concert_dest = (
                     "[concert]" in str(album_dir).lower()
                     or "concert" in album_name.lower()
-                    or any(t.get("duration", 0) >= 600 for t in tracks)
+                    or any(_is_long_duration(t.get("duration", 0)) for t in tracks)
                     or any(re.search(r"\b(concert|live|tour|festival|show|session|recital|spectacle|acoustique|unplugged|en\s+public|in\s+concert|full\s+concert|concert\s+complet)\b", t.get("title", ""), re.IGNORECASE) for t in tracks)
                 )
 
@@ -2600,7 +2793,14 @@ def export_album(
                     except Exception:
                         pass
                 continue
-            dest_file = dest_dir / item.name
+            target_filename = item.name
+            if is_video_folder and item.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"}:
+                clean_stem = re.sub(r'^\s*\d{1,3}(?:\s*[\.\-_]\s*|\s+)', '', item.stem).strip()
+                if artist_name and artist_name.strip() and artist_name not in ("Various Artists", "Artiste Inconnu", "Artiste inconnu"):
+                    clean_stem = re.sub(r'^' + re.escape(artist_name.strip()) + r'\s*[\-–—\/:|_~]+\s*', '', clean_stem, flags=re.IGNORECASE).strip()
+                target_filename = f"{clean_stem}{item.suffix.lower()}"
+
+            dest_file = dest_dir / target_filename
             if dest_file.exists():
                 if eff_policy == "merge" and dest_file.stat().st_size > 0:
                     # En mode merge, conserver la piste existante de la bibliothèque sans l'écraser
@@ -2650,6 +2850,12 @@ def export_album(
             library_indexer.add_or_update_album(dest_dir)
         except Exception as e:
             logger.warning(f"Erreur mise à jour indexothèque après export : {e}")
+    elif is_video_folder:
+        try:
+            from backend.video_indexer import video_indexer
+            video_indexer.invalidate_cache()
+        except Exception:
+            pass
 
     if exported_files:
         logger.info(
@@ -2777,10 +2983,15 @@ def open_in_explorer(path: str) -> bool:
         logger.error(f"Ouverture explorateur: {e}")
         return False
 
-def apply_genre_to_album(album_dir: Path | str, genre: str) -> dict:
+def apply_tags_to_album(
+    album_dir: Path | str,
+    artist: Optional[str] = None,
+    genre: Optional[str] = None,
+    year: Optional[str] = None
+) -> dict:
     """
-    Applique le tag de genre à tous les fichiers audio d'un album ou d'une playlist via kid3-cli
-    sans toucher aux titres, artistes ou noms de fichiers.
+    Applique les tags (artiste, genre, année) à tous les fichiers audio d'un album ou d'une playlist via kid3-cli
+    sans toucher aux titres ni aux structures de fichiers.
     """
     if not album_dir or not str(album_dir).strip():
         return {"success": False, "message": "Chemin d'album invalide."}
@@ -2788,7 +2999,12 @@ def apply_genre_to_album(album_dir: Path | str, genre: str) -> dict:
     if not p.exists() or not p.is_dir():
         return {"success": False, "message": "Dossier d'album introuvable."}
 
-    clean_g = str(genre).strip()
+    clean_art = str(artist).strip() if artist else None
+    clean_g = str(genre).strip() if genre else None
+    clean_y = extract_4digit_year(str(year).strip()) if year else None
+
+    if not clean_art and not clean_g and not clean_y:
+        return {"success": False, "message": "Aucun tag (artiste, genre ou année) spécifié."}
 
     audio_files = []
     for root, _, files in os.walk(p):
@@ -2800,29 +3016,180 @@ def apply_genre_to_album(album_dir: Path | str, genre: str) -> dict:
         return {"success": False, "message": "Aucun fichier audio trouvé dans cet album."}
 
     try:
-        cmd = [KID3_CLI_PATH]
-        escaped_g = _kid3_escape(clean_g)
-        cmd.extend(["-c", f"set genre \"{escaped_g}\""])
+        commands = []
+        last_dir = None
         for af in audio_files:
-            cmd.append(str(af.resolve()))
-        cmd.extend(["-c", "save"])
+            af_dir = af.parent.resolve()
+            if af_dir != last_dir:
+                commands.append(f"cd \"{af_dir}\"")
+                last_dir = af_dir
+            commands.append(f"select \"{af.name}\"")
+            if clean_g:
+                escaped_g = _kid3_escape(clean_g)
+                commands.append(f"set genre \"{escaped_g}\"")
+            if clean_y:
+                escaped_y = _kid3_escape(clean_y)
+                commands.append(f"set year \"{escaped_y}\"")
+                commands.append(f"set date \"{escaped_y}\"")
+            if clean_art:
+                escaped_art = _kid3_escape(clean_art)
+                commands.append(f"set artist \"{escaped_art}\"")
+                commands.append(f"set 'album artist' \"{escaped_art}\"")
+            commands.append("save")
+        commands.append("exit")
+        input_text = "\n".join(commands) + "\n"
 
-        proc = subprocess.run(cmd, cwd=str(p), capture_output=True, text=True, timeout=30)
+        proc = subprocess.run(
+            [KID3_CLI_PATH],
+            input=input_text,
+            cwd=str(p),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60
+        )
         if proc.returncode != 0:
-            logger.warning(f"kid3-cli set genre warning on {p.name}: {proc.stderr}")
+            logger.warning(f"kid3-cli set tags warning on {p.name}: {proc.stderr}")
     except Exception as e:
-        logger.error(f"Erreur kid3-cli lors de l'application du genre sur {p.name} : {e}")
+        logger.error(f"Erreur kid3-cli lors de l'application des tags sur {p.name} : {e}")
         return {"success": False, "message": str(e)}
 
+    # Mettre à jour .album_meta.json si présent pour garder la cohérence complète
+    meta_json = p / ".album_meta.json"
+    if meta_json.is_file():
+        try:
+            with open(meta_json, "r", encoding="utf-8") as mf:
+                md = json.load(mf)
+            if clean_art:
+                md["artist"] = clean_art
+                md["album_artist"] = clean_art
+            if clean_g:
+                md["genre"] = clean_g
+            if clean_y:
+                md["year"] = clean_y
+            with open(meta_json, "w", encoding="utf-8") as mf:
+                json.dump(md, mf, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Impossible de mettre à jour .album_meta.json dans {p.name}: {e}")
+
     invalidate_album_cache(p)
-    if hasattr(library_indexer, "update_album_genre"):
+    if hasattr(library_indexer, "update_album_tags"):
+        library_indexer.update_album_tags(p, artist=clean_art, genre=clean_g, year=clean_y)
+    elif clean_g and hasattr(library_indexer, "update_album_genre"):
         library_indexer.update_album_genre(p, clean_g)
 
     return {
         "success": True,
         "album_dir": str(p),
+        "artist": clean_art,
         "genre": clean_g,
+        "year": clean_y,
         "tracks_updated": len(audio_files)
     }
+
+def apply_genre_to_album(album_dir: Path | str, genre: str) -> dict:
+    """
+    Rétro-compatibilité : applique le tag de genre à tous les fichiers audio d'un album.
+    """
+    return apply_tags_to_album(album_dir, genre=genre)
+
+def detect_original_release_year(album_title: str, artist: Optional[str] = None) -> Optional[str]:
+    """
+    Détecte l'année officielle originale de sortie d'un album studio via MusicBrainz release-group et iTunes API.
+    Contourne les années de réédition/upload YouTube erronées en cherchant la véritable première parution.
+    """
+    clean_alb = (album_title or "").strip()
+    clean_art = (artist or "").strip()
+    if not clean_alb:
+        return None
+
+    # Nettoyer les suffixes courants : [Album], [Deluxe Edition], (Remastered), etc.
+    core_alb = re.sub(r'[\(\[\{](?:remaster(?:ed)?|deluxe|expanded|anniversary|bonus|explicit|edition|version|reissue|live)[\)\]\}]', '', clean_alb, flags=re.IGNORECASE).strip()
+    core_alb = re.sub(r'\s*\[(album|playlist|single|rip|concert|video)\]\s*', '', core_alb, flags=re.IGNORECASE).strip()
+    if not core_alb:
+        core_alb = clean_alb
+
+    # 1. Tentative prioritaire MusicBrainz release-group (oriente vers la véritable première sortie historique de l'album)
+    try:
+        global _LAST_MB_REQUEST_TIME
+        safe_alb = core_alb.replace('"', '').strip()
+        art_candidates = []
+        if clean_art and clean_art.lower() not in {"various artists", "artiste inconnu", "unknown"}:
+            art_candidates.append(clean_art.replace('"', '').strip())
+            # Gestion des variantes courantes (ex: "-M- Matthieu Chedid" -> "-M-", "Matthieu Chedid")
+            if "-M-" in clean_art:
+                art_candidates.append("-M-")
+                art_candidates.append(clean_art.replace("-M-", "").strip())
+            elif " / " in clean_art:
+                art_candidates.append(clean_art.split(" / ")[0].strip())
+            elif " & " in clean_art:
+                art_candidates.append(clean_art.split(" & ")[0].strip())
+        else:
+            art_candidates.append(None)
+
+        for cand_art in art_candidates:
+            query_parts = [f'releasegroup:"{safe_alb}"']
+            if cand_art:
+                query_parts.append(f'artist:"{cand_art}"')
+            mb_query = " AND ".join(query_parts)
+            mb_url = f"https://musicbrainz.org/ws/2/release-group/?query={urllib.parse.quote(mb_query)}&fmt=json&limit=3"
+
+            # Respect strict du rate limit MusicBrainz (1 req/sec max)
+            elapsed = time.time() - _LAST_MB_REQUEST_TIME
+            if elapsed < 1.1:
+                time.sleep(1.1 - elapsed)
+
+            req = urllib.request.Request(mb_url, headers=_MB_HEADERS)
+            try:
+                with urllib.request.urlopen(req, timeout=5) as res:
+                    _LAST_MB_REQUEST_TIME = time.time()
+                    data = json.loads(res.read().decode("utf-8", errors="ignore"))
+                    for rg in data.get("release-groups", []):
+                        frd = rg.get("first-release-date") or ""
+                        if len(frd) >= 4 and frd[:4].isdigit():
+                            y = frd[:4]
+                            if 1920 <= int(y) <= 2099:
+                                return y
+            except urllib.error.HTTPError as e:
+                _LAST_MB_REQUEST_TIME = time.time()
+                if e.code == 503:
+                    time.sleep(1.2)
+                else:
+                    break
+            except Exception:
+                break
+    except Exception as e:
+        logger.debug(f"[Detect Year] Erreur MusicBrainz: {e}")
+
+    # 2. Repli rapide via iTunes Search API si MusicBrainz n'a rien trouvé
+    try:
+        search_terms = []
+        if clean_art and clean_art.lower() not in {"various artists", "artiste inconnu", "unknown"}:
+            search_terms.append(f"{clean_art} {core_alb}")
+            if "-M-" in clean_art:
+                search_terms.append(f"Matthieu Chedid {core_alb}")
+        search_terms.append(core_alb)
+
+        for st in search_terms[:2]:
+            itunes_url = f"https://itunes.apple.com/search?term={urllib.parse.quote(st)}&entity=album&limit=5"
+            req = urllib.request.Request(itunes_url, headers={"User-Agent": "SoundStash/4.2.3"})
+            with urllib.request.urlopen(req, timeout=4) as res:
+                data = json.loads(res.read().decode("utf-8", errors="ignore"))
+                results = data.get("results", [])
+                years_found = []
+                for item in results:
+                    rel_date = item.get("releaseDate") or ""
+                    if len(rel_date) >= 4:
+                        y = rel_date[:4]
+                        if y.isdigit() and 1920 <= int(y) <= 2099:
+                            years_found.append(int(y))
+                if years_found:
+                    return str(min(years_found))
+    except Exception as e:
+        logger.debug(f"[Detect Year] Erreur iTunes: {e}")
+
+    return None
+
 
 

@@ -33,11 +33,16 @@ def clean_genre_str(g: Optional[str]) -> Optional[str]:
     if not g:
         return None
     g = g.strip().strip('\x00')
+    if g.lower() in {"music", "musique", "sound", "audio", "other", "autre", "inconnu", "unknown", "na", "n/a", "non classé", "non classe"}:
+        return None
     m = re.match(r'^\(?(\d+)\)?$', g)
     if m:
         idx = int(m.group(1))
         if idx < len(ID3_GENRES):
-            return ID3_GENRES[idx]
+            mapped = ID3_GENRES[idx]
+            if mapped and mapped.lower() in {"music", "other"}:
+                return None
+            return mapped
     return g if g else None
 
 def parse_duration_to_seconds(dur_val: Any) -> Optional[int]:
@@ -283,7 +288,7 @@ def extract_album_tags_priority(folder: Path, audio_files: List[Path]) -> dict:
                     result["album"] = alb
                 if yr:
                     result["year"] = yr
-                if gnr:
+                if gnr and gnr.lower() not in {"inconnu", "unknown", "na", "music", "musique", "sound", "audio", "other", "autre"}:
                     result["genre"] = gnr
                 if result["artist"] and result["album"]:
                     return result
@@ -432,6 +437,71 @@ def calculate_token_similarity(s1: str, s2: str) -> float:
 
 # Alias pour compatibilité
 token_similarity = calculate_token_similarity
+
+CONNECTIVE_ARTIST_TOKENS = {
+    "and", "feat", "ft", "with", "vs", "versus", "pres", "presents", "et", "the", "dj",
+    "official", "officiel", "music", "musique", "records", "band", "group", "orchestra"
+}
+
+GENERIC_ARTIST_NAMES = {
+    "various artists", "various artist", "various", "divers artistes", "divers",
+    "compilation", "soundtrack", "ost", "bande originale", "original soundtrack",
+    "artiste inconnu", "unknown artist"
+}
+
+GENERIC_ALBUM_TITLES = {
+    "live", "greatest hits", "best of", "self titled", "ep", "lp", "album", "remix", "remixes",
+    "anthology", "singles", "collection", "acoustic", "unplugged", "soundtrack", "ost", "hits",
+    "volume 1", "vol 1", "volume 2", "vol 2", "deluxe", "sessions"
+}
+
+def is_artist_compatible(norm_art1: str, norm_art2: str) -> Tuple[bool, float]:
+    """
+    Détermine si deux noms d'artistes normalisés sont compatibles.
+    Retourne (compatible: bool, score: float).
+    Permet d'éviter d'associer deux albums homonymes appartenant à des artistes différents
+    (ex: Metropolis de Marvel83' vs Metropolis de Timecop1983).
+    """
+    if not norm_art1 or not norm_art2:
+        return True, 0.5
+
+    if norm_art1 == norm_art2:
+        return True, 1.0
+
+    # Compilations multi-artistes ou bandes originales
+    if norm_art1 in GENERIC_ARTIST_NAMES or norm_art2 in GENERIC_ARTIST_NAMES:
+        return True, 0.75
+    if any(g in norm_art1 for g in ("various", "divers artistes", "compilation", "soundtrack")) or \
+       any(g in norm_art2 for g in ("various", "divers artistes", "compilation", "soundtrack")):
+        return True, 0.75
+
+    # Tokens sans mots de liaison
+    tokens1 = set(w for w in norm_art1.split() if w not in CONNECTIVE_ARTIST_TOKENS)
+    tokens2 = set(w for w in norm_art2.split() if w not in CONNECTIVE_ARTIST_TOKENS)
+
+    if tokens1 and tokens2 and tokens1 == tokens2:
+        return True, 1.0
+
+    # Sous-ensemble complet (ex: collaboration "Marvel83' & Timecop1983" vs "Marvel83'")
+    common = tokens1 & tokens2
+    if tokens1 and tokens2 and (tokens1.issubset(tokens2) or tokens2.issubset(tokens1)):
+        sig_common = [w for w in common if len(w) >= 3 or not w.isdigit()]
+        if sig_common:
+            return True, 0.90
+
+    # Similitude Jaccard globale
+    sim = calculate_token_similarity(norm_art1, norm_art2)
+    if sim >= 0.70:
+        return True, sim
+
+    # Comparaison sans espaces (ex: 'acdc' vs 'ac dc' ou 'blink182' vs 'blink 182')
+    compact1 = norm_art1.replace(" ", "")
+    compact2 = norm_art2.replace(" ", "")
+    if compact1 and compact2 and compact1 == compact2:
+        return True, 0.98
+
+    # Si aucun recouvrement et les deux artistes sont spécifiés : INCOMPATIBLES
+    return False, 0.0
 
 TRACK_VERSION_NOISE_PATTERNS = [
     r"\s*[\(\[][^\)\]]*(?:remix|mix|edit|version|extended|radio|club|instrumental|acoustic|live|vip|rework|dub|feat|ft\.|featuring|clean|explicit|bonus|remaster|deluxe|intro|outro|orchestral|slowed|speed|sped)[^\)\]]*[\)\]]",
@@ -703,10 +773,10 @@ class LibraryIndexer:
                         "artist": art,
                         "album": title,
                         "year": year if re.match(r'^(?:19|20)\d{2}$', year) else "",
-                        "genre": genre if genre.lower() not in {"inconnu", "unknown", "na"} else ""
+                        "genre": genre if genre.lower() not in {"inconnu", "unknown", "na", "music", "musique"} else ""
                     }
 
-            if genre and genre.lower() not in {"inconnu", "unknown", "na"}:
+            if genre and genre.lower() not in {"inconnu", "unknown", "na", "music", "musique"}:
                 genres_set.add(genre)
 
             if year and re.match(r'^(?:19|20)\d{2}$', year):
@@ -1280,12 +1350,22 @@ class LibraryIndexer:
 
     def update_album_genre(self, album_path: Path | str, new_genre: str):
         """Met à jour le genre d'un album en mémoire et dans le cache sans réindexation lourde."""
+        self.update_album_tags(album_path, genre=new_genre)
+
+    def update_album_tags(self, album_path: Path | str, artist: Optional[str] = None, genre: Optional[str] = None, year: Optional[str] = None):
+        """Met à jour les tags communs d'un album (artiste, genre, année) en mémoire et dans le cache sans réindexation lourde."""
         try:
             norm_p = str(Path(album_path).resolve()).lower()
             updated = False
             for alb in self.albums:
                 if str(Path(alb.path).resolve()).lower() == norm_p:
-                    alb.genre = new_genre
+                    if genre is not None and str(genre).strip():
+                        alb.genre = str(genre).strip()
+                    if artist is not None and str(artist).strip():
+                        alb.artist = str(artist).strip()
+                        alb.norm_artist = normalize_text(alb.artist)
+                    if year is not None and str(year).strip():
+                        alb.year = str(year).strip()
                     try:
                         alb.mtime = Path(alb.path).stat().st_mtime
                     except Exception:
@@ -1294,9 +1374,9 @@ class LibraryIndexer:
                     break
             if updated:
                 self._save_to_cache()
-                logger.info(f"Indexothèque : Genre mis à jour pour '{album_path}' -> {new_genre}")
+                logger.info(f"Indexothèque : Tags mis à jour pour '{album_path}' (artiste={artist}, genre={genre}, annee={year})")
         except Exception as e:
-            logger.warning(f"Erreur mise à jour genre album {album_path}: {e}")
+            logger.warning(f"Erreur mise à jour tags album {album_path}: {e}")
 
     def invalidate_cache(self):
         """Invalide le cache de la bibliothèque et force un re-scan."""
@@ -1530,21 +1610,25 @@ class SmartMatcher:
             for k, albs in self.indexer.artists_map.items():
                 if k == norm_art:
                     continue
-                match_artist = False
-                if (norm_art in k) or (len(k) >= 4 and k in norm_art):
-                    match_artist = True
-                elif calculate_token_similarity(norm_art, k) >= 0.70:
-                    match_artist = True
-
-                if match_artist:
+                is_compat, _ = is_artist_compatible(norm_art, k)
+                if is_compat:
                     for a in albs:
                         if a.path not in seen_paths:
                             seen_paths.add(a.path)
                             candidates.append(a)
 
-        # Si pas de candidat par artiste, tester tous les albums
+        # Si pas de candidat par artiste :
+        # - Si norm_art était fourni : n'ajouter que les albums/compilations compatibles
+        # - Si norm_art n'était pas fourni : tester tous les albums
         if not candidates:
-            candidates = self.indexer.albums
+            if norm_art:
+                for a in self.indexer.albums:
+                    is_compat, _ = is_artist_compatible(norm_art, a.norm_artist)
+                    if is_compat and a.path not in seen_paths:
+                        seen_paths.add(a.path)
+                        candidates.append(a)
+            else:
+                candidates = self.indexer.albums
 
         best_album = None
         best_score = 0.0
@@ -1555,9 +1639,7 @@ class SmartMatcher:
                 best_score = score
                 best_album = alb
 
-        # Filet de sécurité : si aucun match probant (>= 0.80) n'a été trouvé parmi les candidats restreints,
-        # tester l'ensemble de la bibliothèque (au cas où l'artiste en ligne diffère du tag local,
-        # ex: Various Artists, multi-artistes ou nom de chaîne/groupe)
+        # Filet de sécurité : tester les autres albums potentiellement compatibles
         if best_score < 0.80 and candidates is not self.indexer.albums:
             for alb in self.indexer.albums:
                 if alb.path in seen_paths:
@@ -1575,22 +1657,28 @@ class SmartMatcher:
 
     def _compute_similarity(self, norm_art: str, norm_title: str, alb: IndexedAlbum) -> float:
         """Calcule un score de similarité entre la requête et un album indexé."""
-        is_art_match = (
-            not norm_art
-            or not alb.norm_artist
-            or norm_art == alb.norm_artist
-            or norm_art in alb.norm_artist
-            or alb.norm_artist in norm_art
-        )
+        if not norm_title or not alb.norm_album:
+            return 0.0
 
-        # Égalité exacte du titre
+        # Vérification stricte de compatibilité d'artiste
+        # Empêche catégoriquement d'associer deux albums homonymes d'artistes distincts
+        # (ex: Metropolis de Marvel83' vs Metropolis de Timecop1983)
+        is_compat, art_sim = is_artist_compatible(norm_art, alb.norm_artist)
+        if not is_compat:
+            return 0.0
+
+        # 1. Égalité exacte du titre
         if norm_title == alb.norm_album:
-            if is_art_match:
+            if art_sim >= 0.85:
                 return 1.0
-            art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
-            return max(0.85, 0.7 + (art_sim * 0.3))
+            if not norm_art or not alb.norm_artist:
+                # Titre identique mais artiste absent : attention aux titres génériques
+                if norm_title in GENERIC_ALBUM_TITLES:
+                    return 0.50
+                return 0.88
+            return 0.70 + (art_sim * 0.30)
 
-        # Similarité avec nettoyage des mots d'éditions/rééditions non parenthésés
+        # 2. Similarité avec nettoyage des mots d'éditions/rééditions non parenthésés
         tokens1 = set(norm_title.split())
         tokens2 = set(alb.norm_album.split())
         clean_t1 = tokens1 - ALBUM_EDITION_WORDS
@@ -1598,35 +1686,38 @@ class SmartMatcher:
         if clean_t1 and clean_t2:
             clean_sim = len(clean_t1 & clean_t2) / len(clean_t1 | clean_t2)
             if clean_sim >= 0.80 or (clean_t1 == clean_t2 and len(clean_t1) >= 1):
-                if is_art_match:
+                if art_sim >= 0.85:
                     return max(0.88, 0.75 + (clean_sim * 0.20))
-                art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
+                if not norm_art or not alb.norm_artist:
+                    return 0.82 if norm_title not in GENERIC_ALBUM_TITLES else 0.45
                 if art_sim >= 0.70:
                     return (clean_sim * 0.7) + (art_sim * 0.3)
 
-        # Inclusion préfixe ou sous-ensemble complet de mots quand l'artiste concorde
-        if is_art_match and min(len(norm_title), len(alb.norm_album)) >= 4:
+        # 3. Inclusion préfixe ou sous-ensemble complet de mots quand l'artiste concorde
+        if art_sim >= 0.80 and min(len(norm_title), len(alb.norm_album)) >= 4:
             if norm_title.startswith(alb.norm_album) or alb.norm_album.startswith(norm_title):
                 diff_tokens = (tokens1 ^ tokens2) - ALBUM_EDITION_WORDS
                 if len(diff_tokens) <= 1:
                     return 0.88
 
-        # Inclusion avec ratio de longueur significatif (ex: titre contenant une édition élaguée)
+        # 4. Inclusion avec ratio de longueur significatif (ex: titre contenant une édition élaguée)
         if (norm_title in alb.norm_album or alb.norm_album in norm_title) and min(len(norm_title), len(alb.norm_album)) >= 4:
             ratio = min(len(norm_title), len(alb.norm_album)) / max(len(norm_title), len(alb.norm_album))
             if ratio >= 0.70:
-                if is_art_match:
+                if art_sim >= 0.85:
                     return 0.90 * ratio
-                art_sim = calculate_token_similarity(norm_art, alb.norm_artist)
-                return (0.90 * ratio * 0.7) + (art_sim * 0.3)
+                if art_sim >= 0.70:
+                    return (0.90 * ratio * 0.7) + (art_sim * 0.3)
 
-        # Indice de similarité de tokens standard
+        # 5. Indice de similarité de tokens standard
         title_sim = calculate_token_similarity(norm_title, alb.norm_album)
         if title_sim >= 0.80:
-            if norm_art and alb.norm_artist:
-                art_sim = 0.95 if is_art_match else calculate_token_similarity(norm_art, alb.norm_artist)
+            if art_sim >= 0.85:
                 return (title_sim * 0.7) + (art_sim * 0.3)
-            return title_sim * 0.85
+            if not norm_art or not alb.norm_artist:
+                return title_sim * 0.85 if norm_title not in GENERIC_ALBUM_TITLES else 0.40
+            if art_sim >= 0.70:
+                return (title_sim * 0.6) + (art_sim * 0.4)
 
         return 0.0
 
@@ -1652,10 +1743,27 @@ class SmartMatcher:
                 for item in t_dir.iterdir():
                     if item.is_dir() and not item.name.startswith(".") and item.name.lower() not in {"previews", ".cache", "cache"}:
                         n_folder = normalize_text(item.name)
-                        # Correspondance directe au 1er niveau
-                        if norm_title == n_folder or norm_title in n_folder or n_folder in norm_title:
+
+                        # Analyse du dossier au 1er niveau
+                        folder_art = ""
+                        folder_alb = item.name
+                        if " - " in item.name:
+                            parts = item.name.split(" - ", 1)
+                            folder_art = normalize_text(parts[0])
+                            folder_alb = parts[1]
+                        n_alb = normalize_text(folder_alb)
+
+                        # Si l'artiste est identifiable dans le nom de dossier, vérifier la compatibilité
+                        if norm_art and folder_art:
+                            is_compat, _ = is_artist_compatible(norm_art, folder_art)
+                            if not is_compat:
+                                # Dossier appartenant à un artiste distinct (ex: Timecop1983 - Metropolis)
+                                continue
+
+                        # Correspondance de titre
+                        if norm_title == n_alb or norm_title == n_folder or norm_title in n_alb or n_alb in norm_title:
                             return item
-                        if calculate_token_similarity(norm_title, n_folder) >= 0.80:
+                        if calculate_token_similarity(norm_title, n_alb) >= 0.80 or calculate_token_similarity(norm_title, n_folder) >= 0.80:
                             return item
 
                         # Parcours des sous-dossiers (structure standard Artiste/Album)
@@ -1664,7 +1772,10 @@ class SmartMatcher:
                                 if sub.is_dir() and not sub.name.startswith("."):
                                     n_sub = normalize_text(sub.name)
                                     if norm_title == n_sub or norm_title in n_sub or n_sub in norm_title or calculate_token_similarity(norm_title, n_sub) >= 0.80:
-                                        if not norm_art or norm_art in n_folder or n_folder in norm_art or calculate_token_similarity(norm_art, n_folder) >= 0.70:
+                                        if not norm_art:
+                                            return sub
+                                        is_compat, _ = is_artist_compatible(norm_art, n_folder)
+                                        if is_compat:
                                             return sub
                         except Exception:
                             pass
@@ -1711,16 +1822,7 @@ class SmartMatcher:
 
         for alb, tr in candidates:
             # Compatibilité d'artiste (évite les collisions sur titres homonymes d'artistes différents)
-            is_compat = True
-            if norm_art and alb.norm_artist:
-                is_compat = (
-                    norm_art == alb.norm_artist
-                    or norm_art in alb.norm_artist
-                    or alb.norm_artist in norm_art
-                    or "various" in norm_art
-                    or "various" in alb.norm_artist
-                    or calculate_token_similarity(norm_art, alb.norm_artist) >= 0.40
-                )
+            is_compat, _ = is_artist_compatible(norm_art, alb.norm_artist)
 
             cand_clean = re.sub(r'^\d+\s*[-.]*\s*', '', tr.title or "").strip()
             cand_norm = tr.norm_title or normalize_text(cand_clean)

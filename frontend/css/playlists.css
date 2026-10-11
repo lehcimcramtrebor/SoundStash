@@ -104,27 +104,42 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
+.playlist-card-info,
 .playlist-card-body {
-    padding: 12px 14px;
+    padding: 10px 12px 12px 12px;
     display: flex;
     flex-direction: column;
     gap: 4px;
     flex: 1;
+    min-width: 0;
 }
 
 .playlist-card-title {
-    font-size: 0.95rem;
-    font-weight: 700;
+    font-size: 0.88rem;
+    font-weight: 600;
     color: var(--text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     margin: 0;
+    line-height: 1.25;
 }
 
 .playlist-card-meta {
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.2;
+}
+
+.playlist-card-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
 }
 
 /* =========================================================
@@ -365,6 +380,56 @@
 .playlist-tracks-table tbody tr.active-track-row td:nth-child(3) span {
     color: var(--accent, #ff2a4b) !important;
     font-weight: 600;
+}
+
+/* =========================================================
+   RÉORGANISATION PAR GLISSER-DÉPOSER DES PISTES (DRAG & DROP)
+   ========================================================= */
+.pl-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: var(--text-muted, #94a3b8);
+    cursor: grab;
+    user-select: none;
+    -webkit-user-drag: none;
+    border-radius: 4px;
+    opacity: 0.65;
+    transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.pl-drag-handle:hover {
+    opacity: 1;
+    color: var(--accent, #ff2a4b);
+    background-color: rgba(255, 42, 75, 0.12);
+}
+
+.pl-drag-handle:active {
+    cursor: grabbing;
+}
+
+[data-theme="light"] .pl-drag-handle:hover {
+    color: var(--accent, #ff2a4b);
+    background-color: rgba(255, 42, 75, 0.08);
+}
+
+.playlist-tracks-table tbody tr.is-dragging {
+    opacity: 0.45;
+    background-color: rgba(255, 42, 75, 0.1) !important;
+}
+
+.playlist-tracks-table tbody tr.drag-over-top td {
+    border-top: 2px solid var(--accent, #ff2a4b) !important;
+}
+
+.playlist-tracks-table tbody tr.drag-over-bottom td {
+    border-bottom: 2px solid var(--accent, #ff2a4b) !important;
+}
+
+body.party-lock-active .pl-drag-handle {
+    display: none !important;
 }
 
 /* =========================================================

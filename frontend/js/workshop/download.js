@@ -46,15 +46,19 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
             if (btnEl && !isPlayerBtn) {
                 btnEl.innerHTML = `✓ Ajouté`;
             }
-            const successLabel = formatParam === "mp4" ? `Clip vidéo "${title}" ajouté à la file d'attente (MP4) !` : `"${title}" ajouté à la file d'attente !`;
-            showToast(successLabel, "Voir la file", () => {
+            const startedImmediately = (dlData.queue_count === 0);
+            const successLabel = startedImmediately
+                ? (formatParam === "mp4" ? `Clip vidéo "${title}" en cours de téléchargement (MP4) !` : `"${title}" en cours de téléchargement !`)
+                : (formatParam === "mp4" ? `Clip vidéo "${title}" ajouté à la file d'attente (MP4) !` : `"${title}" ajouté à la file d'attente !`);
+            const successAction = startedImmediately ? "Voir la progression" : "Voir la file";
+            showToast(successLabel, successAction, () => {
                 switchTab("tab-download");
             });
 
             if (item) {
-                item.status = "queued";
-                item.statusLabel = "⏳ En file";
-                item.statusBadgeClass = "badge-status-queued";
+                item.status = startedImmediately ? "downloading" : "queued";
+                item.statusLabel = startedImmediately ? "⚡ En cours" : "⏳ En file";
+                item.statusBadgeClass = startedImmediately ? "badge-status-downloading" : "badge-status-queued";
                 if (typeof window.updateCardStatusBadge === "function") {
                     window.updateCardStatusBadge(item);
                 }

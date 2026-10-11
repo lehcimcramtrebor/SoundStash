@@ -126,6 +126,12 @@ function setupPlayerShortcutsAndWheel() {
         // Touche N : Accès instantané à « En cours d'écoute » ou réouverture de la vidéo
         if (!e.shiftKey && (e.key === "n" || e.key === "N")) {
             e.preventDefault();
+            if (document.activeElement && typeof document.activeElement.blur === "function" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+                document.activeElement.blur();
+            }
+            if (window.AmbientVisualizer && window.AmbientVisualizer.isActive) {
+                window.AmbientVisualizer.exit();
+            }
             if (typeof window.goToNowPlaying === "function") {
                 window.goToNowPlaying();
             }

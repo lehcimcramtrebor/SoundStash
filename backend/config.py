@@ -52,6 +52,26 @@ CONFIG_FILE = Path(os.environ["SOUNDSTASH_CONFIG_FILE"]).resolve() if os.environ
 )
 
 COOKIES_FILE = CONFIG_DIR / "cookies.txt"
+COOKIES_STATUS_FILE = CONFIG_DIR / "cookies_status.json"
+
+def save_cached_cookies_verification(data: dict):
+    """Sauvegarde le statut de vérification de session YouTube dans le cache local."""
+    try:
+        COOKIES_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(COOKIES_STATUS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def load_cached_cookies_verification() -> dict:
+    """Charge le dernier état de vérification de session YouTube depuis le cache local."""
+    if COOKIES_STATUS_FILE.is_file():
+        try:
+            with open(COOKIES_STATUS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"status": None, "valid": None, "message": None, "checked_at": None, "mtime": 0, "size": 0}
 
 BIN_DIR = PROJECT_ROOT / "bin"
 KID3_DIR = BIN_DIR / "kid3"
@@ -74,7 +94,7 @@ def get_app_version() -> str:
                         return str(data["version"]).strip()
         except Exception:
             pass
-    return "4.0.1"
+    return "5.0.1"
 
 APP_VERSION = get_app_version()
 

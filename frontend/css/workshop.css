@@ -21,10 +21,19 @@
     cursor: pointer;
 }
 
+body.workshop-drawer-open {
+    overflow: hidden !important;
+}
+
+html:has(body.workshop-drawer-open) {
+    overflow: hidden !important;
+}
+
 body.workshop-drawer-open .workshop-drawer-backdrop {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
+    overscroll-behavior: contain;
 }
 
 .workshop-drawer {
@@ -32,9 +41,10 @@ body.workshop-drawer-open .workshop-drawer-backdrop {
     top: 0;
     left: 50%;
     transform: translate(-50%, -100%);
-    width: min(94vw, 1440px);
+    width: min(96vw, 1460px);
     height: calc(100vh - 120px);
-    max-height: 82vh;
+    max-height: 84vh;
+    overscroll-behavior: contain;
     background: linear-gradient(180deg, rgba(14, 16, 26, 0.98) 0%, rgba(18, 21, 34, 0.98) 100%);
     backdrop-filter: blur(36px) saturate(190%);
     -webkit-backdrop-filter: blur(36px) saturate(190%);
@@ -50,6 +60,49 @@ body.workshop-drawer-open .workshop-drawer-backdrop {
     transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.42s ease, visibility 0.42s;
     overflow: visible;
     pointer-events: none;
+}
+
+@media (max-width: 1366px) {
+    .workshop-drawer {
+        width: min(98vw, 1460px);
+    }
+    .workshop-drawer-body {
+        padding: 16px 16px 50px 16px;
+    }
+}
+
+@media (max-width: 1150px) {
+    .workshop-drawer {
+        width: calc(100vw - 16px);
+        border-radius: 0 0 16px 16px;
+    }
+    .workshop-drawer-body {
+        padding: 12px 12px 40px 12px;
+    }
+}
+
+@media (min-width: 1400px) {
+    .workshop-drawer {
+        width: min(96vw, 1560px);
+    }
+}
+
+@media (min-width: 1700px) {
+    .workshop-drawer {
+        width: min(96vw, 1840px);
+    }
+}
+
+@media (min-width: 2000px) {
+    .workshop-drawer {
+        width: min(97vw, 2300px);
+    }
+}
+
+@media (min-width: 2500px) {
+    .workshop-drawer {
+        width: min(98vw, 2840px);
+    }
 }
 
 body.workshop-drawer-open .workshop-drawer {
@@ -205,10 +258,12 @@ body.player-mode-active .workshop-drawer-header .nav-tabs {
 
 .workshop-drawer-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 20px 24px;
+    padding: 20px 24px 60px 24px;
     scroll-behavior: smooth;
+    overscroll-behavior: contain;
 }
 
 .workshop-drawer-body::-webkit-scrollbar {
@@ -1292,7 +1347,8 @@ textarea:focus {
 }
 
 .track-title-input,
-.track-artist-input {
+.track-artist-input,
+.track-genre-input {
     width: 100%;
     background-color: var(--bg-input);
     border: 1px solid var(--border-color);
@@ -1305,7 +1361,8 @@ textarea:focus {
 }
 
 .track-title-input:focus,
-.track-artist-input:focus {
+.track-artist-input:focus,
+.track-genre-input:focus {
     outline: none;
     border-color: var(--accent);
     background-color: var(--bg-surface-elevated);

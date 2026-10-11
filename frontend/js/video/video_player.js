@@ -29,8 +29,26 @@ const VideoAudioManager = {
             this.analyserDataArray = new Uint8Array(this.analyser.frequencyBinCount);
             this.analyserFreqArray = new Uint8Array(this.analyser.frequencyBinCount);
             this.initialized = true;
+
+            const currentOutputDevice = (window.AudioPlayer && window.AudioPlayer.audioOutputDeviceId)
+                ? window.AudioPlayer.audioOutputDeviceId
+                : localStorage.getItem("ytm_audio_output_device");
+            if (currentOutputDevice) {
+                this.applyOutputDevice(currentOutputDevice);
+            }
         } catch (e) {
             console.warn("Video Web Audio setup warning:", e);
+        }
+    },
+
+    async applyOutputDevice(deviceId) {
+        const targetSinkId = (deviceId === "default" || !deviceId ? "" : deviceId);
+        if (this.audioCtx && typeof this.audioCtx.setSinkId === "function") {
+            try {
+                await this.audioCtx.setSinkId(targetSinkId);
+            } catch (err) {
+                console.warn("[VideoAudioManager] audioCtx.setSinkId error:", err);
+            }
         }
     },
 
@@ -68,6 +86,74 @@ window.VideoAudioManager = VideoAudioManager;
 
 let currentModalVideoItem = null;
 window.isVideoPlayingInBackground = false;
+window._savedAudioStateBeforeVideo = null;
+window._isPlayingRandomClipChain = false;
+
+function captureAudioStateBeforeVideo(forceSnapshot = false) {
+    if (window._savedAudioStateBeforeVideo?.hadAudio && !forceSnapshot) {
+        return;
+    }
+    if (window._isPlayingRandomClipChain) {
+        return;
+    }
+    const ap = window.AudioPlayer;
+    if (!ap) return;
+
+    // Récupérer le morceau audio actuellement joué ou chargé
+    const trk = (ap.currentTrackIsFromQueue && ap.currentQueueTrack)
+        ? ap.currentQueueTrack
+        : (ap.currentTrack || (ap.activePlaylist && ap.currentIndex >= 0 && ap.activePlaylist[ap.currentIndex]) || (ap.playlist && ap.currentIndex >= 0 && ap.playlist[ap.currentIndex]) || null);
+
+    if (!trk) {
+        return;
+    }
+
+    const isVideoTrack = Boolean(
+        trk.is_video ||
+        trk.type === "video" ||
+        (trk.filepath && /\.(mp4|mkv|webm)$/i.test(trk.filepath)) ||
+        (trk.path && /\.(mp4|mkv|webm)$/i.test(trk.path)) ||
+        (trk.rel_path && /\.(mp4|mkv|webm)$/i.test(trk.rel_path)) ||
+        (ap.currentAlbum && ap.currentAlbum.is_video)
+    );
+
+    if (isVideoTrack) {
+        return;
+    }
+
+    const isAudioPlaying = Boolean(ap.isPlaying);
+    const isEngineActive = Boolean(ap.audio && !ap.audio.paused);
+    const hasAudioProgress = Boolean(ap.audio && ap.audio.currentTime > 0);
+    const hasAudioSrc = Boolean(ap.audio && ap.audio.src);
+    const hasActiveAlbum = Boolean(ap.currentAlbum && ap.playlist && ap.playlist.length > 0);
+
+    if (isAudioPlaying || isEngineActive || (hasAudioProgress && hasAudioSrc) || hasActiveAlbum || forceSnapshot) {
+        window._savedAudioStateBeforeVideo = {
+            hadAudio: true,
+            currentTrack: trk,
+            currentAlbum: ap.currentAlbum ? { ...ap.currentAlbum } : null,
+            playlist: ap.playlist ? ap.playlist.slice() : [],
+            activePlaylist: ap.activePlaylist ? ap.activePlaylist.slice() : (ap.playlist ? ap.playlist.slice() : []),
+            currentIndex: (typeof ap.currentIndex === "number" && ap.currentIndex >= 0) ? ap.currentIndex : 0,
+            currentTime: (ap.audio && typeof ap.audio.currentTime === "number" && !isNaN(ap.audio.currentTime)) ? ap.audio.currentTime : 0,
+            activeAlbumPath: ap.activeAlbumPath,
+            playbackContext: ap.playbackContext ? { ...ap.playbackContext } : null,
+            isUserPlaylistActive: !!ap.isUserPlaylistActive,
+            currentTrackIsFromQueue: !!ap.currentTrackIsFromQueue,
+            currentQueueTrack: ap.currentQueueTrack || null,
+            audioSrc: (ap.audio && ap.audio.src) ? ap.audio.src : "",
+            playbackOrigin: ap.playbackOrigin ? { ...ap.playbackOrigin } : null,
+            _playbackOriginCtxRef: ap._playbackOriginCtxRef || ap.playbackContext || null,
+            previousView: ap.previousView || null,
+            currentView: ap.currentView || null,
+            isAlbumDetailOpen: !!ap.isAlbumDetailOpen,
+            detailAlbumPath: ap.detailAlbumPath || null,
+            wasPlaying: Boolean(isAudioPlaying || isEngineActive)
+        };
+        console.log("[captureAudioStateBeforeVideo] Audio state successfully saved:", trk.title, "at", window._savedAudioStateBeforeVideo.currentTime, "seconds");
+    }
+}
+window.captureAudioStateBeforeVideo = captureAudioStateBeforeVideo;
 
 function setupVideoModal() {
     const backdrop = document.getElementById("video-modal-backdrop");
@@ -92,6 +178,182 @@ function setupVideoModal() {
         videoPlayer.disablePictureInPicture = true;
         videoPlayer.addEventListener("contextmenu", (e) => e.preventDefault());
     }
+
+    function resumeAudioAfterVideo() {
+        const saved = window._savedAudioStateBeforeVideo;
+        if (!saved || !saved.hadAudio) return false;
+        window._savedAudioStateBeforeVideo = null;
+        window._isPlayingRandomClipChain = false;
+
+        const ap = window.AudioPlayer;
+        if (!ap) return false;
+
+        console.log("[resumeAudioAfterVideo] Restoring audio:", saved.currentTrack?.title, "at", saved.currentTime, "seconds");
+
+        // 1. Fermer complètement le lecteur vidéo
+        backdrop.classList.remove("active");
+        backdrop.style.display = "none";
+        document.body.classList.remove("video-playback-active");
+        if (theaterDialog) theaterDialog.classList.remove("video-inwindow-fullscreen");
+        window.isVideoPlayingInBackground = false;
+        currentModalVideoItem = null;
+        window.currentModalVideoItem = null;
+        if (videoPlayer) {
+            AudioFader.stop(videoPlayer);
+            videoPlayer.pause();
+            videoPlayer.removeAttribute("src");
+            videoPlayer.load();
+        }
+        if (spinner) spinner.style.display = "none";
+
+        // 2. Restaurer le contexte complet d'AudioPlayer
+        ap.currentAlbum = saved.currentAlbum;
+        ap.playlist = saved.playlist;
+        ap.activePlaylist = saved.activePlaylist || saved.playlist;
+        ap.currentIndex = saved.currentIndex;
+        ap.currentTrack = saved.currentTrack;
+        ap.activeAlbumPath = saved.activeAlbumPath;
+        ap.playbackContext = saved.playbackContext;
+        ap.isUserPlaylistActive = !!saved.isUserPlaylistActive;
+        ap.currentTrackIsFromQueue = !!saved.currentTrackIsFromQueue;
+        ap.currentQueueTrack = saved.currentQueueTrack || null;
+        if (saved.playbackOrigin) {
+            ap.playbackOrigin = { ...saved.playbackOrigin };
+            ap._playbackOriginCtxRef = saved._playbackOriginCtxRef || saved.playbackContext || null;
+        } else if (typeof ap.recordPlaybackOrigin === "function") {
+            ap.recordPlaybackOrigin();
+        }
+        if (saved.previousView) {
+            ap.previousView = saved.previousView;
+        }
+        if (saved.isAlbumDetailOpen && saved.detailAlbumPath) {
+            ap.isAlbumDetailOpen = true;
+            ap.detailAlbumPath = saved.detailAlbumPath;
+        }
+
+        const trk = saved.currentTrack;
+        if (saved.wasPlaying === false) {
+            ap.isPlaying = false;
+            ap.updateCurrentTrackUI(trk);
+            ap.updatePlayStateUI();
+            ap.updateDisplayedAlbumUI();
+            ap.renderPlayerTab();
+            ap.updateFloatingBarVisibility();
+            if (typeof updateHeaderNowPlayingButton === "function") {
+                updateHeaderNowPlayingButton();
+            }
+            return true;
+        }
+        if (trk && ap.audio) {
+            const currentAudioSrc = ap.audio.src || "";
+            const isSameSrc = Boolean(currentAudioSrc && saved.audioSrc && (currentAudioSrc === saved.audioSrc || currentAudioSrc.endsWith(saved.audioSrc) || saved.audioSrc.endsWith(currentAudioSrc)));
+
+            const applyPlayback = () => {
+                if (saved.currentTime > 0) {
+                    try { ap.audio.currentTime = saved.currentTime; } catch (e) {}
+                }
+                AudioFader.fadeIn(ap.audio, ap.isMuted ? 0 : ap.volume, 500);
+                ap.audio.play().catch(err => {
+                    console.warn("[resumeAudioAfterVideo] Direct play failed, fallback to playTrackAtIndex:", err);
+                    if (saved.currentIndex >= 0 && ap.playlist && ap.playlist[saved.currentIndex]) {
+                        ap.playTrackAtIndex(saved.currentIndex, saved.currentTime);
+                    }
+                });
+            };
+
+            if (isSameSrc) {
+                applyPlayback();
+            } else {
+                if (saved.currentIndex >= 0 && ap.playlist && ap.playlist[saved.currentIndex]) {
+                    ap.playTrackAtIndex(saved.currentIndex, saved.currentTime);
+                } else {
+                    const trkPath = trk.filepath || trk.path || "";
+                    let streamUrl = trk.stream_url || (trkPath ? `/api/audio/stream-local?path=${encodeURIComponent(trkPath)}` : (trk.videoId || trk.id ? `/api/stream?id=${encodeURIComponent(trk.videoId || trk.id)}` : ""));
+                    if (streamUrl) {
+                        ap.audio.src = streamUrl;
+                        ap.audio.load();
+                        if (saved.currentTime > 0) {
+                            ap.audio.addEventListener("loadedmetadata", () => {
+                                try { ap.audio.currentTime = saved.currentTime; } catch (e) {}
+                            }, { once: true });
+                        }
+                        AudioFader.fadeIn(ap.audio, ap.isMuted ? 0 : ap.volume, 500);
+                        ap.audio.play().catch(e => console.warn("Erreur reprise audio:", e));
+                    }
+                }
+            }
+
+            ap.isPlaying = true;
+            ap.updateCurrentTrackUI(trk);
+            ap.updatePlayStateUI();
+            ap.updateDisplayedAlbumUI();
+            ap.renderPlayerTab();
+            ap.updateFloatingBarVisibility();
+
+            if (typeof updateHeaderNowPlayingButton === "function") {
+                updateHeaderNowPlayingButton();
+            }
+
+            if (typeof showToast === "function") {
+                showToast(`🎵 Reprise de la musique : ${trk.title || "Titre"}`, "info", 3000);
+            }
+            return true;
+        }
+        return false;
+    }
+    window.resumeAudioAfterVideo = resumeAudioAfterVideo;
+
+    async function playNextRandomVideoClip(excludePath = "") {
+        let catalog = (window.AudioPlayer && window.AudioPlayer.videosCatalog) ? window.AudioPlayer.videosCatalog : [];
+        if (!catalog || catalog.length === 0) {
+            try {
+                const res = await fetch("/api/videos/catalog");
+                if (res.ok) {
+                    const data = await res.json();
+                    catalog = data.videos || [];
+                    if (window.AudioPlayer) window.AudioPlayer.videosCatalog = catalog;
+                }
+            } catch (e) {
+                console.warn("Erreur fetch catalog clips aléatoires:", e);
+            }
+        }
+
+        const clips = (catalog || []).filter(v => {
+            const relP = String(v.rel_path || v.path || "").toLowerCase();
+            const isConcert = v.video_type === 'concert' || v.is_concert || relP.includes('/concerts/') || relP.includes('\\concerts\\') || (v.duration_seconds && v.duration_seconds >= 1200);
+            return !isConcert;
+        });
+
+        if (!clips || clips.length === 0) {
+            closeVideoModal(true);
+            return;
+        }
+
+        const normExclude = String(excludePath || "").replace(/\\/g, "/").toLowerCase().trim();
+        let candidates = clips.filter(c => {
+            const cPath = String(c.rel_path || c.path || c.filepath || "").replace(/\\/g, "/").toLowerCase().trim();
+            return cPath && (!normExclude || (cPath !== normExclude && !cPath.endsWith(normExclude) && !normExclude.endsWith(cPath)));
+        });
+
+        if (candidates.length === 0) {
+            // Aucun autre clip différent disponible : fermer proprement la vidéo
+            closeVideoModal(true);
+            if (typeof showToast === "function") {
+                showToast("⏹️ Fin de la lecture vidéo.", "info");
+            }
+            return;
+        }
+
+        const randomIndex = Math.floor(Math.random() * candidates.length);
+        const nextClip = candidates[randomIndex];
+
+        window._isPlayingRandomClipChain = true;
+        if (typeof showToast === "function") {
+            showToast(`🎬 Enchaînement aléatoire : ${nextClip.title || "Clip"} (${nextClip.artist || ""})`, "info", 3000);
+        }
+        openLocalVideoModal(nextClip);
+    }
+    window.playNextRandomVideoClip = playNextRandomVideoClip;
 
     // Gestion du positionnement en Mode Ambiance (4 positions stylisées et persistantes)
     let currentAmbientPos = localStorage.getItem("ytm_ambient_video_pos") || "bottom-center";
@@ -164,6 +426,16 @@ function setupVideoModal() {
     }
 
     function closeVideoModal(stopCompletely = false) {
+        if (window._isPlayingRandomClipChain) {
+            window._isPlayingRandomClipChain = false;
+            stopCompletely = true;
+        }
+
+        if (window._savedAudioStateBeforeVideo && window._savedAudioStateBeforeVideo.hadAudio) {
+            resumeAudioAfterVideo();
+            return;
+        }
+
         const wasPlaying = videoPlayer && !videoPlayer.paused && videoPlayer.currentTime > 0;
 
         backdrop.classList.remove("active");
@@ -189,9 +461,8 @@ function setupVideoModal() {
                 window.AudioPlayer.isPlaying = false;
                 window.AudioPlayer.updatePlayStateUI();
             }
-            const bar = document.getElementById("persistent-player-bar");
-            if (bar && (!window.AudioPlayer || !window.AudioPlayer.isPlaying)) {
-                bar.style.display = "none";
+            if (window.AudioPlayer) {
+                window.AudioPlayer.updateFloatingBarVisibility();
             }
 
             // Mettre à jour le bouton Mode Ambiance dans le header si plus d'audio en cours
@@ -264,7 +535,7 @@ function setupVideoModal() {
     window.reopenVideoModal = reopenVideoModal;
 
     if (closeBtn) closeBtn.addEventListener("click", () => closeVideoModal(false));
-    if (cancelBtn) cancelBtn.addEventListener("click", () => closeVideoModal(false));
+    if (cancelBtn) cancelBtn.addEventListener("click", () => closeVideoModal(true));
 
     // Plein écran dans la fenêtre (In-Window Fullscreen)
     if (fsBtn && theaterDialog) {
@@ -351,7 +622,7 @@ function setupVideoModal() {
                 }
             }
         });
-        // Enchaînement automatique dans une playlist utilisateur mixte et enregistrement statistique
+        // Enchaînement automatique : playlist mixte, reprise audio ou clips aléatoires
         videoPlayer.addEventListener("ended", () => {
             if (!window.currentVideoPlayLogged && currentModalVideoItem) {
                 window.currentVideoPlayLogged = true;
@@ -369,14 +640,47 @@ function setupVideoModal() {
                     })
                 }).catch(() => {});
             }
-            if (window.isVideoPlayingInBackground) {
-                closeVideoModal(true);
-            }
-            if (window.AudioPlayer && window.AudioPlayer.isUserPlaylistActive) {
-                window.AudioPlayer.playNext();
-            }
+
             if (typeof window.updateScreenWakeLock === "function") {
                 window.updateScreenWakeLock();
+            }
+
+            // Priorité 1 : Nous écoutions de la musique avant le lancement du clip vidéo -> reprise automatique !
+            if (window._savedAudioStateBeforeVideo && window._savedAudioStateBeforeVideo.hadAudio) {
+                resumeAudioAfterVideo();
+                return;
+            }
+
+            // Priorité 2 : Playlist utilisateur active, Album en cours ou File d'attente utilisateur
+            const ap = window.AudioPlayer;
+            if (ap && (ap.isUserPlaylistActive || (ap.playlist && ap.playlist.length > 1) || (ap.userQueue && ap.userQueue.length > 0) || ap.currentTrackIsFromQueue)) {
+                backdrop.classList.remove("active");
+                backdrop.style.display = "none";
+                document.body.classList.remove("video-playback-active");
+                if (theaterDialog) theaterDialog.classList.remove("video-inwindow-fullscreen");
+                window.isVideoPlayingInBackground = false;
+                currentModalVideoItem = null;
+                window.currentModalVideoItem = null;
+                if (videoPlayer) {
+                    AudioFader.stop(videoPlayer);
+                    videoPlayer.pause();
+                    videoPlayer.removeAttribute("src");
+                    videoPlayer.load();
+                }
+                if (spinner) spinner.style.display = "none";
+                ap.playNext();
+                return;
+            }
+
+            // Priorité 3 : Aucune lecture audio n'était en cours au lancement -> enchaîner les clips vidéo aléatoirement !
+            const curItem = currentModalVideoItem;
+            const curPath = (curItem && (curItem.rel_path || curItem.path || curItem.filepath)) || "";
+            const isConcert = Boolean(curItem && (curItem.is_concert || curItem.video_type === "concert" || (curItem.duration_seconds && curItem.duration_seconds >= 1200)));
+
+            if (!isConcert) {
+                playNextRandomVideoClip(curPath);
+            } else {
+                closeVideoModal(true);
             }
         });
         // Synchronisation du scrubber en Mode Ambiance et barre flottante arrière-plan
@@ -551,69 +855,73 @@ function syncAudioPlayerWithVideo(item) {
     const ap = window.AudioPlayer;
     ap.isPlaying = true;
 
-    // Vérifier si cette vidéo fait déjà partie de la playlist utilisateur active en cours d'écoute
-    const inActivePlaylist = ap.isUserPlaylistActive && 
-        ap.playlist && 
-        ap.currentIndex >= 0 && 
-        ap.playlist[ap.currentIndex] && 
-        (ap.playlist[ap.currentIndex].title === item.title || 
-         (item.path && (ap.playlist[ap.currentIndex].path === item.path || ap.playlist[ap.currentIndex].filepath === item.path)));
-
     const vidPath = item.path || item.rel_path || item.filepath || "";
     const isConc = Boolean(item.is_concert || item.video_type === "concert" || (item.duration_seconds && item.duration_seconds >= 1200) || (vidPath && (vidPath.toLowerCase().includes('/concerts/') || vidPath.toLowerCase().includes('\\concerts\\'))));
     const thumb = item.thumbnail || item.thumbnail_url || item.cover_url || "/static/placeholder-cover.svg";
 
-    if (!inActivePlaylist) {
-        const videoTrack = {
-            title: item.title || (isConc ? "Concert Vidéo" : "Clip Vidéo"),
-            artist: item.artist || "Artiste inconnu",
-            album: item.album || (isConc ? "Concert Vidéo" : "Clip Vidéo"),
-            cover_url: thumb,
-            thumbnail_url: thumb,
-            is_video: true,
-            is_concert: isConc,
-            filepath: vidPath,
-            path: vidPath,
-            rel_path: item.rel_path || vidPath,
-            duration_seconds: item.duration_seconds || 0,
-            id: item.id || item.video_id || "",
-            format: isConc ? "CONCERT" : "VIDÉO"
-        };
+    // Vérifier si cette vidéo fait déjà partie de la playlist ou de l'album actif en cours de lecture
+    const curPTrack = (ap.playlist && ap.currentIndex >= 0 && ap.playlist[ap.currentIndex]) ? ap.playlist[ap.currentIndex] : null;
+    const itemPath = String(vidPath).replace(/\\/g, "/").toLowerCase();
+    const curTrackPath = curPTrack ? String(curPTrack.path || curPTrack.filepath || curPTrack.rel_path || "").replace(/\\/g, "/").toLowerCase() : "";
 
-        ap.currentAlbum = {
-            title: item.title || (isConc ? "Concert Vidéo" : "Clip Vidéo"),
-            artist: item.artist || "Artiste inconnu",
-            cover_url: thumb,
-            thumbnail_url: thumb,
-            is_video: true,
-            is_concert: isConc,
-            is_online: Boolean(item.is_online || (!vidPath && item.url)),
-            path: vidPath || "video_standalone",
-            year: item.year || ""
-        };
-        ap.activeAlbumPath = ap.currentAlbum.path;
-        ap.playlist = [videoTrack];
-        ap.activePlaylist = [videoTrack];
-        ap.currentIndex = 0;
-        ap.playbackContext = {
-            album: ap.currentAlbum,
-            playlist: [videoTrack],
-            currentIndex: 0
-        };
-        if (typeof ap.recordPlaybackOrigin === "function") {
-            ap.recordPlaybackOrigin("video");
-        }
+    const inActivePlaylist = Boolean(
+        item.isPlaylistTrack ||
+        (curPTrack && (
+            (curPTrack.title && item.title && curPTrack.title.trim().toLowerCase() === item.title.trim().toLowerCase()) ||
+            (itemPath && curTrackPath && (itemPath === curTrackPath || itemPath.endsWith(curTrackPath) || curTrackPath.endsWith(itemPath)))
+        ))
+    );
+
+    if (inActivePlaylist && curPTrack) {
+        ap.updateCurrentTrackUI(curPTrack);
         ap.updateDisplayedAlbumUI();
-        ap.updateCurrentTrackUI(videoTrack);
         ap.renderPlayerTab();
-    } else {
-        const trk = ap.playlist[ap.currentIndex];
-        if (trk) {
-            ap.updateCurrentTrackUI(trk);
-            ap.updateDisplayedAlbumUI();
-            ap.renderPlayerTab();
-        }
+        ap.updatePlayStateUI();
+        return;
     }
+
+    const videoTrack = {
+        title: item.title || (isConc ? "Concert Vidéo" : "Clip Vidéo"),
+        artist: item.artist || "Artiste inconnu",
+        album: item.album || (isConc ? "Concert Vidéo" : "Clip Vidéo"),
+        cover_url: thumb,
+        thumbnail_url: thumb,
+        is_video: true,
+        is_concert: isConc,
+        filepath: vidPath,
+        path: vidPath,
+        rel_path: item.rel_path || vidPath,
+        duration_seconds: item.duration_seconds || 0,
+        id: item.id || item.video_id || "",
+        format: isConc ? "CONCERT" : "VIDÉO"
+    };
+
+    ap.currentAlbum = {
+        title: item.title || (isConc ? "Concert Vidéo" : "Clip Vidéo"),
+        artist: item.artist || "Artiste inconnu",
+        cover_url: thumb,
+        thumbnail_url: thumb,
+        is_video: true,
+        is_concert: isConc,
+        is_online: Boolean(item.is_online || (!vidPath && item.url)),
+        path: vidPath || "video_standalone",
+        year: item.year || ""
+    };
+    ap.activeAlbumPath = ap.currentAlbum.path;
+    ap.playlist = [videoTrack];
+    ap.activePlaylist = [videoTrack];
+    ap.currentIndex = 0;
+    ap.playbackContext = {
+        album: ap.currentAlbum,
+        playlist: [videoTrack],
+        currentIndex: 0
+    };
+    if (typeof ap.recordPlaybackOrigin === "function") {
+        ap.recordPlaybackOrigin("video");
+    }
+    ap.updateDisplayedAlbumUI();
+    ap.updateCurrentTrackUI(videoTrack);
+    ap.renderPlayerTab();
     ap.updatePlayStateUI();
 }
 
@@ -657,7 +965,10 @@ function openVideoModal(item) {
     window.currentModalVideoItem = item;
     window.isVideoPlayingInBackground = false;
     const savedAmbientPos = localStorage.getItem("ytm_ambient_video_pos") || "bottom-center";
-    if (window.setVideoAmbientPosition) window.setVideoAmbientPosition(savedAmbientPos, false);
+    // Sauvegarde de l'état audio avant lancement de la vidéo (si clip indépendant)
+    if (!item.isPlaylistTrack) {
+        captureAudioStateBeforeVideo();
+    }
 
     // Pause de la pré-écoute audio si active
     if (window.globalAudio && !window.globalAudio.paused) {
@@ -697,6 +1008,13 @@ function openVideoModal(item) {
             if (spinnerText) spinnerText.textContent = "Connexion au flux vidéo haute qualité...";
         }
         videoPlayer.src = `/api/video/stream?id=${encodeURIComponent(videoId)}`;
+        const targetOutputDevice = (window.AudioPlayer && window.AudioPlayer.audioOutputDeviceId)
+            ? window.AudioPlayer.audioOutputDeviceId
+            : localStorage.getItem("ytm_audio_output_device");
+        const targetSinkId = (targetOutputDevice === "default" || !targetOutputDevice ? "" : targetOutputDevice);
+        if (typeof videoPlayer.setSinkId === "function") {
+            videoPlayer.setSinkId(targetSinkId).catch(err => console.warn("[openVideoModal] videoPlayer.setSinkId error:", err));
+        }
         videoPlayer.load();
         VideoAudioManager.init(videoPlayer);
         const targetVol = (videoPlayer.dataset.normalVolume ? parseFloat(videoPlayer.dataset.normalVolume) : (videoPlayer.volume || 1));
@@ -761,6 +1079,11 @@ function openLocalVideoModal(item) {
     window.currentVideoPlayLogged = false;
     const savedAmbientPos = localStorage.getItem("ytm_ambient_video_pos") || "bottom-center";
     if (window.setVideoAmbientPosition) window.setVideoAmbientPosition(savedAmbientPos, false);
+
+    // Sauvegarde de l'état audio avant lancement de la vidéo (si clip indépendant)
+    if (!item.isPlaylistTrack) {
+        captureAudioStateBeforeVideo();
+    }
 
     // Pause audio immédiate
     if (window.globalAudio && !window.globalAudio.paused) {
@@ -831,6 +1154,13 @@ function openLocalVideoModal(item) {
         }
         const streamUrl = `/api/videos/stream?path=${encodeURIComponent(vidPath)}`;
         videoPlayer.src = streamUrl;
+        const targetOutputDevice = (window.AudioPlayer && window.AudioPlayer.audioOutputDeviceId)
+            ? window.AudioPlayer.audioOutputDeviceId
+            : localStorage.getItem("ytm_audio_output_device");
+        const targetSinkId = (targetOutputDevice === "default" || !targetOutputDevice ? "" : targetOutputDevice);
+        if (typeof videoPlayer.setSinkId === "function") {
+            videoPlayer.setSinkId(targetSinkId).catch(err => console.warn("[openLocalVideoModal] videoPlayer.setSinkId error:", err));
+        }
         videoPlayer.load();
         VideoAudioManager.init(videoPlayer);
         const targetVol = (videoPlayer.dataset.normalVolume ? parseFloat(videoPlayer.dataset.normalVolume) : (videoPlayer.volume || 1));

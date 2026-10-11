@@ -154,6 +154,15 @@ const AmbientThemeManager = {
             rawBass = bEnd > 0 ? sumB / bEnd : 0;
             rawMid = (mEnd > bEnd) ? sumM / (mEnd - bEnd) : 0;
             rawTreble = (len > mEnd) ? sumT / (len - mEnd) : 0;
+
+            // Sous-basses pures & basses profondes (bins 0 à 3)
+            const subBins = Math.min(3, len);
+            let sumSub = 0;
+            for (let i = 0; i < subBins; i++) {
+                sumSub += freqs[i] / 255;
+            }
+            const rawSubBass = subBins > 0 ? (sumSub / subBins) : 0;
+            rawBass = Math.max(rawBass, rawSubBass * 1.15);
         }
 
         // Lissage temporel exponentiel
@@ -163,7 +172,7 @@ const AmbientThemeManager = {
         this.smoothedEnergy += (rawEnergy - this.smoothedEnergy) * 0.3;
 
         // Détection de battement (Kick / Beat classique)
-        const isBeat = rawBass > 0.52 && (rawBass - this.smoothedBass) > 0.1;
+        const isBeat = rawBass > 0.38 && (rawBass - this.smoothedBass) > 0.06;
         if (isBeat) {
             this.beatTimer = 1.0;
         } else {
@@ -183,8 +192,8 @@ const AmbientThemeManager = {
             const deltaEnergy = Math.max(0, rawEnergy - this.prevRawEnergy);
 
             // Attaque de Kick (Grosse caisse) : transitoire sec dans les sous-basses
-            const kickTransient = Math.max(deltaBass * 3.6, (rawBass - this.smoothedBass > 0.08) ? (rawBass - this.smoothedBass) * 3.0 : 0);
-            if (kickTransient > 0.28 && rawBass > 0.26) {
+            const kickTransient = Math.max(deltaBass * 3.6, (rawBass - this.smoothedBass > 0.05) ? (rawBass - this.smoothedBass) * 3.0 : 0);
+            if (kickTransient > 0.18 && rawBass > 0.16) {
                 this.kickPulse = Math.min(1.0, kickTransient * 1.6);
             } else {
                 this.kickPulse = Math.max(0, this.kickPulse - 0.085);
@@ -226,6 +235,10 @@ const AmbientThemeManager = {
             isPercussion: this.percussionPulse > 0.35,
             calm: Math.max(0, 1.0 - this.percussionPulse)
         };
+    },
+
+    getCurrentTheme() {
+        return this.themes[this.currentThemeIndex] || this.themes[0];
     },
 
     nextTheme() {
@@ -335,7 +348,7 @@ const AmbientThemeManager = {
     },
 
     // =========================================================
-    // LISTE DES 11 THÈMES VISUELS PROCÉDURAUX (CANVAS 2D 60 FPS)
+    // LISTE DES THÈMES VISUELS PROCÉDURAUX (CANVAS 2D 60 FPS)
     // =========================================================
     themes: [
         // ---------------------------------------------------------
@@ -551,7 +564,615 @@ const AmbientThemeManager = {
         },
 
         // ---------------------------------------------------------
-        // THÈME 1 : CYBERPUNK / NIGHT CITY (Skyline filaire, autoroute & Oscilloscope laser épuré)
+        // THÈME 1 : CYBER SUBWOOFER (Subwoofer 3D dynamique, débattement physique de membrane, lasers multi-harmoniques & égaliseurs LED)
+        // ---------------------------------------------------------
+        {
+            id: "subwoofer",
+            name: "Cyber Subwoofer",
+            icon: "🔊",
+            coneExcursion: 0,
+            coneVelocity: 0,
+            shockwaves: [],
+            particles: [],
+            peakHoldLeft: [],
+            peakHoldRight: [],
+            polygons: [],
+            lastKickTime: 0,
+
+            init() {
+                this.particles = [];
+                for (let i = 0; i < 90; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 30 + Math.random() * 850;
+                    this.particles.push({
+                        angle: angle,
+                        dist: dist,
+                        speed: 40 + Math.random() * 110,
+                        size: 1.0 + Math.random() * 2.5,
+                        baseAlpha: 0.25 + Math.random() * 0.75,
+                        hue: Math.random() > 0.45 ? 188 : (Math.random() > 0.5 ? 285 : 45),
+                        sparkleSpeed: 2 + Math.random() * 5,
+                        trailLen: 5 + Math.random() * 16
+                    });
+                }
+                this.peakHoldLeft = new Array(16).fill(0);
+                this.peakHoldRight = new Array(16).fill(0);
+                this.shockwaves = [];
+                this.coneExcursion = 0;
+                this.coneVelocity = 0;
+                this.polygons = [
+                    { pts: [[0, 0], [0.30, 0], [0.22, 0.25], [0, 0.40]], hue: 195, alpha: 0.08 },
+                    { pts: [[0, 0.40], [0.22, 0.25], [0.15, 0.50], [0, 0.60]], hue: 280, alpha: 0.06 },
+                    { pts: [[0.22, 0.25], [0.36, 0.18], [0.30, 0.42], [0.15, 0.50]], hue: 200, alpha: 0.05 },
+                    { pts: [[0, 0.70], [0.18, 0.60], [0.25, 0.88], [0, 1.0]], hue: 190, alpha: 0.09 },
+                    { pts: [[0.18, 0.60], [0.34, 0.54], [0.38, 0.80], [0.25, 0.88]], hue: 290, alpha: 0.06 },
+                    { pts: [[0.70, 0], [1.0, 0], [1.0, 0.42], [0.78, 0.24]], hue: 285, alpha: 0.08 },
+                    { pts: [[0.78, 0.24], [1.0, 0.42], [1.0, 0.62], [0.85, 0.46]], hue: 190, alpha: 0.06 },
+                    { pts: [[0.64, 0.18], [0.78, 0.24], [0.85, 0.46], [0.70, 0.40]], hue: 275, alpha: 0.05 },
+                    { pts: [[0.75, 0.88], [1.0, 0.68], [1.0, 1.0], [0.68, 1.0]], hue: 185, alpha: 0.10 },
+                    { pts: [[0.62, 0.64], [0.84, 0.58], [0.88, 0.82], [0.68, 0.86]], hue: 295, alpha: 0.07 }
+                ];
+            },
+
+            render(canvas, ctx, audio, time, dt, isLight, isAmbient) {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                const cx = w * 0.50;
+                const cy = h * 0.48;
+
+                // 1. FOND STUDIO CYBERNÉTIQUE
+                ctx.clearRect(0, 0, w, h);
+
+                const bgGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, Math.max(w, h) * 0.75);
+                if (isLight) {
+                    bgGrad.addColorStop(0, "#eef2ff");
+                    bgGrad.addColorStop(0.45, "#e0e7ff");
+                    bgGrad.addColorStop(1, "#cbd5e1");
+                } else {
+                    bgGrad.addColorStop(0, `rgba(10, 18, 42, ${0.85 + audio.bass * 0.15})`);
+                    bgGrad.addColorStop(0.35, "#060914");
+                    bgGrad.addColorStop(0.75, "#030408");
+                    bgGrad.addColorStop(1, "#010204");
+                }
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, w, h);
+
+                // 2. FACETTES GÉOMÉTRIQUES AMBIANTES
+                ctx.save();
+                for (const poly of this.polygons) {
+                    ctx.beginPath();
+                    const p0 = poly.pts[0];
+                    ctx.moveTo(p0[0] * w, p0[1] * h);
+                    for (let p = 1; p < poly.pts.length; p++) {
+                        ctx.lineTo(poly.pts[p][0] * w, poly.pts[p][1] * h);
+                    }
+                    ctx.closePath();
+
+                    const pGrad = ctx.createLinearGradient(
+                        poly.pts[0][0] * w, poly.pts[0][1] * h,
+                        poly.pts[2][0] * w, poly.pts[2][1] * h
+                    );
+                    const alphaBoost = poly.alpha * (1.0 + (poly.hue < 220 ? audio.bass : audio.mid) * 0.8);
+                    pGrad.addColorStop(0, `hsla(${poly.hue}, 85%, 60%, ${alphaBoost * 1.5})`);
+                    pGrad.addColorStop(1, `hsla(${poly.hue + 25}, 90%, 40%, 0)`);
+                    ctx.fillStyle = pGrad;
+                    ctx.fill();
+
+                    ctx.strokeStyle = `hsla(${poly.hue}, 95%, 75%, ${alphaBoost * 1.3})`;
+                    ctx.lineWidth = 0.8;
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // 3. TOURS D'ÉGALISEURS SPECTRAUX SEGMENTÉS (Gauche & Droite avec Peak Hold)
+                const numBars = 16;
+                const numSegments = 22;
+                const segH = 4;
+                const segGap = 2.5;
+                const leftStart = w * 0.04;
+                const leftEnd = w * 0.28;
+                const rightStart = w * 0.72;
+                const rightEnd = w * 0.96;
+                const barSpacingL = (leftEnd - leftStart) / numBars;
+                const barSpacingR = (rightEnd - rightStart) / numBars;
+                const barW = Math.max(3.5, barSpacingL - 3.5);
+                const horizonY = h * 0.50;
+
+                const freqs = audio.freqs || [];
+                const freqLen = freqs.length;
+
+                const drawEqColumn = (bx, colIdx, peakArray) => {
+                    let level = 0;
+                    if (audio.isPlaying && freqLen > 0) {
+                        const fIdx = Math.min(freqLen - 1, Math.floor(Math.pow(colIdx / numBars, 1.35) * (freqLen * 0.75)));
+                        level = (freqs[fIdx] || 0) / 255;
+                    } else {
+                        level = Math.sin(colIdx * 0.45 + time * 2.2) * 0.14 + 0.10;
+                    }
+
+                    if (level > peakArray[colIdx]) {
+                        peakArray[colIdx] = level;
+                    } else {
+                        peakArray[colIdx] = Math.max(0, peakArray[colIdx] - dt * 0.35);
+                    }
+
+                    const activeSegs = Math.round(level * numSegments);
+                    const peakSeg = Math.min(numSegments - 1, Math.round(peakArray[colIdx] * numSegments));
+
+                    for (let s = 0; s < numSegments; s++) {
+                        const sy = horizonY - (s * (segH + segGap)) + (numSegments * (segH + segGap) * 0.42);
+                        const progress = s / numSegments;
+                        let segColor, glowColor;
+                        if (progress < 0.55) {
+                            segColor = isLight ? "#0284c7" : "#00f0ff";
+                            glowColor = "#00f0ff";
+                        } else if (progress < 0.80) {
+                            segColor = isLight ? "#9333ea" : "#a855f7";
+                            glowColor = "#a855f7";
+                        } else {
+                            segColor = isLight ? "#e11d48" : "#f43f5e";
+                            glowColor = "#ff007f";
+                        }
+
+                        if (s <= activeSegs && activeSegs > 0) {
+                            ctx.fillStyle = segColor;
+                            ctx.shadowColor = glowColor;
+                            ctx.shadowBlur = isLight ? 4 : 8;
+                            ctx.fillRect(bx, sy, barW, segH);
+                        } else {
+                            ctx.fillStyle = isLight ? "rgba(100, 116, 139, 0.12)" : "rgba(30, 41, 59, 0.35)";
+                            ctx.shadowBlur = 0;
+                            ctx.fillRect(bx, sy, barW, segH);
+                        }
+                    }
+
+                    if (peakSeg > 0) {
+                        const peakY = horizonY - (peakSeg * (segH + segGap)) + (numSegments * (segH + segGap) * 0.42) - 1;
+                        ctx.fillStyle = isLight ? "#0f172a" : "#ffffff";
+                        ctx.shadowColor = isLight ? "#0284c7" : "#00f0ff";
+                        ctx.shadowBlur = isLight ? 6 : 12;
+                        ctx.fillRect(bx - 0.5, peakY, barW + 1, 2.5);
+                    }
+                    ctx.shadowBlur = 0;
+                };
+
+                for (let i = 0; i < numBars; i++) {
+                    const bxL = leftStart + i * barSpacingL;
+                    drawEqColumn(bxL, i, this.peakHoldLeft);
+
+                    const bxR = rightEnd - (i + 1) * barSpacingR;
+                    drawEqColumn(bxR, i, this.peakHoldRight);
+                }
+
+                // 4. FAISCEAUX LASERS HORIZONTAUX & OSCILLOSCOPE DYNAMIQUE
+                const waveform = audio.waveform;
+                const waveLen = waveform ? waveform.length : 0;
+                const waveAmp = (audio.isPlaying ? (28 + audio.bass * 42) : 14);
+
+                ctx.save();
+                ctx.globalCompositeOperation = isLight ? "source-over" : "screen";
+
+                // Faisceau Cyan
+                ctx.beginPath();
+                ctx.lineWidth = isLight ? 1.8 : 2.4;
+                ctx.strokeStyle = isLight ? "rgba(2, 132, 199, 0.75)" : "rgba(0, 240, 255, 0.85)";
+                ctx.shadowColor = "#00f0ff";
+                ctx.shadowBlur = isLight ? 8 : 16;
+                for (let x = 0; x <= w; x += 6) {
+                    const normX = x / w;
+                    const env = Math.sin(normX * Math.PI);
+                    const sinVal = Math.sin(x * 0.014 + time * 3.4) * Math.cos(x * 0.006 - time * 1.8);
+                    const y = horizonY + sinVal * waveAmp * env;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                // Faisceau Magenta / Violet
+                ctx.beginPath();
+                ctx.lineWidth = isLight ? 1.6 : 2.0;
+                ctx.strokeStyle = isLight ? "rgba(147, 51, 234, 0.70)" : "rgba(217, 70, 239, 0.85)";
+                ctx.shadowColor = "#d946ef";
+                ctx.shadowBlur = isLight ? 8 : 16;
+                for (let x = 0; x <= w; x += 6) {
+                    const normX = x / w;
+                    const env = Math.sin(normX * Math.PI);
+                    const sinVal = Math.sin(x * 0.018 - time * 2.6 + 1.2) * Math.sin(x * 0.009 + time * 1.5);
+                    const y = horizonY - sinVal * (waveAmp * 0.85) * env;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                // Faisceau central blanc-bleuté haute énergie (Oscilloscope réel)
+                ctx.beginPath();
+                ctx.lineWidth = isLight ? 2.0 : 2.8;
+                ctx.strokeStyle = isLight ? "#0284c7" : "#ffffff";
+                ctx.shadowColor = "#00f0ff";
+                ctx.shadowBlur = isLight ? 10 : 20;
+
+                const stepX = 5;
+                for (let x = 0; x <= w; x += stepX) {
+                    const normX = x / w;
+                    const env = Math.sin(normX * Math.PI);
+                    let val = 0;
+                    if (audio.isPlaying && waveLen > 0) {
+                        const sampleIdx = Math.floor(normX * (waveLen - 1));
+                        val = ((waveform[sampleIdx] - 128) / 128) * (waveAmp * 1.15) * env;
+                    } else {
+                        val = Math.sin(x * 0.02 + time * 4.0) * 8 * env;
+                    }
+                    const y = horizonY + val;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.restore();
+
+                // 5. MODÈLE PHYSIQUE : DÉBATTEMENT DE MEMBRANE (Sensible aux percussions & basses)
+                const perc = Math.max(audio.kick || 0, (audio.percussion || 0) * 0.7);
+                const effectiveBass = Math.max(audio.bass || 0, (audio.rawBass || 0) * 0.85);
+
+                const targetExcursion = (audio.isPlaying
+                    ? (perc * 42 + effectiveBass * 26 + (audio.rawEnergy || 0) * 6)
+                    : (Math.sin(time * 1.8) * 2.5)
+                );
+                const springForce = (targetExcursion - this.coneExcursion) * 28;
+                this.coneVelocity = (this.coneVelocity + springForce * dt) * 0.82;
+                this.coneExcursion += this.coneVelocity * dt;
+
+                const tiltAngle = -0.32; // ~ -18.3° d'inclinaison
+                const normalAngle = tiltAngle + Math.PI / 2;
+                const aspectY = 0.84; // Raccourcissement de perspective
+                const baseR = Math.min(w * 0.25, h * 0.35, 245);
+
+                const excX = Math.cos(normalAngle) * this.coneExcursion * 0.58;
+                const excY = Math.sin(normalAngle) * this.coneExcursion * 0.58;
+
+                // 6. ONDES DE CHOC NÉON CONCENTRIQUES
+                const kickOrDrop = Math.max(audio.kick || 0, audio.beat ? 0.42 : 0, (effectiveBass > 0.45) ? 0.40 : 0);
+                if (kickOrDrop > 0.38 && (time - this.lastKickTime > 0.16)) {
+                    this.lastKickTime = time;
+                    this.shockwaves.push({
+                        r: baseR * 1.02,
+                        maxR: baseR * 2.8,
+                        alpha: 0.95,
+                        speed: 210 + kickOrDrop * 240,
+                        hue: Math.random() > 0.4 ? 188 : 285
+                    });
+                }
+
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(tiltAngle);
+
+                for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+                    const sw = this.shockwaves[i];
+                    sw.r += sw.speed * dt;
+                    sw.alpha -= dt * 1.35;
+                    if (sw.alpha <= 0 || sw.r >= sw.maxR) {
+                        this.shockwaves.splice(i, 1);
+                        continue;
+                    }
+
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, sw.r, sw.r * aspectY, 0, 0, Math.PI * 2);
+                    ctx.lineWidth = Math.max(1, 4 * sw.alpha);
+                    ctx.strokeStyle = `hsla(${sw.hue}, 95%, 65%, ${sw.alpha * 0.85})`;
+                    ctx.shadowColor = `hsl(${sw.hue}, 100%, 50%)`;
+                    ctx.shadowBlur = 16 * sw.alpha;
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // 7. STRUCTURE 3D DU SUBWOOFER (Châssis, aimant, couronne, membrane & dôme)
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(tiltAngle);
+
+                // A. Aimant / Culasse arrière (profondeur)
+                const rearOffset = 18;
+                ctx.beginPath();
+                ctx.ellipse(0, rearOffset, baseR * 0.96, baseR * 0.96 * aspectY, 0, 0, Math.PI * 2);
+                const magnetGrad = ctx.createLinearGradient(0, -baseR, 0, baseR + rearOffset);
+                if (isLight) {
+                    magnetGrad.addColorStop(0, "#cbd5e1");
+                    magnetGrad.addColorStop(1, "#64748b");
+                } else {
+                    magnetGrad.addColorStop(0, "#1e293b");
+                    magnetGrad.addColorStop(0.5, "#0f172a");
+                    magnetGrad.addColorStop(1, "#020617");
+                }
+                ctx.fillStyle = magnetGrad;
+                ctx.fill();
+
+                // Évents acoustiques
+                const ventAngles = [0.3, 0.8, 1.3, 1.8, 2.3, 2.8, 3.3, 3.8, 4.3, 4.8, 5.3, 5.8];
+                for (const vAng of ventAngles) {
+                    const vx = Math.cos(vAng) * baseR * 0.82;
+                    const vy = Math.sin(vAng) * baseR * 0.82 * aspectY + (rearOffset * 0.6);
+                    ctx.beginPath();
+                    ctx.arc(vx, vy, 4.5, 0, Math.PI * 2);
+                    ctx.fillStyle = isLight ? "#f59e0b" : `rgba(245, 158, 11, ${0.45 + effectiveBass * 0.45})`;
+                    ctx.shadowColor = "#f59e0b";
+                    ctx.shadowBlur = 6;
+                    ctx.fill();
+                }
+                ctx.shadowBlur = 0;
+
+                // B. Halos néon extérieurs
+                ctx.beginPath();
+                const haloCyanR = baseR * (1.08 + effectiveBass * 0.08);
+                ctx.ellipse(0, 0, haloCyanR, haloCyanR * aspectY, 0, 0, Math.PI * 2);
+                ctx.lineWidth = 3.2;
+                ctx.strokeStyle = isLight ? "rgba(2, 132, 199, 0.7)" : `rgba(0, 240, 255, ${0.75 + effectiveBass * 0.25})`;
+                ctx.shadowColor = "#00f0ff";
+                ctx.shadowBlur = isLight ? 12 : 24;
+                ctx.stroke();
+
+                ctx.beginPath();
+                const haloMagR = baseR * (1.02 + audio.mid * 0.06);
+                ctx.ellipse(0, 0, haloMagR, haloMagR * aspectY, 0, 0, Math.PI * 2);
+                ctx.lineWidth = 2.4;
+                ctx.strokeStyle = isLight ? "rgba(147, 51, 234, 0.65)" : `rgba(217, 70, 239, ${0.70 + audio.mid * 0.30})`;
+                ctx.shadowColor = "#d946ef";
+                ctx.shadowBlur = isLight ? 10 : 20;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // C. Couronne externe (Bezel métallique chromé avec 8 boulons hexagonaux)
+                const bezelOuterR = baseR;
+                const bezelInnerR = baseR * 0.88;
+
+                ctx.beginPath();
+                ctx.ellipse(0, 0, bezelOuterR, bezelOuterR * aspectY, 0, 0, Math.PI * 2);
+                const bezelGrad = ctx.createLinearGradient(-baseR * 0.7, -baseR * 0.7, baseR * 0.7, baseR * 0.7);
+                if (isLight) {
+                    bezelGrad.addColorStop(0, "#f8fafc");
+                    bezelGrad.addColorStop(0.3, "#94a3b8");
+                    bezelGrad.addColorStop(0.7, "#e2e8f0");
+                    bezelGrad.addColorStop(1, "#475569");
+                } else {
+                    bezelGrad.addColorStop(0, "#64748b");
+                    bezelGrad.addColorStop(0.25, "#1e293b");
+                    bezelGrad.addColorStop(0.5, "#475569");
+                    bezelGrad.addColorStop(0.75, "#0f172a");
+                    bezelGrad.addColorStop(1, "#334155");
+                }
+                ctx.fillStyle = bezelGrad;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.ellipse(0, 0, bezelInnerR, bezelInnerR * aspectY, 0, 0, Math.PI * 2);
+                ctx.fillStyle = isLight ? "#334155" : "#020617";
+                ctx.fill();
+
+                const numBolts = 8;
+                for (let b = 0; b < numBolts; b++) {
+                    const bAng = (b / numBolts) * Math.PI * 2;
+                    const bDist = (bezelOuterR + bezelInnerR) * 0.5;
+                    const bx = Math.cos(bAng) * bDist;
+                    const by = Math.sin(bAng) * bDist * aspectY;
+
+                    ctx.beginPath();
+                    ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
+                    ctx.fillStyle = isLight ? "#475569" : "#0f172a";
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.arc(bx - 0.5, by - 0.5, 2.8, 0, Math.PI * 2);
+                    ctx.fillStyle = isLight ? "#f1f5f9" : "#94a3b8";
+                    ctx.fill();
+                }
+
+                // D. Suspension périphérique (Surround en caoutchouc toroïdal)
+                const surroundShiftX = excX * 0.35;
+                const surroundShiftY = excY * 0.35;
+                const surroundOuterR = bezelInnerR;
+                const surroundInnerR = baseR * 0.74;
+
+                ctx.save();
+                ctx.translate(surroundShiftX, surroundShiftY);
+
+                ctx.beginPath();
+                ctx.ellipse(0, 0, surroundOuterR, surroundOuterR * aspectY, 0, 0, Math.PI * 2);
+                const surroundGrad = ctx.createRadialGradient(
+                    0, 0, surroundInnerR,
+                    0, 0, surroundOuterR
+                );
+                if (isLight) {
+                    surroundGrad.addColorStop(0, "#475569");
+                    surroundGrad.addColorStop(0.5, "#1e293b");
+                    surroundGrad.addColorStop(1, "#334155");
+                } else {
+                    surroundGrad.addColorStop(0, "#090d16");
+                    surroundGrad.addColorStop(0.5, "#1e2536");
+                    surroundGrad.addColorStop(1, "#070a10");
+                }
+                ctx.fillStyle = surroundGrad;
+                ctx.fill();
+                ctx.restore();
+
+                // E. Cône mobile (Membrane conique composite concave)
+                ctx.save();
+                ctx.translate(excX, excY);
+
+                const coneOuterR = surroundInnerR;
+                const capR = baseR * 0.28;
+
+                ctx.beginPath();
+                ctx.ellipse(0, 0, coneOuterR, coneOuterR * aspectY, 0, 0, Math.PI * 2);
+                const coneGrad = ctx.createRadialGradient(
+                    -coneOuterR * 0.15, -coneOuterR * 0.15, capR * 0.8,
+                    0, 0, coneOuterR
+                );
+                if (isLight) {
+                    coneGrad.addColorStop(0, "#64748b");
+                    coneGrad.addColorStop(0.4, "#94a3b8");
+                    coneGrad.addColorStop(0.8, "#cbd5e1");
+                    coneGrad.addColorStop(1, "#475569");
+                } else {
+                    coneGrad.addColorStop(0, "#05070d");
+                    coneGrad.addColorStop(0.35, "#111726");
+                    coneGrad.addColorStop(0.7, "#1a233a");
+                    coneGrad.addColorStop(1, "#0d1320");
+                }
+                ctx.fillStyle = coneGrad;
+                ctx.fill();
+
+                // 6 anneaux concentriques de renfort
+                const numRipples = 6;
+                ctx.lineWidth = 0.8;
+                for (let r = 1; r <= numRipples; r++) {
+                    const ripR = capR + (r / (numRipples + 1)) * (coneOuterR - capR);
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, ripR, ripR * aspectY, 0, 0, Math.PI * 2);
+                    ctx.strokeStyle = isLight ? "rgba(255, 255, 255, 0.25)" : "rgba(0, 240, 255, 0.12)";
+                    ctx.stroke();
+                }
+
+                // F. Dôme central brillant (Dust cap avec reflet spéculaire courbé)
+                const capShiftX = excX * 0.22;
+                const capShiftY = excY * 0.22;
+
+                ctx.beginPath();
+                ctx.ellipse(capShiftX, capShiftY, capR, capR * aspectY, 0, 0, Math.PI * 2);
+                const capGrad = ctx.createRadialGradient(
+                    capShiftX - capR * 0.25, capShiftY - capR * 0.25, 2,
+                    capShiftX, capShiftY, capR
+                );
+                if (isLight) {
+                    capGrad.addColorStop(0, "#ffffff");
+                    capGrad.addColorStop(0.35, "#94a3b8");
+                    capGrad.addColorStop(0.85, "#334155");
+                    capGrad.addColorStop(1, "#1e293b");
+                } else {
+                    capGrad.addColorStop(0, "#475569");
+                    capGrad.addColorStop(0.35, "#1e293b");
+                    capGrad.addColorStop(0.8, "#090d16");
+                    capGrad.addColorStop(1, "#030508");
+                }
+                ctx.fillStyle = capGrad;
+                ctx.fill();
+
+                // Reflet spéculaire courbé sur le dôme
+                ctx.beginPath();
+                ctx.ellipse(
+                    capShiftX - capR * 0.22,
+                    capShiftY - capR * 0.20 * aspectY,
+                    capR * 0.45,
+                    capR * 0.25 * aspectY,
+                    -0.2, 0, Math.PI * 2
+                );
+                ctx.fillStyle = isLight ? "rgba(255, 255, 255, 0.75)" : "rgba(255, 255, 255, 0.55)";
+                ctx.fill();
+
+                ctx.restore();
+                ctx.restore();
+
+                // 8. ÉTOILES DE DIAMANT / LENS FLARES SPECTACULAIRES
+                const drawLensStar = (starX, starY, starSize, starColor) => {
+                    ctx.save();
+                    ctx.translate(starX, starY);
+
+                    const flareGlow = ctx.createRadialGradient(0, 0, 1, 0, 0, starSize * 1.8);
+                    flareGlow.addColorStop(0, starColor);
+                    flareGlow.addColorStop(0.3, "rgba(255, 255, 255, 0.8)");
+                    flareGlow.addColorStop(1, "rgba(255, 255, 255, 0)");
+                    ctx.fillStyle = flareGlow;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, starSize * 1.8, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = "#ffffff";
+                    ctx.beginPath();
+                    ctx.moveTo(0, -starSize);
+                    ctx.quadraticCurveTo(0, 0, starSize * 0.15, 0);
+                    ctx.quadraticCurveTo(0, 0, 0, starSize);
+                    ctx.quadraticCurveTo(0, 0, -starSize * 0.15, 0);
+                    ctx.quadraticCurveTo(0, 0, 0, -starSize);
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.moveTo(-starSize, 0);
+                    ctx.quadraticCurveTo(0, 0, 0, starSize * 0.15);
+                    ctx.quadraticCurveTo(0, 0, starSize, 0);
+                    ctx.quadraticCurveTo(0, 0, 0, -starSize * 0.15);
+                    ctx.quadraticCurveTo(0, 0, -starSize, 0);
+                    ctx.fill();
+
+                    ctx.restore();
+                };
+
+                // Étoile 1 : Haut-droit de la couronne (Cyan scintillant avec les aigus & percussions)
+                const starAngle1 = tiltAngle - 0.70;
+                const starDist1 = baseR * 0.98;
+                const s1X = cx + Math.cos(starAngle1) * starDist1;
+                const s1Y = cy + Math.sin(starAngle1) * starDist1 * aspectY;
+                const s1Size = (14 + audio.treble * 16 + audio.snare * 14);
+                drawLensStar(s1X, s1Y, s1Size, "rgba(0, 240, 255, 0.95)");
+
+                // Étoile 2 : Bas-gauche de la couronne (Magenta scintillant avec les médiums & caisse claire)
+                const starAngle2 = tiltAngle + 2.45;
+                const starDist2 = baseR * 0.98;
+                const s2X = cx + Math.cos(starAngle2) * starDist2;
+                const s2Y = cy + Math.sin(starAngle2) * starDist2 * aspectY;
+                const s2Size = (10 + audio.mid * 12 + audio.snare * 10);
+                drawLensStar(s2X, s2Y, s2Size, "rgba(217, 70, 239, 0.90)");
+
+                // 9. NUÉE DE PARTICULES RADIALES 3D
+                ctx.save();
+                for (const p of this.particles) {
+                    const speedMultiplier = audio.isPlaying ? (1.0 + audio.energy * 2.2) : 0.6;
+                    p.dist += p.speed * speedMultiplier * dt;
+                    if (p.dist > Math.max(w, h) * 0.72) {
+                        p.dist = 30 + Math.random() * 40;
+                        p.angle = Math.random() * Math.PI * 2;
+                    }
+
+                    const px = cx + Math.cos(p.angle) * p.dist;
+                    const py = cy + Math.sin(p.angle) * p.dist * aspectY;
+                    const twinkle = Math.sin(time * p.sparkleSpeed) * 0.3 + 0.7;
+                    const alpha = p.baseAlpha * twinkle;
+
+                    const trailLen = p.trailLen * (1.0 + audio.energy * 1.5);
+                    const tx = px - Math.cos(p.angle) * trailLen;
+                    const ty = py - Math.sin(p.angle) * trailLen * aspectY;
+
+                    ctx.beginPath();
+                    ctx.moveTo(tx, ty);
+                    ctx.lineTo(px, py);
+                    ctx.strokeStyle = `hsla(${p.hue}, 95%, 70%, ${alpha * 0.65})`;
+                    ctx.lineWidth = p.size * 0.8;
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(px, py, p.size, 0, Math.PI * 2);
+                    ctx.fillStyle = isLight ? `hsl(${p.hue}, 90%, 50%)` : `hsla(${p.hue}, 100%, 75%, ${alpha})`;
+                    ctx.shadowColor = `hsl(${p.hue}, 100%, 60%)`;
+                    ctx.shadowBlur = isLight ? 3 : 8;
+                    ctx.fill();
+                }
+                ctx.shadowBlur = 0;
+                ctx.restore();
+
+                // 10. VIGNETTAGE CINÉMATIQUE SUBTIL
+                const vigGrad = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.45, cx, cy, Math.max(w, h) * 0.82);
+                if (isLight) {
+                    vigGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
+                    vigGrad.addColorStop(1, "rgba(148, 163, 184, 0.28)");
+                } else {
+                    vigGrad.addColorStop(0, "rgba(0, 0, 0, 0)");
+                    vigGrad.addColorStop(1, "rgba(0, 0, 0, 0.55)");
+                }
+                ctx.fillStyle = vigGrad;
+                ctx.fillRect(0, 0, w, h);
+            }
+        },
+
+        // ---------------------------------------------------------
+        // THÈME 2 : CYBERPUNK / NIGHT CITY (Skyline filaire, autoroute & Oscilloscope laser épuré)
         // ---------------------------------------------------------
         {
             id: "cyberpunk_city",
@@ -773,7 +1394,7 @@ const AmbientThemeManager = {
         },
 
         // ---------------------------------------------------------
-        // THÈME 2 : VECTORIEL ARCADE 1983 (Montagnes filaires & Oscilloscope CRT épuré)
+        // THÈME 3 : VECTORIEL ARCADE 1983 (Montagnes filaires & Oscilloscope CRT épuré)
         // ---------------------------------------------------------
         {
             id: "vector_wireframe",
@@ -958,7 +1579,7 @@ const AmbientThemeManager = {
         },
 
         // ---------------------------------------------------------
-        // THÈME 3 : PUITS TETRIS INFINI (Tours de briques latérales & Oscilloscope matriciel)
+        // THÈME 4 : PUITS TETRIS INFINI (Tours de briques latérales & Oscilloscope matriciel)
         // ---------------------------------------------------------
         {
             id: "infinite_tetris",

@@ -11,7 +11,7 @@ if not "%~1"=="" (
 :MENU
 cls
 echo ========================================================================
-echo          SoundStash v3.0 - Environnement et Compilation
+echo              SoundStash  - Environnement et Compilation
 echo ========================================================================
 echo.
 echo  Ce script permet de verifier votre systeme, telecharger et installer
