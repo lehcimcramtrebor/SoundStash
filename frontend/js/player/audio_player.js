@@ -546,14 +546,26 @@ const AudioPlayer = {
                 const cv = this.currentView;
                 if (cv && cv !== "now-playing") {
                     if (!this.savedScrollPositions) this.savedScrollPositions = {};
-                    this.savedScrollPositions[cv] = maxAllowed;
+                    if (cv === "albums" && this.isAlbumDetailOpen) {
+                        this.savedScrollPositions["album_detail"] = maxAllowed;
+                    } else if (cv === "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
+                        this.savedScrollPositions["playlist_detail"] = maxAllowed;
+                    } else {
+                        this.savedScrollPositions[cv] = maxAllowed;
+                    }
                 }
                 return;
             }
             const cv = this.currentView;
             if (cv && cv !== "now-playing") {
                 if (!this.savedScrollPositions) this.savedScrollPositions = {};
-                this.savedScrollPositions[cv] = currentY;
+                if (cv === "albums" && this.isAlbumDetailOpen) {
+                    this.savedScrollPositions["album_detail"] = currentY;
+                } else if (cv === "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
+                    this.savedScrollPositions["playlist_detail"] = currentY;
+                } else {
+                    this.savedScrollPositions[cv] = currentY;
+                }
             }
         }, { passive: true });
 
@@ -1328,7 +1340,13 @@ const AudioPlayer = {
             const cv = this.currentView;
             if (cv && cv !== "now-playing") {
                 if (!this.savedScrollPositions) this.savedScrollPositions = {};
-                this.savedScrollPositions[cv] = maxAllowed;
+                if (cv === "albums" && this.isAlbumDetailOpen) {
+                    this.savedScrollPositions["album_detail"] = maxAllowed;
+                } else if (cv === "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
+                    this.savedScrollPositions["playlist_detail"] = maxAllowed;
+                } else {
+                    this.savedScrollPositions[cv] = maxAllowed;
+                }
             }
         }
     },
@@ -1336,19 +1354,21 @@ const AudioPlayer = {
     restoreScrollPosition(targetY) {
         if (typeof targetY !== "number" || isNaN(targetY) || targetY < 0) targetY = 0;
         this.updateScrollBounds();
-        const maxAllowed = this.getMaxAllowedScroll();
-        if (targetY > maxAllowed) targetY = maxAllowed;
         this.cancelPendingScrolls();
         this._isRestoringScroll = true;
 
+        const requestedY = targetY;
+
         const doScroll = () => {
+            const currentMax = this.getMaxAllowedScroll();
+            const effectiveY = Math.min(requestedY, currentMax);
             try {
-                window.scrollTo({ top: targetY, left: 0, behavior: "instant" });
+                window.scrollTo({ top: effectiveY, left: 0, behavior: "instant" });
             } catch (_) {
-                try { window.scrollTo(0, targetY); } catch (_) {}
+                try { window.scrollTo(0, effectiveY); } catch (_) {}
             }
-            if (document.documentElement) document.documentElement.scrollTop = targetY;
-            if (document.body) document.body.scrollTop = targetY;
+            if (document.documentElement) document.documentElement.scrollTop = effectiveY;
+            if (document.body) document.body.scrollTop = effectiveY;
         };
 
         doScroll();
@@ -1358,13 +1378,13 @@ const AudioPlayer = {
                 this._scrollRafId = null;
             });
         }
-        this._restoreScrollTimer1 = setTimeout(() => { doScroll(); this._restoreScrollTimer1 = null; }, 25);
-        this._restoreScrollTimer2 = setTimeout(() => { doScroll(); this._restoreScrollTimer2 = null; }, 80);
+        this._restoreScrollTimer1 = setTimeout(() => { doScroll(); this._restoreScrollTimer1 = null; }, 30);
+        this._restoreScrollTimer2 = setTimeout(() => { doScroll(); this._restoreScrollTimer2 = null; }, 90);
         this._restoreScrollTimer3 = setTimeout(() => {
             doScroll();
             this._restoreScrollTimer3 = null;
             this._isRestoringScroll = false;
-        }, 180);
+        }, 200);
     },
 
     setView(view) {
@@ -1392,7 +1412,13 @@ const AudioPlayer = {
         // Mémoriser la position de défilement de la vue qu'on quitte si ce n'est pas "now-playing"
         if (prevV && prevV !== "now-playing") {
             if (!this.savedScrollPositions) this.savedScrollPositions = {};
-            this.savedScrollPositions[prevV] = currentY;
+            if (prevV === "albums" && this.isAlbumDetailOpen) {
+                this.savedScrollPositions["album_detail"] = currentY;
+            } else if (prevV === "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
+                this.savedScrollPositions["playlist_detail"] = currentY;
+            } else {
+                this.savedScrollPositions[prevV] = currentY;
+            }
         }
 
         // Mémoriser la vue précédente lors de la transition vers "now-playing"
@@ -1593,21 +1619,26 @@ const AudioPlayer = {
             const safetyTop = effectiveHeaderBottom + safeMarginTop;
             const safetyBottom = effectiveBottomTop - safeMarginBottom;
 
-            // Détecter si la piste appartient à un conteneur d'album (bloc album ou ligne tableau)
-            const parentBlock = activeItem.closest(
-                ".player-all-album-block, #player-main-layout, #player-album-detail-block, tr.active-track-row"
-            );
-
-            // Si le morceau est déjà confortablement visible dans la zone sécurisée : NE PAS BOUGER L'ÉCRAN
-            if (!force && rect.top >= safetyTop && rect.bottom <= safetyBottom) {
+            // RÈGLE D'OR : Si le morceau est déjà confortablement visible dans la zone sécurisée,
+            // NE PAS BOUGER L'ÉCRAN ! Cela élimine tout sautillement / scintillement de la vue.
+            if (rect.top >= safetyTop && rect.bottom <= safetyBottom) {
                 return;
             }
 
-            // Calcul du scroll cible :
-            // Pour offrir la disposition visuelle idéale (l'album en cours positionné en premier au sommet,
-            // juste sous le cadre supérieur sticky, dégageant toute la liste de titres vers le bas) :
             const currentScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+            const maxAllowed = typeof this.getMaxAllowedScroll === "function" ? this.getMaxAllowedScroll() : 0;
+
+            // Si tout le contenu tient déjà à l'écran sans ascenseur et qu'on est au sommet : ne jamais scroller
+            if (maxAllowed <= 0 && currentScrollY <= 0) {
+                return;
+            }
+
             let targetScrollY = currentScrollY;
+
+            // Uniquement en vue "Tout" (liste infinie d'albums multiples) : on cherche à aligner l'en-tête du bloc album
+            const parentBlock = (this.currentView === "all")
+                ? activeItem.closest(".player-all-album-block")
+                : null;
 
             if (parentBlock && parentBlock !== activeItem) {
                 // Aligner le haut du bloc album juste sous le cadre supérieur avec une marge aérée de 8px
@@ -1630,15 +1661,25 @@ const AudioPlayer = {
                     targetScrollY = idealBlockTopScrollY;
                 }
             } else {
-                // Vue sans bloc parent (ex: vue recherche dense simple) : amener la piste dans la zone utile
-                const visibleHeight = Math.max(effectiveBottomTop - effectiveHeaderBottom, 150);
-                const targetCenterY = effectiveHeaderBottom + (visibleHeight / 2);
-                const itemAbsoluteCenterY = currentScrollY + rect.top + (rect.height / 2);
-                targetScrollY = Math.max(0, Math.round(itemAbsoluteCenterY - targetCenterY));
+                // Pour les vues avec un seul album (Détail Album, En écoute, Playlists) :
+                // Défilement minimaliste ciblé : ramener la piste dans la zone utile sans décaler inutilement l'en-tête
+                if (rect.bottom > safetyBottom) {
+                    targetScrollY = Math.max(0, currentScrollY + Math.round(rect.bottom - safetyBottom + 12));
+                } else if (rect.top < safetyTop) {
+                    targetScrollY = Math.max(0, currentScrollY - Math.round(safetyTop - rect.top + 12));
+                }
+            }
+
+            // Borner impérativement par le défilement maximal autorisé pour la vue
+            if (targetScrollY > maxAllowed) {
+                targetScrollY = maxAllowed;
+            }
+            if (targetScrollY < 0) {
+                targetScrollY = 0;
             }
 
             // Ignorer les micro-deltas (< 6px) pour éviter les micro-saccades
-            if (!force && Math.abs(targetScrollY - currentScrollY) < 6) {
+            if (Math.abs(targetScrollY - currentScrollY) < 6) {
                 return;
             }
 
@@ -3063,6 +3104,13 @@ const AudioPlayer = {
 
     async openAlbumDetail(albumPath, forceRefresh = false) {
         if (!albumPath) return;
+
+        // Mémoriser la position exacte de la grille UNIQUEMENT si le détail n'était pas déjà ouvert !
+        if (!this.isAlbumDetailOpen) {
+            if (!this.savedScrollPositions) this.savedScrollPositions = {};
+            this.savedScrollPositions["albums"] = window.scrollY || document.documentElement.scrollTop || 0;
+        }
+
         this.isAlbumDetailOpen = true;
         this.detailAlbumPath = albumPath;
         this.detailAlbumTitle = null;
@@ -3074,9 +3122,6 @@ const AudioPlayer = {
         const toolbar = document.getElementById("player-toolbar-row");
         if (toolbar) toolbar.style.display = "none";
         if (typeof syncPlayerControlsHeight === "function") syncPlayerControlsHeight();
-
-        if (!this.savedScrollPositions) this.savedScrollPositions = {};
-        this.savedScrollPositions["albums"] = window.scrollY || document.documentElement.scrollTop || 0;
 
         const gridView = document.getElementById("player-albums-grid");
         const detailView = document.getElementById("player-album-detail-view");
@@ -8693,7 +8738,13 @@ const AudioPlayer = {
         if (switchV) {
             if (this.currentView && this.currentView !== "now-playing") {
                 if (!this.savedScrollPositions) this.savedScrollPositions = {};
-                this.savedScrollPositions[this.currentView] = window.scrollY || document.documentElement.scrollTop || 0;
+                if (this.currentView === "albums" && this.isAlbumDetailOpen) {
+                    this.savedScrollPositions["album_detail"] = window.scrollY || document.documentElement.scrollTop || 0;
+                } else if (this.currentView === "playlists" && window.UserPlaylists && window.UserPlaylists.isDetailOpen) {
+                    this.savedScrollPositions["playlist_detail"] = window.scrollY || document.documentElement.scrollTop || 0;
+                } else {
+                    this.savedScrollPositions[this.currentView] = window.scrollY || document.documentElement.scrollTop || 0;
+                }
             }
             this.resetPlayerScrollRobust();
         }
@@ -8994,7 +9045,6 @@ const AudioPlayer = {
         this.updateCurrentTrackUI(trk);
         this.updatePlayStateUI();
         if (this.isQueueDrawerOpen) this.renderQueueDrawer();
-        setTimeout(() => this.scrollToActiveTrack(true), 60);
     },
 
     recordCurrentTrackPlay() {

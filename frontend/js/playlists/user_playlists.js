@@ -705,6 +705,10 @@ const UserPlaylists = {
     },
 
     async openAllCollectionDetail() {
+        if (!this.isDetailOpen && window.AudioPlayer) {
+            if (!window.AudioPlayer.savedScrollPositions) window.AudioPlayer.savedScrollPositions = {};
+            window.AudioPlayer.savedScrollPositions["playlists"] = window.scrollY || document.documentElement.scrollTop || 0;
+        }
         this.isDetailOpen = true;
         this.currentDetailPlaylist = {
             id: "system:all-collection",
@@ -814,6 +818,10 @@ const UserPlaylists = {
     async openDetail(playlistId, force = false) {
         if (!playlistId || playlistId === "system:all-collection" || playlistId === "all-collection" || (typeof playlistId === "string" && playlistId.includes("all-collection"))) {
             return this.openAllCollectionDetail();
+        }
+        if (!this.isDetailOpen && window.AudioPlayer) {
+            if (!window.AudioPlayer.savedScrollPositions) window.AudioPlayer.savedScrollPositions = {};
+            window.AudioPlayer.savedScrollPositions["playlists"] = window.scrollY || document.documentElement.scrollTop || 0;
         }
         this.isDetailOpen = true;
         const basicPl = this.playlists.find(p => p.id === playlistId);
