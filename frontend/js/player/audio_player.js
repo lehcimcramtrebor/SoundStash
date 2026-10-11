@@ -2216,8 +2216,12 @@ const AudioPlayer = {
                 const hasAllBlocks = Boolean(allContainer && allContainer.querySelector(".player-all-album-block"));
                 if (this.currentView === "all" && hasAllBlocks) {
                     this.updateActiveTrackInAllContainer();
+                } else if (this.currentView === "albums" && this.isAlbumDetailOpen) {
+                    // Si le détail d'un album est ouvert, ne pas écraser la grille sous-jacente
                 } else {
+                    const currentY = window.scrollY || document.documentElement.scrollTop || 0;
                     this.renderCurrentView();
+                    this.restoreScrollPosition(currentY);
                 }
             }
 
@@ -2238,9 +2242,9 @@ const AudioPlayer = {
             // Pré-charger le catalogue global « Tout » dès l'ouverture de la collection
             this.prefetchAllCatalog();
 
-            // Si la vue détail d'un album est actuellement ouverte, la rafraîchir avec les données fraîches
+            // Si la vue détail d'un album est actuellement ouverte, la rafraîchir en préservant le scroll
             if (this.isAlbumDetailOpen && this.detailAlbumPath) {
-                this.openAlbumDetail(this.detailAlbumPath, true);
+                this.openAlbumDetail(this.detailAlbumPath, true, true);
             }
         } catch (err) {
             console.error("Erreur loadLibraryData:", err);
@@ -2264,13 +2268,13 @@ const AudioPlayer = {
                 }
             }
             if (this.isAlbumDetailOpen && this.detailAlbumPath === albumPath) {
-                this.openAlbumDetail(albumPath, true);
+                this.openAlbumDetail(albumPath, true, true);
             }
         } else {
             this.albumInfoCache.clear();
             this.allCatalog = null;
             if (this.isAlbumDetailOpen && this.detailAlbumPath) {
-                this.openAlbumDetail(this.detailAlbumPath, true);
+                this.openAlbumDetail(this.detailAlbumPath, true, true);
             }
         }
     },
@@ -3102,8 +3106,13 @@ const AudioPlayer = {
         this.updateScrollBounds();
     },
 
-    async openAlbumDetail(albumPath, forceRefresh = false) {
+    async openAlbumDetail(albumPath, forceRefresh = false, preserveScroll = false) {
         if (!albumPath) return;
+
+        const isSameAlbumAlreadyOpen = Boolean(this.isAlbumDetailOpen && this.detailAlbumPath === albumPath);
+        const currentDetailScrollY = (isSameAlbumAlreadyOpen || preserveScroll)
+            ? (window.scrollY || document.documentElement.scrollTop || 0)
+            : 0;
 
         // Mémoriser la position exacte de la grille UNIQUEMENT si le détail n'était pas déjà ouvert !
         if (!this.isAlbumDetailOpen) {
@@ -3345,7 +3354,9 @@ const AudioPlayer = {
                 </div>
             `;
 
-            if (isPlayingThisAlbum) {
+            if (isSameAlbumAlreadyOpen || preserveScroll) {
+                this.restoreScrollPosition(currentDetailScrollY);
+            } else if (isPlayingThisAlbum) {
                 this.scrollToActiveTrack(true);
             } else {
                 this.cancelPendingScrolls();

@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Optional, Dict, Tuple
-from backend.config import KID3_CLI_PATH, config, YT_DLP_PATH, FFMPEG_PATH, FFPROBE_PATH
+from backend.config import KID3_CLI_PATH, config, YT_DLP_PATH, FFMPEG_PATH, FFPROBE_PATH, get_effective_cookies_file
 from backend.genre_service import detect_genre_sync
 from backend.library_indexer import library_indexer, DISC_SUBFOLDER_RE, normalize_text
 from backend.logger import get_logger
@@ -1707,7 +1707,28 @@ def integrate_substitute_track(
         "aac": "aac"
     }
     target_format = fmt_map.get(detected_ext, "m4a")
-    target_quality = "0" if target_format == "flac" else getattr(config, "default_quality", "128K")
+    effective_cookies = get_effective_cookies_file()
+
+    raw_quality = (getattr(config, "default_quality", "auto") or "auto").lower()
+    if target_format == "flac":
+        eff_quality = "0"
+    elif raw_quality in ["auto", "max", "best", ""]:
+        if effective_cookies and getattr(config, "max_audio_quality_when_signed", True):
+            eff_quality = "256K"
+        else:
+            eff_quality = "128K"
+    elif "256" in raw_quality:
+        eff_quality = "256K"
+    elif "320" in raw_quality:
+        eff_quality = "320K"
+    else:
+        eff_quality = "128K"
+
+    # Pour AAC / M4A, prioriser le flux natif Premium 256k (itag 141 sans réencodage)
+    if target_format in ["m4a", "aac"]:
+        audio_format_selector = '141/ba[ext=m4a]/ba/b'
+    else:
+        audio_format_selector = 'ba/b'
 
     temp_stem = f"__temp_sub_{track_number}_{int(time.time())}"
     temp_tmpl = str(album_dir / f"{temp_stem}.%(ext)s")
@@ -1716,15 +1737,19 @@ def integrate_substitute_track(
     cmd_args = [
         YT_DLP_PATH,
         "-x",
-        "-f", "ba",
+        "-f", audio_format_selector,
         "--audio-format", target_format,
-        "--audio-quality", target_quality,
+        "--audio-quality", eff_quality,
         "--windows-filenames",
         "--no-playlist",
+        "--socket-timeout", "30",
+        "--extractor-args", "youtube:player_client=android,web",
         "-o", temp_tmpl
     ]
     if Path(FFMPEG_PATH).exists():
         cmd_args += ["--ffmpeg-location", FFMPEG_PATH]
+    if effective_cookies:
+        cmd_args += ["--cookies", str(effective_cookies)]
     cmd_args.append(video_url)
 
     logger.info(f"Téléchargement du substitut #{track_number} ({video_id}) via yt-dlp...")

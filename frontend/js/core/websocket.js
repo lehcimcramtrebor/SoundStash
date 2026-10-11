@@ -160,50 +160,53 @@ function handleWsEvent(data) {
         return;
     }
 
+let _wsLibraryUpdatedTimer = null;
+
     if (data.type === "library_updated") {
-        if (typeof AudioPlayer !== "undefined") {
-            if (typeof AudioPlayer.invalidateAlbumCache === "function") {
-                AudioPlayer.invalidateAlbumCache();
+        if (_wsLibraryUpdatedTimer) {
+            clearTimeout(_wsLibraryUpdatedTimer);
+        }
+        _wsLibraryUpdatedTimer = setTimeout(() => {
+            _wsLibraryUpdatedTimer = null;
+            if (typeof AudioPlayer !== "undefined") {
+                if (typeof AudioPlayer.invalidateAlbumCache === "function") {
+                    AudioPlayer.invalidateAlbumCache();
+                }
+                if (typeof AudioPlayer.loadLibraryData === "function") {
+                    AudioPlayer.loadLibraryData(true);
+                }
             }
-            if (AudioPlayer.loadLibraryData) {
-                AudioPlayer.loadLibraryData(true);
+            if (typeof loadLibrary === "function") {
+                loadLibrary();
             }
-        }
-        if (typeof loadLibrary === "function") {
-            loadLibrary();
-        }
-        if (typeof refreshAlbumNavList === "function") {
-            refreshAlbumNavList();
-        }
-        if (typeof window.refreshSearchBadges === "function") {
-            window.refreshSearchBadges();
-        }
-        if (typeof UserPlaylists !== "undefined") {
-            UserPlaylists.playlistCache.clear();
-            if (UserPlaylists.isDetailOpen && UserPlaylists.currentDetailPlaylist) {
-                UserPlaylists.openDetail(UserPlaylists.currentDetailPlaylist.id);
-            } else {
-                UserPlaylists.loadAndRenderPlaylists(true);
+            if (typeof refreshAlbumNavList === "function") {
+                refreshAlbumNavList();
             }
-        }
-        if (typeof loadCollectionAlbumsForEditor === "function") {
-            loadCollectionAlbumsForEditor();
-        }
-        if (typeof window.loadGenreBatchAlbums === "function") {
-            window.loadGenreBatchAlbums(true);
-        }
-        if (typeof window.loadCoversGalleryAlbums === "function") {
-            window.loadCoversGalleryAlbums(true);
-        }
-        if (typeof ensureLibraryTagSuggestions === "function") {
-            ensureLibraryTagSuggestions(true);
-        }
-        if (typeof loadExternalTempAlbums === "function") {
-            loadExternalTempAlbums();
-        }
-        if (typeof updateTempTabBadge === "function") {
-            updateTempTabBadge();
-        }
+            if (typeof window.refreshSearchBadges === "function") {
+                window.refreshSearchBadges();
+            }
+            if (typeof UserPlaylists !== "undefined" && typeof UserPlaylists.updateBadgeUI === "function") {
+                UserPlaylists.updateBadgeUI();
+            }
+            if (typeof loadCollectionAlbumsForEditor === "function") {
+                loadCollectionAlbumsForEditor();
+            }
+            if (typeof window.loadGenreBatchAlbums === "function") {
+                window.loadGenreBatchAlbums(true);
+            }
+            if (typeof window.loadCoversGalleryAlbums === "function") {
+                window.loadCoversGalleryAlbums(true);
+            }
+            if (typeof ensureLibraryTagSuggestions === "function") {
+                ensureLibraryTagSuggestions(true);
+            }
+            if (typeof loadExternalTempAlbums === "function") {
+                loadExternalTempAlbums();
+            }
+            if (typeof updateTempTabBadge === "function") {
+                updateTempTabBadge();
+            }
+        }, 500);
         return;
     }
 

@@ -1,4 +1,4 @@
-# 🎵 SoundStash v5.0.1
+# 🎵 SoundStash v5.0.2
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -11,6 +11,19 @@
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v5.0.2
+
+### 💎 Reconstitution d'Album Haute Fidélité (Flux 256K AAC / itag 141)
+- **Alignement avec la session active** : Le module de reconstitution d'album transmet désormais automatiquement les cookies de session YouTube Music lors du téléchargement des pistes substituées.
+- **Priorité au flux studio natif** : Sélection prioritaire du conteneur AAC 256 kbps (`itag 141`), alignant le débit des substituts (~259k - 260k) sur le reste de l'album officiel.
+
+### 🛡️ Navigation Sanctuaire & Fluidité de Défilement
+- **Maintien intégral du scroll en téléchargement** : Débouncing intelligent (500 ms) des notifications WebSocket `library_updated` et préservation chirurgicale de la position de défilement pendant l'arrivée de nouvelles pistes (plus aucun retour forcé en haut de page).
+- **Isolation déterministe des vues de détail** : Le niveau de défilement de la grille des albums et playlists est sanctuarisé lors des consultations de détails d'albums avec retour au pixel près.
+- **Élimination définitive du scintillement de sélection** : Règle de visibilité sécurisée empêchant toute micro-oscillation ou conflit de scroll lors du clic sur une piste d'album.
 
 ---
 
