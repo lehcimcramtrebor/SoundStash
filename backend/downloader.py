@@ -580,7 +580,7 @@ class DownloadManager:
                                 if d.is_dir() and d.name not in {"_external", "_Hors_Analyse"}:
                                     if not any(f.suffix.lower() in ALL_MEDIA_EXTENSIONS for f in d.iterdir() if f.is_file()):
                                         safe_rmtree(d)
-                                return await self._execute_download(task)
+                            return await self._execute_download(task)
 
                         logger.error(f"Échec total du téléchargement : Session YouTube (cookies.txt) expirée ou rejetée | url={url}")
                         err_reason = "cookies_expired"

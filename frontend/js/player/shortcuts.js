@@ -55,7 +55,11 @@ function setupPlayerShortcutsAndWheel() {
                     vPlayer.play().catch(err => console.warn(err));
                 } else {
                     if (window.AudioFader && window.AudioFader.enabled) {
-                        AudioFader.fadeOut(vPlayer, 400).then(() => vPlayer.pause());
+                        const targetVol = vPlayer.dataset.normalVolume ? parseFloat(vPlayer.dataset.normalVolume) : (vPlayer.volume || 1);
+                        AudioFader.fadeOut(vPlayer, 400).then(() => {
+                            vPlayer.pause();
+                            vPlayer.volume = targetVol;
+                        });
                     } else {
                         vPlayer.pause();
                     }

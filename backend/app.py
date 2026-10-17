@@ -2981,12 +2981,19 @@ async def extract_embedded_covers_endpoint(source: str = Query("library")):
         }
 
     extracted_count = 0
+    completed_count = 0
     loop = asyncio.get_event_loop()
     executor = ThreadPoolExecutor(max_workers=4)
 
+    async def _extract_one(alb_obj, album_dir):
+        res_cov = await loop.run_in_executor(executor, consolidate_album_cover, album_dir)
+        return alb_obj, album_dir, res_cov
+
     try:
-        for idx, (alb_obj, album_dir) in enumerate(target_albums, 1):
-            res_cov = await loop.run_in_executor(executor, consolidate_album_cover, album_dir)
+        tasks = [asyncio.create_task(_extract_one(alb_obj, album_dir)) for alb_obj, album_dir in target_albums]
+        for coro in asyncio.as_completed(tasks):
+            alb_obj, album_dir, res_cov = await coro
+            completed_count += 1
             if res_cov and Path(res_cov).is_file():
                 extracted_count += 1
                 if alb_obj:
@@ -2995,7 +3002,7 @@ async def extract_embedded_covers_endpoint(source: str = Query("library")):
             album_label = (alb_obj.album or alb_obj.title) if alb_obj else album_dir.name
             await ws_manager.broadcast({
                 "type": "cover_extraction_progress",
-                "extracted": idx,
+                "extracted": completed_count,
                 "total": total,
                 "album": album_label
             })
@@ -3957,7 +3964,7 @@ async def resolve_export_destination_endpoint(req: ResolveExportDestinationReque
         is_concert_dest = (
             "[concert]" in str(p).lower()
             or "concert" in album_name.lower()
-            or any(t.get("duration", 0) >= 600 for t in tracks)
+            or bool(info.get("is_concert"))
         )
         if is_concert_dest:
             target_dest = video_root / san_art / "Concerts"
@@ -4652,10 +4659,15 @@ class ExportOpenFolderRequest(BaseModel):
 @app.get("/api/export/default-dest")
 def get_export_default_destination(name: str = ""):
     dest_path = get_default_desktop_export_dir(name)
-    desktop_dir = Path.home() / "Desktop"
+    folder_name = dest_path.name
+    desktop_dir = dest_path.parent
+    music_dir = Path.home() / "Music"
+    downloads_dir = Path.home() / "Downloads"
     return {
-        "desktop": str(desktop_dir),
-        "default_folder_name": dest_path.name,
+        "desktop": str(desktop_dir / folder_name),
+        "music": str(music_dir / folder_name),
+        "downloads": str(downloads_dir / folder_name),
+        "default_folder_name": folder_name,
         "default_full_path": str(dest_path)
     }
 

@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from backend.config import YT_DLP_PATH, CONFIG_DIR
+from backend.logger import get_logger
 
-logger = logging.getLogger("ytm_tool_updater")
+logger = get_logger(__name__)
 
 YT_DLP_UPDATE_STATE_FILE = CONFIG_DIR / "yt_dlp_update_state.json"
 

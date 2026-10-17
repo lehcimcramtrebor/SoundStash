@@ -473,8 +473,15 @@ class VideoIndexer:
             video_dir = self.get_video_dir()
             disk_cache = self._load_disk_cache(video_dir)
 
-            # Purger du cache disque
-            to_del = [k for k in disk_cache if str((video_dir / k).resolve()) == target_str or k == Path(video_path).name]
+            # Purger du cache disque (les clés sont au format "rel_path::mtime::size")
+            to_del = []
+            for k in disk_cache:
+                rel_part = k.split("::")[0]
+                try:
+                    if str((video_dir / rel_part).resolve()) == target_str or rel_part == Path(video_path).name:
+                        to_del.append(k)
+                except Exception:
+                    pass
             for k in to_del:
                 del disk_cache[k]
             if to_del:

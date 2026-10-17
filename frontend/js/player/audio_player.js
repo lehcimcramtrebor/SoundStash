@@ -137,11 +137,11 @@ const AudioFader = {
     },
 
     fadeOut(media, durationMs = null) {
-        if (!media || media.volume === 0) return Promise.resolve();
+        if (!media || media.volume === 0) return Promise.resolve(true);
         const duration = (typeof durationMs === "number" && durationMs >= 0) ? durationMs : this.duration;
 
         if (!this.enabled || duration <= 0) {
-            return Promise.resolve();
+            return Promise.resolve(true);
         }
 
         this.stop(media);
@@ -155,7 +155,7 @@ const AudioFader = {
         return new Promise((resolve) => {
             const step = (now) => {
                 if (state.cancelled) {
-                    resolve();
+                    resolve(false);
                     return;
                 }
                 const elapsed = now - startTime;
@@ -168,7 +168,7 @@ const AudioFader = {
                 } else {
                     if (!state.cancelled) media.volume = 0;
                     this.activeFades.delete(media);
-                    resolve();
+                    resolve(!state.cancelled);
                 }
             };
             state.animId = requestAnimationFrame(step);
@@ -2301,11 +2301,15 @@ const AudioPlayer = {
 
         if (Array.isArray(this.playlist)) {
             this.playlist.forEach(t => {
-                if (t && t.path) {
-                    const tNorm = String(t.path).replace(/[\\/]+/g, "/");
+                if (t && (t.path || t.filepath)) {
+                    const rawP = t.path || t.filepath;
+                    const tNorm = String(rawP).replace(/[\\/]+/g, "/");
                     if (tNorm.toLowerCase().startsWith(normOld)) {
                         const sub = tNorm.slice(normOld.length).replace(/^\/+/, "");
-                        t.path = `${normNew}/${sub}`;
+                        const updatedPath = `${normNew}/${sub}`;
+                        t.path = updatedPath;
+                        t.filepath = updatedPath;
+                        t.stream_url = `/api/audio/stream-local?path=${encodeURIComponent(updatedPath)}`;
                         if (newMeta) {
                             if (newMeta.artist) t.artist = newMeta.artist;
                             if (newMeta.title || newMeta.album) t.album = newMeta.title || newMeta.album;
@@ -2315,14 +2319,25 @@ const AudioPlayer = {
             });
         }
 
-        if (Array.isArray(this.queue)) {
-            this.queue.forEach(item => {
+        if (Array.isArray(this.userQueue)) {
+            this.userQueue.forEach(item => {
                 const t = item.track || item;
-                if (t && t.path) {
-                    const tNorm = String(t.path).replace(/[\\/]+/g, "/");
+                if (t && (t.path || t.filepath)) {
+                    const rawP = t.path || t.filepath;
+                    const tNorm = String(rawP).replace(/[\\/]+/g, "/");
                     if (tNorm.toLowerCase().startsWith(normOld)) {
                         const sub = tNorm.slice(normOld.length).replace(/^\/+/, "");
-                        t.path = `${normNew}/${sub}`;
+                        const updatedPath = `${normNew}/${sub}`;
+                        t.path = updatedPath;
+                        t.filepath = updatedPath;
+                        t.stream_url = `/api/audio/stream-local?path=${encodeURIComponent(updatedPath)}`;
+                        if (t.album_path) t.album_path = newPath;
+                    }
+                }
+                if (item.album && item.album.path) {
+                    const aNorm = String(item.album.path).replace(/[\\/]+/g, "/").toLowerCase().replace(/\/+$/, "");
+                    if (aNorm === normOld) {
+                        item.album.path = newPath;
                     }
                 }
             });
@@ -6538,7 +6553,8 @@ const AudioPlayer = {
     async pause() {
         if (this.audio && !this.audio.paused) {
             if (AudioFader.enabled) {
-                await AudioFader.fadeOut(this.audio, 400);
+                const completed = await AudioFader.fadeOut(this.audio, 400);
+                if (completed === false) return;
             }
             this.audio.pause();
             this.audio.volume = this.isMuted ? 0 : this.volume;
@@ -6626,7 +6642,7 @@ const AudioPlayer = {
 
         if (this.isShuffle) {
             // Si la répétition d'album est active (repeatMode === 'all') et qu'on lit un album individuel hors collection
-            const isSingleAlbumRestricted = (this.repeatMode === "all" && this.currentAlbum && !this.currentAlbum.path.startsWith("playlist:") && this.currentAlbum.path !== "system:all-collection" && this.playlist && this.playlist.length > 0);
+            const isSingleAlbumRestricted = (this.repeatMode === "all" && this.currentAlbum && this.currentAlbum.path && !this.currentAlbum.path.startsWith("playlist:") && this.currentAlbum.path !== "system:all-collection" && this.playlist && this.playlist.length > 0);
             if (isSingleAlbumRestricted) {
                 // Aléatoire confiné aux pistes de l'album en cours
                 let nextIdx = Math.floor(Math.random() * list.length);
@@ -6752,7 +6768,8 @@ const AudioPlayer = {
             window.closeVideoModal(true);
         }
         if (this.audio && !this.audio.paused && AudioFader.enabled) {
-            AudioFader.fadeOut(this.audio, 400).then(() => {
+            AudioFader.fadeOut(this.audio, 400).then((completed) => {
+                if (completed === false) return;
                 this.audio.pause();
                 this.isPlaying = false;
                 this.updatePlayStateUI();
@@ -6817,8 +6834,8 @@ const AudioPlayer = {
         };
 
         if (this.isPlaying && this.audio && !this.audio.paused && AudioFader.enabled) {
-            AudioFader.fadeOut(this.audio, 280).then(() => {
-                startPlayback();
+            AudioFader.fadeOut(this.audio, 280).then((completed) => {
+                if (completed !== false) startPlayback();
             });
         } else {
             startPlayback();
@@ -6879,7 +6896,7 @@ const AudioPlayer = {
             track_number: "",
             cover_url: thumbUrl,
             album_path: "",
-            stream_url: `/api/video/stream?path=${encodeURIComponent(relPath || vidPath)}`,
+            stream_url: `/api/videos/stream?path=${encodeURIComponent(relPath || vidPath)}`,
             type: "video",
             is_video: true,
             is_concert: isConc
@@ -7350,252 +7367,6 @@ const AudioPlayer = {
             ambShuffleBtn.classList.toggle("active", Boolean(this.isShuffle));
             ambShuffleBtn.title = `Lecture aléatoire (${this.isShuffle ? "Activée" : "Désactivée"})`;
         }
-    },
-
-    async remapCurrentTrackToAlbum() {
-        const curTrack = (this.playlist && this.playlist[this.currentIndex]) || (this.activePlaylist && this.activePlaylist[this.currentIndex]);
-        if (!curTrack) return false;
-
-        const curTrackPath = curTrack.filepath || curTrack.path || "";
-        const curAlbPath = curTrack.album_path || (this.activeAlbumPath && !this.activeAlbumPath.startsWith("system:") ? this.activeAlbumPath : "");
-
-        const catalogList = (this.allCatalog && Array.isArray(this.allCatalog.albums) && this.allCatalog.albums.length > 0)
-            ? this.allCatalog.albums
-            : (this.libraryAlbums || []);
-
-        let foundAlb = null;
-
-        // 1. Recherche par chemin d'album
-        if (curAlbPath && curAlbPath !== "system:all-collection" && curAlbPath !== "system:search-results") {
-            const normPath = curAlbPath.replace(/\\/g, "/").toLowerCase();
-            foundAlb = catalogList.find(a => (a.path || "").replace(/\\/g, "/").toLowerCase() === normPath);
-        }
-
-        // 2. Recherche par chemin de fichier de la piste
-        if (!foundAlb && curTrackPath) {
-            const normFp = curTrackPath.replace(/\\/g, "/").toLowerCase();
-            foundAlb = catalogList.find(a => (a.tracks || []).some(t => ((t.filepath || t.path || "").replace(/\\/g, "/").toLowerCase() === normFp)));
-        }
-
-        // 3. Recherche par titre et artiste d'album
-        if (!foundAlb && curTrack.album) {
-            const albTitleNorm = (curTrack.album || "").toLowerCase().trim();
-            const artNorm = (curTrack.artist || "").toLowerCase().trim();
-            foundAlb = catalogList.find(a => (a.title || "").toLowerCase().trim() === albTitleNorm && (!artNorm || (a.artist || "").toLowerCase().trim() === artNorm));
-            if (!foundAlb) {
-                foundAlb = catalogList.find(a => (a.title || "").toLowerCase().trim() === albTitleNorm);
-            }
-        }
-
-        // 4. Si pas trouvé dans allCatalog mais curAlbPath existe, essayer via albumInfoCache ou API
-        let albumInfo = null;
-        if (foundAlb && Array.isArray(foundAlb.tracks) && foundAlb.tracks.length > 0) {
-            albumInfo = {
-                album_name: foundAlb.title,
-                album_artist: foundAlb.artist,
-                year: foundAlb.year || "",
-                genre: foundAlb.genre || "",
-                path: foundAlb.path,
-                cover_url: foundAlb.cover_url,
-                is_video: foundAlb.is_video,
-                is_concert: foundAlb.is_concert,
-                tracks: foundAlb.tracks
-            };
-        } else if (curAlbPath && curAlbPath !== "system:all-collection" && curAlbPath !== "system:search-results") {
-            if (this.albumInfoCache && this.albumInfoCache.has(curAlbPath)) {
-                albumInfo = this.albumInfoCache.get(curAlbPath);
-                albumInfo.path = curAlbPath;
-            } else {
-                try {
-                    const res = await fetch(`/api/album/info?path=${encodeURIComponent(curAlbPath)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && Array.isArray(data.tracks)) {
-                            albumInfo = data;
-                            albumInfo.path = curAlbPath;
-                            if (!this.albumInfoCache) this.albumInfoCache = new Map();
-                            this.albumInfoCache.set(curAlbPath, data);
-                        }
-                    }
-                } catch (e) {
-                    console.warn("Erreur fetch album-info pour remapCurrentTrackToAlbum:", e);
-                }
-            }
-        }
-
-        if (!albumInfo || !Array.isArray(albumInfo.tracks) || albumInfo.tracks.length === 0) {
-            return false;
-        }
-
-        const albPathFinal = albumInfo.path || curAlbPath;
-        const folderName = albPathFinal.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "Album";
-        const coverUrl = albumInfo.cover_url || `/api/audio/cover?path=${encodeURIComponent(albPathFinal)}&t=${Date.now()}`;
-
-        const rawTracks = albumInfo.tracks.slice().sort((a, b) => {
-            const na = parseInt(a.track_number, 10) || 0;
-            const nb = parseInt(b.track_number, 10) || 0;
-            return na - nb;
-        });
-
-        const albTracks = rawTracks.map((t, idx) => {
-            const fp = t.filepath || t.path || "";
-            const ext = fp.substring(fp.lastIndexOf(".")).toUpperCase().replace(".", "");
-            const isVid = Boolean(t.is_video || t.type === "video" || ext === "MP4" || ext === "MKV" || ext === "WEBM");
-            return {
-                id: `track-${albPathFinal}-${idx}`,
-                title: t.title || t.filename || `Piste ${idx + 1}`,
-                artist: t.artist || albumInfo.album_artist || "Artiste inconnu",
-                album: albumInfo.album_name || albumInfo.title || folderName,
-                album_path: albPathFinal,
-                track_number: t.track_number || (idx + 1),
-                duration: t.duration || "--:--",
-                duration_seconds: t.duration_seconds || 0,
-                filepath: fp,
-                path: fp,
-                rel_path: fp,
-                format: ext || t.format || "M4A",
-                stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
-                cover_url: coverUrl,
-                thumbnail_url: coverUrl,
-                type: isVid ? "video" : "audio"
-            };
-        });
-
-        let trackIdxInAlb = -1;
-        const normCurFp = curTrackPath.replace(/\\/g, "/").toLowerCase();
-        if (normCurFp) {
-            trackIdxInAlb = albTracks.findIndex(t => (t.filepath || t.path || "").replace(/\\/g, "/").toLowerCase() === normCurFp);
-        }
-        if (trackIdxInAlb < 0 && curTrack.title) {
-            const curTitle = curTrack.title.toLowerCase().trim();
-            trackIdxInAlb = albTracks.findIndex(t => (t.title || "").toLowerCase().trim() === curTitle);
-        }
-        if (trackIdxInAlb < 0) trackIdxInAlb = 0;
-
-        this.currentAlbum = {
-            title: albumInfo.album_name || albumInfo.title || folderName,
-            artist: albumInfo.album_artist || albumInfo.artist || "Artiste inconnu",
-            year: albumInfo.year || "",
-            genre: albumInfo.genre || "",
-            cover_url: coverUrl,
-            path: albPathFinal,
-            is_collection: (this.librarySource === "library"),
-            is_video: Boolean(albumInfo.is_video),
-            is_concert: Boolean(albumInfo.is_concert)
-        };
-        this.activeAlbumPath = albPathFinal;
-        this.playlist = albTracks;
-        this.activePlaylist = albTracks.slice();
-        this.currentIndex = trackIdxInAlb;
-        this.playbackContext = {
-            album: this.currentAlbum,
-            playlist: albTracks.slice(),
-            currentIndex: trackIdxInAlb
-        };
-        this.isUserPlaylistActive = false;
-
-        if (!this.playbackOrigin || this.currentView === "all") {
-            this.playbackOrigin = { view: "all", type: "all", path: albPathFinal };
-        }
-
-        this.renderPlayerTab();
-        if (this.currentView === "all" && typeof this.updateActiveTrackInAllContainer === "function") {
-            this.updateActiveTrackInAllContainer();
-        }
-        if (this.isQueueDrawerOpen) this.renderQueueDrawer();
-        this.updatePlayStateUI();
-
-        return true;
-    },
-
-    expandCurrentTrackToAllCollection() {
-        const curTrack = (this.playlist && this.playlist[this.currentIndex]) || (this.activePlaylist && this.activePlaylist[this.currentIndex]);
-        const curTrackPath = curTrack ? (curTrack.filepath || curTrack.path || "") : "";
-
-        const catalogAlbums = (this.allCatalog && Array.isArray(this.allCatalog.albums) && this.allCatalog.albums.length > 0)
-            ? this.allCatalog.albums
-            : (this.libraryAlbums || []);
-
-        if (!catalogAlbums || catalogAlbums.length === 0) return false;
-
-        let allTracks = [];
-        for (const alb of catalogAlbums) {
-            const cover = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
-            const albTitle = alb.title || "";
-            const albArtist = alb.artist || "";
-            const albPath = alb.path || "";
-            for (let idx = 0; idx < (alb.tracks || []).length; idx++) {
-                const t = alb.tracks[idx];
-                const fp = t.filepath || t.path || "";
-                allTracks.push({
-                    id: `collection-${albPath}-${idx}`,
-                    type: "audio",
-                    title: t.title || `Piste ${idx + 1}`,
-                    artist: t.artist || albArtist,
-                    album: t.album || albTitle,
-                    album_path: albPath,
-                    duration: t.duration || "--:--",
-                    duration_seconds: t.duration_seconds || 0,
-                    path: fp,
-                    filepath: fp,
-                    rel_path: fp,
-                    stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
-                    cover_url: cover,
-                    thumbnail_url: cover,
-                    track_number: t.track_number || (idx + 1),
-                    format: t.format || "M4A"
-                });
-            }
-        }
-
-        if (allTracks.length === 0) return false;
-
-        // Mélange Fisher-Yates
-        for (let i = allTracks.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allTracks[i], allTracks[j]] = [allTracks[j], allTracks[i]];
-        }
-
-        // Morceau actuel positionné en tête
-        let foundIdx = -1;
-        if (curTrackPath) {
-            const normCur = curTrackPath.replace(/\\/g, "/").toLowerCase();
-            foundIdx = allTracks.findIndex(t => (t.path || t.filepath || "").replace(/\\/g, "/").toLowerCase() === normCur);
-        }
-        if (foundIdx >= 0) {
-            const [current] = allTracks.splice(foundIdx, 1);
-            allTracks.unshift(current);
-        }
-
-        this.playlist = allTracks;
-        this.activePlaylist = allTracks.slice();
-        this.currentIndex = 0;
-        this.currentAlbum = {
-            title: "🌍 Toute la Collection",
-            artist: `${catalogAlbums.length} albums • ${allTracks.length} pistes`,
-            year: "",
-            genre: "Collection",
-            cover_url: curTrack?.cover_url || allTracks[0]?.cover_url || "/static/placeholder-cover.svg",
-            path: "system:all-collection",
-            is_playlist: true,
-            is_collection: true
-        };
-        this.activeAlbumPath = this.currentAlbum.path;
-        this.playbackContext = {
-            album: this.currentAlbum,
-            playlist: allTracks.slice(),
-            currentIndex: 0
-        };
-        this.isUserPlaylistActive = true;
-
-        this.renderPlayerTab();
-        if (this.currentView === "all" && typeof this.updateActiveTrackInAllContainer === "function") {
-            this.updateActiveTrackInAllContainer();
-        }
-        if (this.isQueueDrawerOpen) this.renderQueueDrawer();
-        this.updatePlayStateUI();
-
-        return true;
     },
 
     async toggleShuffle() {
@@ -9046,8 +8817,8 @@ const AudioPlayer = {
         };
 
         if (this.isPlaying && this.audio && !this.audio.paused && AudioFader.enabled) {
-            AudioFader.fadeOut(this.audio, 280).then(() => {
-                startPlayback();
+            AudioFader.fadeOut(this.audio, 280).then((completed) => {
+                if (completed !== false) startPlayback();
             });
         } else {
             startPlayback();

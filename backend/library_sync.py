@@ -98,13 +98,9 @@ def set_library_updated_callback(cb: Callable[[], None]):
     _global_library_updated_callback = cb
 
 def sanitize_name(s: str) -> str:
-    """Nettoie un nom de dossier ou de fichier pour le système de fichiers Windows."""
-    if not s:
-        return "Inconnu"
-    clean = re.sub(r'[<>:"/\\|?*]', '_', str(s)).strip().strip('.')
-    # Supprimer les underscores multiples ou espaces résiduels
-    clean = re.sub(r'\s+', ' ', clean)
-    return clean if clean else "Inconnu"
+    """Nettoie un nom de dossier ou de fichier pour le système de fichiers Windows (y compris noms réservés)."""
+    res = sanitize_folder_name(s)
+    return res if res else "Inconnu"
 
 def _is_file_accessible(path: Path) -> bool:
     """Vérifie si un fichier n'est pas verrouillé par une copie Windows en cours."""
@@ -177,27 +173,46 @@ def _cleanup_empty_dirs(root_dir: Path):
 
 def _compute_structure_fingerprint(library_dir: Path) -> Optional[Tuple]:
     """
-    Calcule une empreinte ultra-légère (< 5ms) de la structure artiste/album.
-    Seuls les noms de dossiers et le nombre de sous-entrées sont utilisés —
-    aucun fichier audio n'est ouvert. Utilisée pour détecter si la structure
-    a changé depuis le dernier sync propre.
+    Calcule une empreinte ultra-légère (< 5ms) de la structure artiste/album,
+    ainsi que des fichiers en vrac à la racine, dans _imports ou dans les dossiers artistes.
+    Utilisée pour détecter si la structure a changé depuis le dernier sync propre.
     """
     if not library_dir.is_dir():
         return None
     entries = []
+    root_loose_files = []
     try:
         with os.scandir(str(library_dir)) as it:
-            for artist in sorted(it, key=lambda e: e.name):
-                if not artist.is_dir() or artist.name.startswith(".") or artist.name.lower() == "_imports":
+            for entry in sorted(it, key=lambda e: e.name):
+                if entry.name.startswith("."):
+                    continue
+                if entry.is_file():
+                    if entry.name.lower() not in {"desktop.ini", "thumbs.db", "ehthumbs.db"}:
+                        root_loose_files.append(entry.name)
+                    continue
+                if not entry.is_dir():
+                    continue
+                if entry.name.lower() == "_imports":
+                    try:
+                        imp_items = tuple(sorted(
+                            e.name for e in os.scandir(entry.path)
+                            if not e.name.startswith(".") and e.name.lower() not in {"desktop.ini", "thumbs.db", "ehthumbs.db"}
+                        ))
+                        if imp_items:
+                            entries.append(("_imports", imp_items))
+                    except Exception:
+                        pass
                     continue
                 try:
-                    album_names = tuple(sorted(
-                        e.name for e in os.scandir(artist.path)
-                        if os.path.isdir(os.path.join(artist.path, e.name)) and not e.name.startswith(".")
+                    sub_entries = tuple(sorted(
+                        e.name for e in os.scandir(entry.path)
+                        if not e.name.startswith(".") and e.name.lower() not in {"desktop.ini", "thumbs.db", "ehthumbs.db"}
                     ))
-                    entries.append((artist.name, album_names))
+                    entries.append((entry.name, sub_entries))
                 except Exception:
-                    entries.append((artist.name, ()))
+                    entries.append((entry.name, ()))
+        if root_loose_files:
+            entries.insert(0, ("__root_files__", tuple(root_loose_files)))
     except Exception:
         return None
     return tuple(entries)

@@ -12,24 +12,33 @@ function isCustomModalOpen() {
 }
 window.isCustomModalOpen = isCustomModalOpen;
 
+let _customModalGen = 0;
+
 // ===================================================
 // Modale Alert Personnalisée
 // ===================================================
 function showModalAlert(title, message, type = "info") {
     return new Promise((resolve) => {
+        const myGen = ++_customModalGen;
         const backdrop = document.getElementById("custom-modal-backdrop");
         const titleEl = document.getElementById("modal-title");
         const msgEl = document.getElementById("modal-message");
         const iconBox = document.getElementById("modal-icon-box");
+        const inputEl = document.getElementById("modal-input");
         const btnCancel = document.getElementById("modal-btn-cancel");
         const btnConfirm = document.getElementById("modal-btn-confirm");
+        const btnExtra = document.getElementById("modal-btn-extra");
 
         titleEl.textContent = title;
         msgEl.textContent = message;
         iconBox.className = `modal-icon-box icon-${type}`;
         iconBox.innerHTML = (window.ICONS_SVG && window.ICONS_SVG[type]) || (window.ICONS_SVG && window.ICONS_SVG.info) || "";
 
+        if (inputEl) inputEl.style.display = "none";
+        if (btnExtra) btnExtra.style.display = "none";
+
         btnCancel.style.display = "none";
+        btnConfirm.style.display = "inline-flex";
         btnConfirm.textContent = "OK";
         btnConfirm.className = "btn btn-primary";
 
@@ -38,11 +47,15 @@ function showModalAlert(title, message, type = "info") {
         backdrop.classList.add("active");
 
         function cleanup(result) {
-            backdrop.classList.remove("active");
-            setTimeout(() => {
-                backdrop.style.display = "none";
-            }, 200);
             btnConfirm.removeEventListener("click", onConfirm);
+            if (_customModalGen === myGen) {
+                backdrop.classList.remove("active");
+                setTimeout(() => {
+                    if (_customModalGen === myGen) {
+                        backdrop.style.display = "none";
+                    }
+                }, 200);
+            }
             resolve(result);
         }
 
@@ -59,12 +72,14 @@ window.showModalAlert = showModalAlert;
 // ===================================================
 function showModalConfirm(title, message, confirmText = "Confirmer", isDanger = false, cancelText = "Annuler") {
     return new Promise((resolve) => {
+        const myGen = ++_customModalGen;
         const backdrop = document.getElementById("custom-modal-backdrop");
         const titleEl = document.getElementById("modal-title");
         const msgEl = document.getElementById("modal-message");
         const iconBox = document.getElementById("modal-icon-box");
         const btnCancel = document.getElementById("modal-btn-cancel");
         const btnConfirm = document.getElementById("modal-btn-confirm");
+        const btnExtra = document.getElementById("modal-btn-extra");
 
         const type = isDanger ? "danger" : "warning";
         titleEl.textContent = title;
@@ -74,9 +89,11 @@ function showModalConfirm(title, message, confirmText = "Confirmer", isDanger = 
 
         const inputEl = document.getElementById("modal-input");
         if (inputEl) inputEl.style.display = "none";
+        if (btnExtra) btnExtra.style.display = "none";
 
         btnCancel.style.display = "inline-flex";
         btnCancel.textContent = cancelText;
+        btnConfirm.style.display = "inline-flex";
         btnConfirm.textContent = confirmText;
         btnConfirm.className = isDanger ? "btn btn-danger" : "btn btn-primary";
 
@@ -85,13 +102,17 @@ function showModalConfirm(title, message, confirmText = "Confirmer", isDanger = 
         backdrop.classList.add("active");
 
         function cleanup(result) {
-            backdrop.classList.remove("active");
-            setTimeout(() => {
-                backdrop.style.display = "none";
-                btnCancel.textContent = "Annuler";
-            }, 200);
             btnConfirm.removeEventListener("click", onConfirm);
             btnCancel.removeEventListener("click", onCancel);
+            if (_customModalGen === myGen) {
+                backdrop.classList.remove("active");
+                setTimeout(() => {
+                    if (_customModalGen === myGen) {
+                        backdrop.style.display = "none";
+                        btnCancel.textContent = "Annuler";
+                    }
+                }, 200);
+            }
             resolve(result);
         }
 
@@ -110,6 +131,7 @@ window.showModalConfirm = showModalConfirm;
 // ===================================================
 function showModalPrompt(title, message, defaultValue = "", placeholder = "") {
     return new Promise((resolve) => {
+        const myGen = ++_customModalGen;
         const backdrop = document.getElementById("custom-modal-backdrop");
         const titleEl = document.getElementById("modal-title");
         const msgEl = document.getElementById("modal-message");
@@ -117,12 +139,14 @@ function showModalPrompt(title, message, defaultValue = "", placeholder = "") {
         const inputEl = document.getElementById("modal-input");
         const btnCancel = document.getElementById("modal-btn-cancel");
         const btnConfirm = document.getElementById("modal-btn-confirm");
+        const btnExtra = document.getElementById("modal-btn-extra");
 
         titleEl.textContent = title;
         msgEl.textContent = message;
         iconBox.className = "modal-icon-box icon-info";
         iconBox.innerHTML = (window.ICONS_SVG && window.ICONS_SVG.info) || "";
 
+        if (btnExtra) btnExtra.style.display = "none";
         if (inputEl) {
             inputEl.style.display = "block";
             inputEl.value = defaultValue;
@@ -131,6 +155,7 @@ function showModalPrompt(title, message, defaultValue = "", placeholder = "") {
 
         btnCancel.style.display = "inline-flex";
         btnCancel.textContent = "Annuler";
+        btnConfirm.style.display = "inline-flex";
         btnConfirm.textContent = "Valider";
         btnConfirm.className = "btn btn-primary";
 
@@ -140,23 +165,29 @@ function showModalPrompt(title, message, defaultValue = "", placeholder = "") {
 
         if (inputEl) {
             setTimeout(() => {
-                inputEl.focus();
-                inputEl.select();
+                if (_customModalGen === myGen) {
+                    inputEl.focus();
+                    inputEl.select();
+                }
             }, 60);
         }
 
         function cleanup(result) {
-            backdrop.classList.remove("active");
-            setTimeout(() => {
-                backdrop.style.display = "none";
-                if (inputEl) {
-                    inputEl.style.display = "none";
-                    inputEl.value = "";
-                }
-            }, 200);
             btnConfirm.removeEventListener("click", onConfirm);
             btnCancel.removeEventListener("click", onCancel);
             if (inputEl) inputEl.removeEventListener("keydown", onKeyDown);
+            if (_customModalGen === myGen) {
+                backdrop.classList.remove("active");
+                setTimeout(() => {
+                    if (_customModalGen === myGen) {
+                        backdrop.style.display = "none";
+                        if (inputEl) {
+                            inputEl.style.display = "none";
+                            inputEl.value = "";
+                        }
+                    }
+                }, 200);
+            }
             resolve(result);
         }
 
@@ -187,6 +218,7 @@ window.showModalPrompt = showModalPrompt;
 // ===================================================
 function showModalChoice3(title, message, confirmText = "Confirmer", cancelText = "Annuler", extraText = "Extra", isDangerExtra = true) {
     return new Promise((resolve) => {
+        const myGen = ++_customModalGen;
         const backdrop = document.getElementById("custom-modal-backdrop");
         const titleEl = document.getElementById("modal-title");
         const msgEl = document.getElementById("modal-message");
@@ -222,18 +254,22 @@ function showModalChoice3(title, message, confirmText = "Confirmer", cancelText 
         backdrop.classList.add("active");
 
         function cleanup(result) {
-            backdrop.classList.remove("active");
-            setTimeout(() => {
-                backdrop.style.display = "none";
-                if (btnExtra) {
-                    btnExtra.style.display = "none";
-                    btnExtra.textContent = "Extra";
-                }
-                btnCancel.textContent = "Annuler";
-            }, 200);
             btnConfirm.removeEventListener("click", onConfirm);
             btnCancel.removeEventListener("click", onCancel);
             if (btnExtra) btnExtra.removeEventListener("click", onExtra);
+            if (_customModalGen === myGen) {
+                backdrop.classList.remove("active");
+                setTimeout(() => {
+                    if (_customModalGen === myGen) {
+                        backdrop.style.display = "none";
+                        if (btnExtra) {
+                            btnExtra.style.display = "none";
+                            btnExtra.textContent = "Extra";
+                        }
+                        btnCancel.textContent = "Annuler";
+                    }
+                }, 200);
+            }
             resolve(result);
         }
 
@@ -426,7 +462,8 @@ function showToast(message, arg2 = null, arg3 = null, arg4 = null) {
 
     container.appendChild(toast);
 
-    const duration = type === "danger" || type === "warning" ? 5500 : 4200;
+    const customDuration = (typeof arg3 === "number" && arg3 > 0) ? arg3 : null;
+    const duration = customDuration || (type === "danger" || type === "warning" ? 5500 : 4200);
     setTimeout(() => {
         if (toast.parentElement) {
             toast.style.opacity = "0";

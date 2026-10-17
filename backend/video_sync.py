@@ -61,12 +61,12 @@ def dispatch_video_notification(level: str, title: str, message: str):
             logger.debug(f"Erreur callback notification vidéo: {e}")
 
 def sanitize_folder_name(s: str) -> str:
-    """Nettoie un nom de dossier pour Windows."""
+    """Nettoie un nom de dossier pour Windows (y compris noms réservés)."""
     if not s:
         return "Clips Divers"
-    clean = re.sub(r'[<>:"/\\|?*]', '_', str(s)).strip().strip('.')
-    clean = re.sub(r'\s+', ' ', clean)
-    return clean if clean else "Clips Divers"
+    from backend.tagger import sanitize_folder_name as _tagger_sanitize
+    res = _tagger_sanitize(s)
+    return res if res else "Clips Divers"
 
 def clean_video_title(raw_title: str) -> str:
     """Retire toutes les mentions parasites des titres de clips YouTube."""

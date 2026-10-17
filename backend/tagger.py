@@ -1077,7 +1077,6 @@ def normalize_cover_artwork(
 
     try:
         from PIL import Image
-        import numpy as np
 
         with Image.open(cov) as im:
             w, h = im.size
@@ -1107,6 +1106,8 @@ def normalize_cover_artwork(
                 square_img = im.resize((h, h), Image.Resampling.LANCZOS)
 
             if square_img is not None:
+                if square_img.mode in ("RGBA", "LA", "P"):
+                    square_img = square_img.convert("RGB")
                 square_img.save(cov, "JPEG", quality=95)
                 logger.info(f"Pochette normalisée 1:1 plein carré pour l'album : {album_dir.name}")
 
@@ -1289,7 +1290,15 @@ def get_album_info(album_dir: Path | str) -> dict:
     years = [y for y in years if y]
     genres = [t["genre"] for t in tracks if t.get("genre") and not is_generic_or_empty_genre(t["genre"])]
 
-    cover_art = consolidate_album_cover(album_dir)
+    if is_single_file_mode:
+        cover_art = None
+        for ext_img in (".jpg", ".jpeg", ".png", ".webp"):
+            comp_img = p.with_suffix(ext_img)
+            if comp_img.is_file():
+                cover_art = comp_img.name
+                break
+    else:
+        cover_art = consolidate_album_cover(album_dir)
 
     is_playlist_folder = False
     saved_playlist_title = None
@@ -2138,6 +2147,10 @@ def uniformize_album(
         if all_same_artist:
             mb_track_artists = fetch_musicbrainz_track_artists_sync(final_album, final_artist)
 
+    batch_kid3_cmds: dict[Path, list[str]] = {}
+    fallback_kid3_runs: list[tuple[Path, str, list[str]]] = []
+    pending_track_ops = []
+
     for index, track in enumerate(tracks, start=1):
         old_path = Path(track["filepath"])
         ext = old_path.suffix
@@ -2222,7 +2235,7 @@ def uniformize_album(
         if is_single or is_video_category:
             track_idx = index
             track_num_str = ""
-            tag_num_cmd = ["-c", "set 'track number' ''", "-c", "set 'disc number' ''"]
+            tag_num_cmds = ["set 'track number' ''", "set 'disc number' ''"]
         elif is_playlist:
             custom_num = custom_t.get("track_number")
             if custom_num is not None:
@@ -2233,7 +2246,7 @@ def uniformize_album(
             else:
                 track_idx = index
             track_num_str = f"{track_idx:02d}/{len(tracks):02d}"
-            tag_num_cmd = ["-c", f"set 'track number' \"{track_num_str}\"", "-c", "set 'disc number' \"1/1\""]
+            tag_num_cmds = [f"set 'track number' \"{track_num_str}\"", "set 'disc number' \"1/1\""]
         else:
             custom_num = custom_t.get("track_number")
             if custom_num is not None:
@@ -2244,28 +2257,27 @@ def uniformize_album(
             else:
                 track_idx = orig_nums[index - 1] if has_valid_orig_nums else index
             track_num_str = f"{track_idx:02d}/{total_for_tag:02d}"
-            tag_num_cmd = ["-c", f"set 'track number' \"{track_num_str}\"", "-c", "set 'disc number' \"1/1\""]
+            tag_num_cmds = [f"set 'track number' \"{track_num_str}\"", "set 'disc number' \"1/1\""]
 
-        cmd = [
-            KID3_CLI_PATH,
-            "-c", f"select \"{old_path.name}\"",
-            "-c", f"set title \"{_kid3_escape(final_title)}\"",
-            "-c", f"set artist \"{_kid3_escape(track_artist)}\"",
-            "-c", f"set album \"{_kid3_escape(final_album)}\"",
-            "-c", f"set 'album artist' \"{_kid3_escape(final_artist)}\"",
-            *tag_num_cmd,
-            "-c", "set comment \"\""
+        track_cmds = [
+            f"select \"{old_path.name}\"",
+            f"set title \"{_kid3_escape(final_title)}\"",
+            f"set artist \"{_kid3_escape(track_artist)}\"",
+            f"set album \"{_kid3_escape(final_album)}\"",
+            f"set 'album artist' \"{_kid3_escape(final_artist)}\"",
+            *tag_num_cmds,
+            "set comment \"\""
         ]
 
         if (is_single or is_playlist) and track_orig_album and not is_empty_or_na(track_orig_album):
             clean_oa = track_orig_album.strip()
             if clean_oa.lower() not in {"singles & rips", "extrait vidéo", "extrait video", "na", "n/a", "unknown"}:
-                cmd.extend(["-c", f"set 'original album' \"{_kid3_escape(clean_oa)}\""])
+                track_cmds.append(f"set 'original album' \"{_kid3_escape(clean_oa)}\"")
 
         if final_year:
-            cmd.extend([
-                "-c", f"set year \"{_kid3_escape(final_year)}\"",
-                "-c", f"set date \"{_kid3_escape(final_year)}\""
+            track_cmds.extend([
+                f"set year \"{_kid3_escape(final_year)}\"",
+                f"set date \"{_kid3_escape(final_year)}\""
             ])
 
         # Détermination du genre spécifique de la piste
@@ -2286,18 +2298,65 @@ def uniformize_album(
                     track_genre = final_genre
 
         if track_genre and not is_generic_or_empty_genre(track_genre):
-            cmd.extend(["-c", f"set genre \"{_kid3_escape(track_genre)}\""])
+            track_cmds.append(f"set genre \"{_kid3_escape(track_genre)}\"")
         else:
-            cmd.extend(["-c", "set genre \"\""])
+            track_cmds.append("set genre \"\"")
 
-        cmd.extend(["-c", "save"])
+        parent_dir = old_path.parent
+        if parent_dir not in batch_kid3_cmds:
+            batch_kid3_cmds[parent_dir] = [f"cd \"{parent_dir.resolve()}\""]
+        batch_kid3_cmds[parent_dir].append("select none")
+        batch_kid3_cmds[parent_dir].extend(track_cmds)
 
+        single_cli_cmd = [KID3_CLI_PATH]
+        for c in track_cmds:
+            single_cli_cmd.extend(["-c", c])
+        single_cli_cmd.extend(["-c", "save"])
+        fallback_kid3_runs.append((parent_dir, old_path.name, single_cli_cmd))
+
+        pending_track_ops.append({
+            "old_path": old_path,
+            "ext": ext,
+            "final_title": final_title,
+            "track_idx": track_idx,
+            "track_artist": track_artist,
+            "track_num_str": track_num_str,
+            "track_genre": track_genre
+        })
+
+    # Exécution batch unique de kid3-cli par dossier parent (gain x15 par rapport à un processus par piste)
+    for parent_dir, cmds in batch_kid3_cmds.items():
+        cmds.extend(["save", "exit"])
+        input_text = "\n".join(cmds) + "\n"
         try:
-            subprocess.run(cmd, cwd=str(album_dir), capture_output=True, text=True, check=True, timeout=30)
-        except subprocess.TimeoutExpired:
-            logger.warning(f"Timeout (30s) pour kid3-cli tag sur {old_path.name}")
+            subprocess.run(
+                [KID3_CLI_PATH],
+                input=input_text,
+                cwd=str(parent_dir),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=True,
+                timeout=max(30, len(pending_track_ops) * 2)
+            )
         except Exception as e:
-            logger.error(f"kid3-cli tag sur {old_path.name}: {e}")
+            logger.warning(f"Session batch kid3-cli échouée dans {parent_dir.name} ({e}), repli par piste...")
+            for fb_dir, fb_name, fb_cmd in fallback_kid3_runs:
+                if fb_dir == parent_dir:
+                    try:
+                        subprocess.run(fb_cmd, cwd=str(fb_dir), capture_output=True, text=True, check=True, timeout=30)
+                    except Exception as sub_e:
+                        logger.error(f"kid3-cli tag sur {fb_name}: {sub_e}")
+
+    for op in pending_track_ops:
+        old_path = op["old_path"]
+        ext = op["ext"]
+        final_title = op["final_title"]
+        track_idx = op["track_idx"]
+        track_artist = op["track_artist"]
+        track_num_str = op["track_num_str"]
+        track_genre = op["track_genre"]
 
         new_path = old_path
         if rename_files:
@@ -2317,16 +2376,16 @@ def uniformize_album(
             else:
                 new_filename = naming_pattern.format(track=track_idx, title=safe_title) + ext
 
-            new_path = album_dir / new_filename
+            new_path = old_path.parent / new_filename
             if new_path != old_path:
                 try:
                     if new_path.exists() and new_path.resolve() != old_path.resolve():
                         new_filename = f"{new_path.stem}_2{ext}"
-                        new_path = album_dir / new_filename
+                        new_path = old_path.parent / new_filename
                     if not new_path.exists():
                         old_path.rename(new_path)
                     else:
-                        temp_path = album_dir / f"__temp_{track_idx if not is_single else 1}{ext}"
+                        temp_path = old_path.parent / f"__temp_{track_idx if not is_single else 1}{ext}"
                         old_path.rename(temp_path)
                         temp_path.rename(new_path)
                 except Exception as e:

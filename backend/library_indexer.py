@@ -813,27 +813,32 @@ class LibraryIndexer:
         }
 
     def _rebuild_index(self):
-        """Reconstruit la table de hachage par artiste et par titre de morceau (exact et base)."""
-        self.artists_map.clear()
-        self._tracks_by_title.clear()
-        self._tracks_by_base.clear()
-        for alb in self.albums:
+        """Reconstruit la table de hachage par artiste et par titre de morceau (exact et base) de manière thread-safe (swap atomique)."""
+        new_artists_map: Dict[str, List[IndexedAlbum]] = {}
+        new_tracks_by_title: Dict[str, List[Tuple[IndexedAlbum, IndexedTrack]]] = {}
+        new_tracks_by_base: Dict[str, List[Tuple[IndexedAlbum, IndexedTrack]]] = {}
+
+        for alb in list(self.albums):
             key = alb.norm_artist or "inconnu"
-            if key not in self.artists_map:
-                self.artists_map[key] = []
-            self.artists_map[key].append(alb)
+            if key not in new_artists_map:
+                new_artists_map[key] = []
+            new_artists_map[key].append(alb)
 
             for tr in getattr(alb, "tracks", []):
                 if tr.norm_title:
-                    if tr.norm_title not in self._tracks_by_title:
-                        self._tracks_by_title[tr.norm_title] = []
-                    self._tracks_by_title[tr.norm_title].append((alb, tr))
+                    if tr.norm_title not in new_tracks_by_title:
+                        new_tracks_by_title[tr.norm_title] = []
+                    new_tracks_by_title[tr.norm_title].append((alb, tr))
 
                 base_t = getattr(tr, "base_title", None) or extract_base_title(tr.title or tr.norm_title)
                 if base_t:
-                    if base_t not in self._tracks_by_base:
-                        self._tracks_by_base[base_t] = []
-                    self._tracks_by_base[base_t].append((alb, tr))
+                    if base_t not in new_tracks_by_base:
+                        new_tracks_by_base[base_t] = []
+                    new_tracks_by_base[base_t].append((alb, tr))
+
+        self.artists_map = new_artists_map
+        self._tracks_by_title = new_tracks_by_title
+        self._tracks_by_base = new_tracks_by_base
 
     def ensure_tracks_indexed(self, force: bool = False):
         """S'assure que les morceaux de tous les albums sont extraits et indexés."""

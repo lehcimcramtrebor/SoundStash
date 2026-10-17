@@ -177,7 +177,7 @@ class PlaylistManager:
         results.sort(key=lambda p: p.get("updated_at", 0), reverse=True)
         return results
 
-    def get_playlist(self, playlist_id: str, library_albums: Optional[List[Dict[str, Any]]] = None, video_indexer: Any = None) -> Optional[Dict[str, Any]]:
+    def get_playlist(self, playlist_id: str, library_albums: Optional[List[Dict[str, Any]]] = None, video_indexer: Any = None, _skip_refresh: bool = False) -> Optional[Dict[str, Any]]:
         """Retourne le contenu exhaustif d'une playlist avec ses pistes. Pour les Smart Playlists, filtre dynamiquement les pistes dont les fichiers ont été supprimés du disque."""
         p_file = self._get_playlist_path(playlist_id)
         if not p_file.exists():
@@ -212,8 +212,12 @@ class PlaylistManager:
                 valid_items = [it for it in items if item_file_exists(it)]
                 has_deleted = len(valid_items) < len(items)
                 criteria = data.get("smart_criteria") or {}
-                target_limit = int(criteria.get("limit") or 25)
-                need_refill = has_deleted or (len(valid_items) < target_limit)
+                raw_limit = criteria.get("limit")
+                try:
+                    target_limit = int(raw_limit) if raw_limit is not None else 25
+                except (ValueError, TypeError):
+                    target_limit = 25
+                need_refill = (not _skip_refresh) and (has_deleted or (target_limit > 0 and len(valid_items) < target_limit))
 
                 if need_refill:
                     if has_deleted:
@@ -780,7 +784,7 @@ class PlaylistManager:
             for v in all_videos:
                 if v.get("video_type") == "concert" or v.get("is_concert"):
                     continue
-                vp = v.get("path", "")
+                vp = v.get("filepath") or v.get("path") or ""
                 if not vp:
                     continue
                 try:
@@ -797,7 +801,8 @@ class PlaylistManager:
                     "duration": v.get("duration", 0),
                     "duration_str": v.get("duration_str", "0:00"),
                     "path": vp,
-                    "cover_url": v.get("thumbnail_url") or "/static/placeholder-cover.svg"
+                    "cover_url": v.get("thumbnail_url") or "/static/placeholder-cover.svg",
+                    "thumbnail_url": v.get("thumbnail_url") or "/static/placeholder-cover.svg"
                 })
             random.shuffle(v_items)
             selected_items = v_items if is_unlimited else v_items[:limit]
@@ -909,7 +914,7 @@ class PlaylistManager:
             return None
 
         if not data.get("is_smart"):
-            return self.get_playlist(playlist_id, library_albums=library_albums, video_indexer=video_indexer)
+            return self.get_playlist(playlist_id, library_albums=library_albums, video_indexer=video_indexer, _skip_refresh=True)
 
         smart_type = data.get("smart_type") or "top_played"
         smart_criteria = data.get("smart_criteria", {})
@@ -921,13 +926,15 @@ class PlaylistManager:
             video_indexer=video_indexer
         )
         data["items"] = new_items
+        if not smart_criteria.get("description") and desc:
+            data["description"] = desc
         data["updated_at"] = int(time.time())
 
         with open(p_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
         logger.info(f"Smart Playlist actualisée sur place (sans doublon) : '{data['name']}' ({playlist_id}) avec {len(new_items)} pistes")
-        return self.get_playlist(playlist_id, library_albums=library_albums, video_indexer=video_indexer)
+        return self.get_playlist(playlist_id, library_albums=library_albums, video_indexer=video_indexer, _skip_refresh=True)
 
     def remap_album_paths(self, old_dir: str | Path, new_dir: str | Path) -> int:
         """Remappe les chemins des pistes dans toutes les playlists personnalisées lors d'un renommage d'album."""

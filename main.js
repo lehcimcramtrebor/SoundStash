@@ -159,6 +159,7 @@ ipcMain.handle('open-external', async (event, url) => {
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
+    process.exit(0);
 }
 
 let mainWindow = null;
@@ -1063,22 +1064,26 @@ function createMainWindow(port) {
     });
 }
 
-// Fermeture propre du backend Python
+// Fermeture propre du backend Python (et de tout son arbre de sous-processus yt-dlp/ffmpeg)
 function killPythonServer() {
     if (pythonProcess && pythonProcess.pid) {
-        console.log('[Electron] Arrêt du serveur Python...');
+        const pid = pythonProcess.pid;
+        pythonProcess = null;
+        console.log(`[Electron] Arrêt de l'arbre serveur Python (PID ${pid})...`);
         try {
             if (process.platform === 'win32') {
-                exec(`taskkill /pid ${pythonProcess.pid} /F`, (err) => {
-                    if (err) console.warn('[Electron] Info taskkill:', err.message);
-                });
+                const { execSync } = require('child_process');
+                try {
+                    execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore', windowsHide: true, timeout: 4000 });
+                } catch (err) {
+                    // Processus déjà terminé
+                }
             } else {
-                pythonProcess.kill('SIGTERM');
+                process.kill(pid, 'SIGTERM');
             }
         } catch (e) {
             console.error('[Electron] Erreur arrêt Python:', e);
         }
-        pythonProcess = null;
     }
 }
 

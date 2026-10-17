@@ -33,7 +33,7 @@ async def find_missing_albums_for_artist(artist_name: str, browse_id: Optional[s
     # 1. Si pas de browse_id fourni, rechercher la chaîne officielle de l'artiste
     if not browse_id:
         try:
-            search_res = await search_ytm_innertube(clean_artist, filter_type="artists")
+            search_res = await search_ytm_innertube(clean_artist, filter_type="artist")
             items = search_res.get("results", [])
             for it in items:
                 if it.get("type") == "artist" and it.get("id"):

@@ -1698,7 +1698,9 @@ function setupEditorActions() {
                 conflictPolicy
             );
             if (!chosenPolicy) {
-                // Annulé par l'utilisateur
+                // Annulé par l'utilisateur : restaurer l'état du bouton s'il avait été grisé par la sauvegarde préalable
+                confirmExportBtn.disabled = false;
+                confirmExportBtn.textContent = "Exporter l'Album";
                 return;
             }
             conflictPolicy = chosenPolicy;
@@ -2130,7 +2132,11 @@ function setupEditorActions() {
                     : `Exporter les ${tempAlbumsList.length} album(s) du dossier temporaire vers votre dossier d'exportation ?\n\n📁 Destination : ${targetDir}\n\nChaque album sera classé en Artiste / Album et le dossier temporaire sera vidé.`,
                 isSmartActive ? "Confirmer l'Export Intelligent" : "Tout exporter"
             );
-            if (!confirmed) return;
+            if (!confirmed) {
+                exportAllEditorBtn.disabled = false;
+                exportAllEditorBtn.innerHTML = `<span class="icon-svg"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span> Tout exporter`;
+                return;
+            }
             if (Array.isArray(tempAlbumsList)) {
                 tempAlbumsList.forEach(a => releaseMediaHandlesForPath(a.path));
             }

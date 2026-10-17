@@ -25,32 +25,7 @@ YTM_HEADERS = {
     "Content-Type": "application/json"
 }
 
-def clean_artist_name(artist: Optional[str]) -> str:
-    """
-    Nettoie un nom d'artiste en éliminant les suffixes auto-générés par YouTube
-    tels que ' - Topic', ' - Thème', ' - Theme', ' (Topic)' ainsi que les mentions
-    parasites de chaînes officielles telles que ' [Officiel]', ' (Officiel)', ' Officiel',
-    ' [Official]', ' - Official', ' VEVO', etc.
-    """
-    if not artist:
-        return ""
-    s = str(artist).strip()
-    cleaned = re.sub(
-        r"\s*(?:[\-–—:\/]\s*|[\(\[])\s*(?:topic|th[eè]me|theme|officiel|official|clip\s+officiel|cha[iî]ne\s+officielle|official\s+channel)\s*[\)\]]?\s*$",
-        "",
-        s,
-        flags=re.IGNORECASE
-    ).strip()
-    cleaned = re.sub(
-        r"\s+(?:officiel|official|topic|th[eè]me|theme)\s*$",
-        "",
-        cleaned,
-        flags=re.IGNORECASE
-    ).strip()
-    cleaned = re.sub(r"\s+vevo\s*$", "", cleaned, flags=re.IGNORECASE).strip()
-    if cleaned.lower().endswith("vevo") and len(cleaned) > 5 and not cleaned.lower().startswith("vevo"):
-        cleaned = cleaned[:-4].strip()
-    return cleaned if cleaned else s
+from backend.tagger import clean_artist_name
 
 def extract_ytm_browse_id(url_or_id: Optional[str]) -> Optional[str]:
     """

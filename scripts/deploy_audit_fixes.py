@@ -23,22 +23,13 @@ files_to_sync = [
     ("frontend/soundstash_logo.png", "frontend/soundstash_logo.png"),
     ("build/icon.ico", "build/icon.ico"),
     ("build/icon.png", "build/icon.png"),
-    ("backend/library_indexer.py", "backend/library_indexer.py"),
-    ("backend/library_sync.py", "backend/library_sync.py"),
-    ("backend/video_sync.py", "backend/video_sync.py"),
-    ("backend/library_migrator.py", "backend/library_migrator.py"),
-    ("backend/config.py", "backend/config.py"),
-    ("backend/app.py", "backend/app.py"),
-    ("backend/playlist_manager.py", "backend/playlist_manager.py"),
-    ("backend/playback_stats.py", "backend/playback_stats.py"),
-    ("backend/video_indexer.py", "backend/video_indexer.py"),
-    ("backend/tool_updater.py", "backend/tool_updater.py"),
-    ("backend/logger.py", "backend/logger.py"),
-    ("backend/genre_service.py", "backend/genre_service.py"),
-    ("backend/tagger.py", "backend/tagger.py"),
-    ("backend/downloader.py", "backend/downloader.py"),
-    ("backend/exporter.py", "backend/exporter.py"),
 ]
+
+# Ajouter dynamiquement tous les modules Python du backend
+backend_dir = ROOT / "backend"
+if backend_dir.exists():
+    for f in sorted(backend_dir.glob("*.py")):
+        files_to_sync.append((f"backend/{f.name}", f"backend/{f.name}"))
 
 # Ajouter dynamiquement toutes les pochettes vectorielles
 covers_dir = ROOT / "frontend" / "playlist_covers"

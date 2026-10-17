@@ -17,8 +17,9 @@ from typing import Dict, Any, Optional
 import httpx
 
 from backend.config import config, CONFIG_DIR, TEMP_DOWNLOAD_DIR, APP_VERSION
+from backend.logger import get_logger
 
-logger = logging.getLogger("soundstash_updater")
+logger = get_logger(__name__)
 
 def get_current_app_version() -> str:
     """Récupère la version actuelle depuis APP_VERSION."""

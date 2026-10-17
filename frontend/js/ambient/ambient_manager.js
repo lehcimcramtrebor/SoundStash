@@ -353,24 +353,18 @@ const AmbientVisualizer = {
                 }
             });
             seekBar.addEventListener("change", () => {
+                if (window.AudioPlayer) window.AudioPlayer.isSeeking = false;
                 const videoPlayer = document.getElementById("video-modal-player");
                 if (currentModalVideoItem && videoPlayer && videoPlayer.duration) {
                     videoPlayer.currentTime = (seekBar.value / 100) * videoPlayer.duration;
-                } else if (window.AudioPlayer) {
-                    window.AudioPlayer.isSeeking = false;
-                    if (window.AudioPlayer.audio && window.AudioPlayer.audio.duration) {
-                        window.AudioPlayer.audio.currentTime = (seekBar.value / 100) * window.AudioPlayer.audio.duration;
-                    }
+                } else if (window.AudioPlayer && window.AudioPlayer.audio && window.AudioPlayer.audio.duration) {
+                    window.AudioPlayer.audio.currentTime = (seekBar.value / 100) * window.AudioPlayer.audio.duration;
                 }
             });
         }
 
         // Détection de l'activité utilisateur pour l'auto-masquage cinématique (3.5 secondes)
-        const activityHandler = () => this.handleUserActivity();
-        window.addEventListener("mousemove", activityHandler, { passive: true });
-        window.addEventListener("mousedown", activityHandler, { passive: true });
-        window.addEventListener("keydown", activityHandler, { passive: true });
-        window.addEventListener("touchstart", activityHandler, { passive: true });
+        this._activityHandler = () => this.handleUserActivity();
     },
 
     enter() {
@@ -398,6 +392,12 @@ const AmbientVisualizer = {
         this._originAlbumPathBeforeAmbient = (player && player.isAlbumDetailOpen) ? player.detailAlbumPath : null;
 
         this.isActive = true;
+        if (this._activityHandler) {
+            window.addEventListener("mousemove", this._activityHandler, { passive: true });
+            window.addEventListener("mousedown", this._activityHandler, { passive: true });
+            window.addEventListener("keydown", this._activityHandler, { passive: true });
+            window.addEventListener("touchstart", this._activityHandler, { passive: true });
+        }
         document.body.classList.add("ambient-mode-active");
         if (this.isDockPinned) {
             document.body.classList.add("ambient-dock-pinned");
@@ -438,6 +438,12 @@ const AmbientVisualizer = {
 
     exit() {
         this.isActive = false;
+        if (this._activityHandler) {
+            window.removeEventListener("mousemove", this._activityHandler);
+            window.removeEventListener("mousedown", this._activityHandler);
+            window.removeEventListener("keydown", this._activityHandler);
+            window.removeEventListener("touchstart", this._activityHandler);
+        }
         document.body.classList.remove("ambient-mode-active", "ambient-idle", "ambient-dock-pinned", "ambient-video-hidden");
         if (window.AmbientThemeManager) {
             window.AmbientThemeManager.stop();

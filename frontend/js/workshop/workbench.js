@@ -163,8 +163,6 @@ function switchWorkflowTab(tabId) {
 
     if (tabId === "tab-library") {
         loadLibrary();
-    } else if (tabId === "tab-download") {
-        pollStatus();
     } else if (tabId === "tab-search") {
         if (typeof currentSearchResults !== "undefined" && currentSearchResults && currentSearchResults.length > 0) {
             enrichItemsWithLibraryStatus(currentSearchResults);

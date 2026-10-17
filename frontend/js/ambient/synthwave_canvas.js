@@ -716,8 +716,12 @@ const AmbientThemeManager = {
 
                         if (s <= activeSegs && activeSegs > 0) {
                             ctx.fillStyle = segColor;
-                            ctx.shadowColor = glowColor;
-                            ctx.shadowBlur = isLight ? 4 : 8;
+                            if (s === activeSegs) {
+                                ctx.shadowColor = glowColor;
+                                ctx.shadowBlur = isLight ? 4 : 8;
+                            } else {
+                                ctx.shadowBlur = 0;
+                            }
                             ctx.fillRect(bx, sy, barW, segH);
                         } else {
                             ctx.fillStyle = isLight ? "rgba(100, 116, 139, 0.12)" : "rgba(30, 41, 59, 0.35)";
@@ -867,24 +871,74 @@ const AmbientThemeManager = {
                 ctx.restore();
 
                 // 7. STRUCTURE 3D DU SUBWOOFER (Châssis, aimant, couronne, membrane & dôme)
+                const rearOffset = 18;
+                const bezelOuterR = baseR;
+                const bezelInnerR = baseR * 0.88;
+                const surroundOuterR = bezelInnerR;
+                const surroundInnerR = baseR * 0.74;
+                const coneOuterR = surroundInnerR;
+                const capR = baseR * 0.28;
+
+                if (!this._cachedGrads || this._cachedGrads.baseR !== baseR || this._cachedGrads.isLight !== isLight) {
+                    const magnetGrad = ctx.createLinearGradient(0, -baseR, 0, baseR + rearOffset);
+                    if (isLight) {
+                        magnetGrad.addColorStop(0, "#cbd5e1");
+                        magnetGrad.addColorStop(1, "#64748b");
+                    } else {
+                        magnetGrad.addColorStop(0, "#1e293b");
+                        magnetGrad.addColorStop(0.5, "#0f172a");
+                        magnetGrad.addColorStop(1, "#020617");
+                    }
+
+                    const bezelGrad = ctx.createLinearGradient(-baseR * 0.7, -baseR * 0.7, baseR * 0.7, baseR * 0.7);
+                    if (isLight) {
+                        bezelGrad.addColorStop(0, "#f8fafc");
+                        bezelGrad.addColorStop(0.3, "#94a3b8");
+                        bezelGrad.addColorStop(0.7, "#e2e8f0");
+                        bezelGrad.addColorStop(1, "#475569");
+                    } else {
+                        bezelGrad.addColorStop(0, "#64748b");
+                        bezelGrad.addColorStop(0.25, "#1e293b");
+                        bezelGrad.addColorStop(0.5, "#475569");
+                        bezelGrad.addColorStop(0.75, "#0f172a");
+                        bezelGrad.addColorStop(1, "#334155");
+                    }
+
+                    const surroundGrad = ctx.createRadialGradient(0, 0, surroundInnerR, 0, 0, surroundOuterR);
+                    if (isLight) {
+                        surroundGrad.addColorStop(0, "#475569");
+                        surroundGrad.addColorStop(0.5, "#1e293b");
+                        surroundGrad.addColorStop(1, "#334155");
+                    } else {
+                        surroundGrad.addColorStop(0, "#090d16");
+                        surroundGrad.addColorStop(0.5, "#1e2536");
+                        surroundGrad.addColorStop(1, "#070a10");
+                    }
+
+                    const coneGrad = ctx.createRadialGradient(-coneOuterR * 0.15, -coneOuterR * 0.15, capR * 0.8, 0, 0, coneOuterR);
+                    if (isLight) {
+                        coneGrad.addColorStop(0, "#64748b");
+                        coneGrad.addColorStop(0.4, "#94a3b8");
+                        coneGrad.addColorStop(0.8, "#cbd5e1");
+                        coneGrad.addColorStop(1, "#475569");
+                    } else {
+                        coneGrad.addColorStop(0, "#05070d");
+                        coneGrad.addColorStop(0.35, "#111726");
+                        coneGrad.addColorStop(0.7, "#1a233a");
+                        coneGrad.addColorStop(1, "#0d1320");
+                    }
+
+                    this._cachedGrads = { baseR, isLight, magnetGrad, bezelGrad, surroundGrad, coneGrad };
+                }
+
                 ctx.save();
                 ctx.translate(cx, cy);
                 ctx.rotate(tiltAngle);
 
                 // A. Aimant / Culasse arrière (profondeur)
-                const rearOffset = 18;
                 ctx.beginPath();
                 ctx.ellipse(0, rearOffset, baseR * 0.96, baseR * 0.96 * aspectY, 0, 0, Math.PI * 2);
-                const magnetGrad = ctx.createLinearGradient(0, -baseR, 0, baseR + rearOffset);
-                if (isLight) {
-                    magnetGrad.addColorStop(0, "#cbd5e1");
-                    magnetGrad.addColorStop(1, "#64748b");
-                } else {
-                    magnetGrad.addColorStop(0, "#1e293b");
-                    magnetGrad.addColorStop(0.5, "#0f172a");
-                    magnetGrad.addColorStop(1, "#020617");
-                }
-                ctx.fillStyle = magnetGrad;
+                ctx.fillStyle = this._cachedGrads.magnetGrad;
                 ctx.fill();
 
                 // Évents acoustiques
@@ -922,25 +976,9 @@ const AmbientThemeManager = {
                 ctx.shadowBlur = 0;
 
                 // C. Couronne externe (Bezel métallique chromé avec 8 boulons hexagonaux)
-                const bezelOuterR = baseR;
-                const bezelInnerR = baseR * 0.88;
-
                 ctx.beginPath();
                 ctx.ellipse(0, 0, bezelOuterR, bezelOuterR * aspectY, 0, 0, Math.PI * 2);
-                const bezelGrad = ctx.createLinearGradient(-baseR * 0.7, -baseR * 0.7, baseR * 0.7, baseR * 0.7);
-                if (isLight) {
-                    bezelGrad.addColorStop(0, "#f8fafc");
-                    bezelGrad.addColorStop(0.3, "#94a3b8");
-                    bezelGrad.addColorStop(0.7, "#e2e8f0");
-                    bezelGrad.addColorStop(1, "#475569");
-                } else {
-                    bezelGrad.addColorStop(0, "#64748b");
-                    bezelGrad.addColorStop(0.25, "#1e293b");
-                    bezelGrad.addColorStop(0.5, "#475569");
-                    bezelGrad.addColorStop(0.75, "#0f172a");
-                    bezelGrad.addColorStop(1, "#334155");
-                }
-                ctx.fillStyle = bezelGrad;
+                ctx.fillStyle = this._cachedGrads.bezelGrad;
                 ctx.fill();
 
                 ctx.beginPath();
@@ -969,28 +1007,13 @@ const AmbientThemeManager = {
                 // D. Suspension périphérique (Surround en caoutchouc toroïdal)
                 const surroundShiftX = excX * 0.35;
                 const surroundShiftY = excY * 0.35;
-                const surroundOuterR = bezelInnerR;
-                const surroundInnerR = baseR * 0.74;
 
                 ctx.save();
                 ctx.translate(surroundShiftX, surroundShiftY);
 
                 ctx.beginPath();
                 ctx.ellipse(0, 0, surroundOuterR, surroundOuterR * aspectY, 0, 0, Math.PI * 2);
-                const surroundGrad = ctx.createRadialGradient(
-                    0, 0, surroundInnerR,
-                    0, 0, surroundOuterR
-                );
-                if (isLight) {
-                    surroundGrad.addColorStop(0, "#475569");
-                    surroundGrad.addColorStop(0.5, "#1e293b");
-                    surroundGrad.addColorStop(1, "#334155");
-                } else {
-                    surroundGrad.addColorStop(0, "#090d16");
-                    surroundGrad.addColorStop(0.5, "#1e2536");
-                    surroundGrad.addColorStop(1, "#070a10");
-                }
-                ctx.fillStyle = surroundGrad;
+                ctx.fillStyle = this._cachedGrads.surroundGrad;
                 ctx.fill();
                 ctx.restore();
 
@@ -998,27 +1021,9 @@ const AmbientThemeManager = {
                 ctx.save();
                 ctx.translate(excX, excY);
 
-                const coneOuterR = surroundInnerR;
-                const capR = baseR * 0.28;
-
                 ctx.beginPath();
                 ctx.ellipse(0, 0, coneOuterR, coneOuterR * aspectY, 0, 0, Math.PI * 2);
-                const coneGrad = ctx.createRadialGradient(
-                    -coneOuterR * 0.15, -coneOuterR * 0.15, capR * 0.8,
-                    0, 0, coneOuterR
-                );
-                if (isLight) {
-                    coneGrad.addColorStop(0, "#64748b");
-                    coneGrad.addColorStop(0.4, "#94a3b8");
-                    coneGrad.addColorStop(0.8, "#cbd5e1");
-                    coneGrad.addColorStop(1, "#475569");
-                } else {
-                    coneGrad.addColorStop(0, "#05070d");
-                    coneGrad.addColorStop(0.35, "#111726");
-                    coneGrad.addColorStop(0.7, "#1a233a");
-                    coneGrad.addColorStop(1, "#0d1320");
-                }
-                ctx.fillStyle = coneGrad;
+                ctx.fillStyle = this._cachedGrads.coneGrad;
                 ctx.fill();
 
                 // 6 anneaux concentriques de renfort

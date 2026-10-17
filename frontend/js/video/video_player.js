@@ -164,7 +164,6 @@ function setupVideoModal() {
     const spinner = document.getElementById("video-modal-spinner");
     const dlAudioBtn = document.getElementById("video-modal-dl-audio-btn");
     const dlVideoBtn = document.getElementById("video-modal-dl-video-btn");
-    const extractAudioBtn = document.getElementById("video-modal-extract-audio-btn");
     const extLink = document.getElementById("video-modal-external-link");
     const fsBtn = document.getElementById("video-theater-fullscreen-btn");
     const fsExpandIcon = document.getElementById("video-fs-expand");
@@ -787,64 +786,6 @@ function setupVideoModal() {
         });
     }
 
-    if (extractAudioBtn) {
-        extractAudioBtn.addEventListener("click", async () => {
-            if (!currentModalVideoItem) return;
-
-            const trackArtist = currentModalVideoItem.artist || "Artiste inconnu";
-            const trackTitle = currentModalVideoItem.title || "Titre du clip";
-
-            const confirmed = await showModalConfirm(
-                "Extraire la piste audio",
-                `Voulez-vous extraire la piste audio de « ${trackTitle} » et l'ajouter à votre collection musicale sous « ${trackArtist} / Singles & Rips » ?`,
-                "🎵 Extraire l'audio",
-                false,
-                "Annuler"
-            );
-            if (!confirmed) return;
-
-            const origHtml = extractAudioBtn.innerHTML;
-            extractAudioBtn.disabled = true;
-            extractAudioBtn.innerHTML = `⏳ Extraction audio en cours...`;
-            showToast(`Extraction de la piste audio de « ${currentModalVideoItem.title} »...`, "info");
-
-            try {
-                const res = await fetch("/api/videos/extract-audio", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        path: currentModalVideoItem.rel_path || currentModalVideoItem.filepath || currentModalVideoItem.path,
-                        artist: currentModalVideoItem.artist,
-                        title: currentModalVideoItem.title
-                    })
-                });
-                let data = null;
-                try {
-                    data = await res.json();
-                } catch (parseErr) {
-                    data = { detail: `Erreur serveur (${res.status})` };
-                }
-
-                if (res.ok && data && data.success) {
-                    showToast(data.message || "Piste audio extraite avec succès dans votre collection !", "success");
-                    if (window.AudioPlayer && typeof window.AudioPlayer.loadLibraryData === "function") {
-                        window.AudioPlayer.loadLibraryData();
-                    }
-                    if (typeof loadLibrary === "function") {
-                        loadLibrary();
-                    }
-                } else {
-                    showToast(data?.detail || data?.error || `Erreur lors de l'extraction audio (${res.status})`, "error");
-                }
-            } catch (err) {
-                showToast("Échec de communication lors de l'extraction audio", "error");
-            } finally {
-                extractAudioBtn.disabled = false;
-                extractAudioBtn.innerHTML = origHtml;
-            }
-        });
-    }
-
     if (typeof updateVideoToggleButtons === "function") {
         updateVideoToggleButtons();
     }
@@ -935,7 +876,6 @@ function openVideoModal(item) {
     const extLink = document.getElementById("video-modal-external-link");
     const dlAudioBtn = document.getElementById("video-modal-dl-audio-btn");
     const dlVideoBtn = document.getElementById("video-modal-dl-video-btn");
-    const extractAudioBtn = document.getElementById("video-modal-extract-audio-btn");
 
     if (!backdrop || !item) return;
 
@@ -987,7 +927,6 @@ function openVideoModal(item) {
 
     if (dlAudioBtn) dlAudioBtn.style.display = "inline-flex";
     if (dlVideoBtn) dlVideoBtn.style.display = "inline-flex";
-    if (extractAudioBtn) extractAudioBtn.style.display = "none";
     if (extLink) extLink.style.display = "inline-flex";
 
     let videoId = item.id || "";
@@ -1045,7 +984,6 @@ function openLocalVideoModal(item) {
     const extLink = document.getElementById("video-modal-external-link");
     const dlAudioBtn = document.getElementById("video-modal-dl-audio-btn");
     const dlVideoBtn = document.getElementById("video-modal-dl-video-btn");
-    const extractAudioBtn = document.getElementById("video-modal-extract-audio-btn");
 
     if (!backdrop || !item) return;
 
@@ -1134,7 +1072,6 @@ function openLocalVideoModal(item) {
     // Mode local : masquer les boutons de download (l'extraction audio se fait directement depuis la vignette)
     if (dlAudioBtn) dlAudioBtn.style.display = "none";
     if (dlVideoBtn) dlVideoBtn.style.display = "none";
-    if (extractAudioBtn) extractAudioBtn.style.display = "none";
     if (extLink) extLink.style.display = "none";
 
     if (videoPlayer) {

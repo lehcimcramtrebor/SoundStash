@@ -272,7 +272,8 @@
                     const res = await fetch(`/api/export/default-dest?name=${encodeURIComponent(expName)}`);
                     const d = await res.json();
                     if (destInput) {
-                        destInput.value = d.default_full_path || d.desktop;
+                        destInput.value = (destType && d[destType]) ? d[destType] : (d.default_full_path || d.desktop);
+                        destInput.dataset.manual = "true";
                         refreshEstimate();
                     }
                 } catch (e) {}
@@ -351,6 +352,14 @@
         if (launchBtn) {
             launchBtn.addEventListener("click", () => {
                 startExportProcess();
+            });
+        }
+
+        // 9. Bouton Interrompre l'exportation
+        const cancelBtn = document.getElementById("export-cancel-btn");
+        if (cancelBtn) {
+            cancelBtn.addEventListener("click", () => {
+                cancelExportProcess();
             });
         }
 

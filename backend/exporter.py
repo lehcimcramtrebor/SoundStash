@@ -194,24 +194,36 @@ class ExportManager:
         seen_paths = set()
 
         if export_all_library:
-            # Exporter tous les albums indexés de la bibliothèque
+            # Exporter tous les albums indexés de la bibliothèque (avec support multi-disques et indexation paresseuse)
             try:
                 all_albums = library_indexer.get_all_albums()
                 for alb in all_albums:
                     alb_path = Path(alb.path)
+                    if not alb_path.exists():
+                        continue
                     alb_title = getattr(alb, "album", None) or getattr(alb, "title", None) or alb_path.name
                     alb_artist = getattr(alb, "artist", None) or "Artiste Inconnu"
                     alb_year = str(getattr(alb, "year", "") or "")
                     alb_genre = getattr(alb, "genre", "") or ""
-                    tracks = alb.tracks or []
-                    for idx, t in enumerate(tracks, start=1):
-                        track_file = alb_path / getattr(t, "filename", "")
-                        if track_file.exists() and str(track_file) not in seen_paths:
-                            seen_paths.add(str(track_file))
+
+                    tracks_meta_map = {}
+                    for t in (alb.tracks or []):
+                        if hasattr(t, "filename") and t.filename:
+                            tracks_meta_map[t.filename.lower()] = t
+
+                    audio_files = [f for f in alb_path.rglob("*") if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS]
+                    audio_files.sort(key=lambda x: str(x).lower())
+
+                    for idx, track_file in enumerate(audio_files, start=1):
+                        f_str = str(track_file)
+                        if f_str not in seen_paths:
+                            seen_paths.add(f_str)
+                            t_meta = tracks_meta_map.get(track_file.name.lower())
+                            t_title = (getattr(t_meta, "title", None) if t_meta else None) or track_file.stem
                             resolved.append({
-                                "source_path": str(track_file),
+                                "source_path": f_str,
                                 "item_type": "track",
-                                "title": getattr(t, "title", "") or track_file.stem,
+                                "title": t_title,
                                 "artist": alb_artist,
                                 "album": alb_title,
                                 "year": alb_year,
@@ -557,14 +569,20 @@ class ExportManager:
                     self.percent = (self.processed_items / self.total_items) * 100.0
                 self._throttled_notify_progress()
 
-        # Exécution en parallèle via ThreadPoolExecutor
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="ExportWorker") as executor:
+        # Exécution en parallèle via ThreadPoolExecutor (sans context manager `with` qui forcerait wait=True à la sortie)
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="ExportWorker")
+        try:
             futures = [executor.submit(_process_item, idx, item) for idx, item in enumerate(resolved_items, start=1)]
             for future in concurrent.futures.as_completed(futures):
                 if self.cancel_requested:
-                    logger.info("Export interrompu par l'utilisateur, arrêt des tâches.")
+                    logger.info("Export interrompu par l'utilisateur, arrêt immédiat des tâches en attente.")
                     executor.shutdown(wait=False, cancel_futures=True)
                     break
+            else:
+                executor.shutdown(wait=True)
+        except Exception:
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
 
         if self.cancel_requested:
             with self.lock:

@@ -51,7 +51,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setupFloatingFullscreen();
     setupSynthwaveVisualizer();
     setupAmbientMode();
-    setupCollectionTree();
     setupUserPlaylists();
     setupUserGuideModal();
     setupWelcomeWizard();

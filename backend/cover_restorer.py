@@ -282,7 +282,9 @@ def repair_album_cover(album_path: Path | str) -> bool:
             else:
                 sq = im.copy()
 
-            # Sauvegarde en haute qualité JPEG
+            # Sauvegarde en haute qualité JPEG (conversion RGB si canal alpha présent)
+            if sq.mode in ("RGBA", "LA", "P"):
+                sq = sq.convert("RGB")
             sq.save(cov, "JPEG", quality=95)
 
         if temp_thumb.exists():
