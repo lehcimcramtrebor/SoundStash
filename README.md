@@ -1,4 +1,4 @@
-# 🎵 SoundStash v5.0.2
+# 🎵 SoundStash v5.0.3
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -11,6 +11,20 @@
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v5.0.3
+
+### 🎧 Écoute Sanctuarisée & Alerte Cookies Contextualisée (Atelier uniquement)
+- **Zéro interruption au lancement en mode écoute** : La vérification de session YouTube (`cookies.txt`) s'effectue désormais de manière totalement silencieuse au démarrage de l'application. Vous pouvez lancer SoundStash uniquement pour écouter votre musique sans jamais être interrompu par une fenêtre d'alerte sur le Lecteur Audio.
+- **Déclenchement contextuel à l'ouverture de l'Atelier** : La modale d'alerte *« Session YouTube Expirée »* (avec accès direct en 1 clic aux Paramètres) ne s'affiche désormais **qu'au moment où vous ouvrez l'Atelier** (`openWorkshopDrawer`) pour effectuer des recherches ou des téléchargements.
+- **Badges de statut toujours synchronisés** : Les indicateurs visuels de session dans l'Atelier et les Paramètres restent pré-vérifiés et à jour en temps réel dès l'arrière-plan.
+
+### 🛠️ Consolidations & Correctifs Techniques
+- **Repli automatique sur expiration de cookies fiabilisé** : Correction du flux de relance en mode anonyme dans `downloader.py` lors de l'expiration d'une session en cours de téléchargement.
+- **Extraction parallèle des pochettes & Restauration RGB** : Parallélisation asynchrone (`asyncio.as_completed`) de l'extraction des couvertures embarquées et conversion automatique des profils avec transparence (`RGBA`, `LA`, `P` ➔ `RGB`) lors de la réparation JPEG haute qualité.
+- **Destinations rapides d'exportation & Détection de concerts** : Résolution complète des sous-dossiers par défaut (`Bureau`, `Musique`, `Téléchargements`) dans l'Atelier d'exportation et discrimination stricte des concerts via le marqueur explicite `is_concert`.
 
 ---
 

@@ -46,6 +46,10 @@ function openWorkshopDrawer(targetTab = null) {
     const tabToOpen = targetTab || (lastWorkflowTab && lastWorkflowTab !== "tab-player" ? lastWorkflowTab : "tab-search");
     switchWorkflowTab(tabToOpen);
     if (typeof updateHeaderNowPlayingButton === "function") updateHeaderNowPlayingButton();
+
+    if (typeof window.notifyExpiredCookiesOnWorkshopOpen === "function") {
+        window.notifyExpiredCookiesOnWorkshopOpen();
+    }
 }
 
 function closeWorkshopDrawer() {

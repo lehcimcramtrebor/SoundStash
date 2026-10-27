@@ -845,7 +845,41 @@ async function refreshCookiesStatus() {
 }
 window.refreshCookiesStatus = refreshCookiesStatus;
 
-async function verifyCookiesSession(isManual = false, showModalOnExpired = true) {
+window._hasShownExpiredCookiesModal = false;
+window._isShowingExpiredCookiesModal = false;
+window._startupCookiesVerifyInFlight = false;
+
+async function promptExpiredCookiesModal() {
+    if (window._isShowingExpiredCookiesModal) return;
+    window._isShowingExpiredCookiesModal = true;
+    window._hasShownExpiredCookiesModal = true;
+
+    try {
+        if (typeof showModalConfirm === "function") {
+            const goToSettings = await showModalConfirm(
+                "Session YouTube Expirée",
+                "Votre session YouTube (cookies.txt) a expiré ou a été révoquée par Google (suite à un changement de mot de passe ou à l'expiration des identifiants).\n\nPour continuer à télécharger sans blocage anti-bot et profiter des flux de qualité maximale, veuillez réimporter un nouveau fichier cookies.txt dans les Paramètres.",
+                "Ouvrir les Paramètres",
+                false,
+                "Ignorer"
+            );
+            if (goToSettings && typeof openSettingsModal === "function") {
+                openSettingsModal("subtab-system");
+            }
+        } else if (typeof showModalAlert === "function") {
+            await showModalAlert(
+                "Session YouTube Expirée",
+                "Google a invalidé ou révoqué cette session. Rendez-vous dans les Paramètres > Système (Cookies) pour importer votre nouveau fichier cookies.txt.",
+                "warning"
+            );
+        }
+    } finally {
+        window._isShowingExpiredCookiesModal = false;
+    }
+}
+window.promptExpiredCookiesModal = promptExpiredCookiesModal;
+
+async function verifyCookiesSession(isManual = false, showModalOnExpired = false) {
     const btnTest = document.getElementById("btn-cfg-cookies-test");
     if (btnTest && isManual) {
         btnTest.disabled = true;
@@ -861,6 +895,7 @@ async function verifyCookiesSession(isManual = false, showModalOnExpired = true)
         const statusData = statusRes.ok ? await statusRes.json() : {};
 
         if (data.status === "valid") {
+            window._hasShownExpiredCookiesModal = false;
             localStorage.setItem("soundstash_yt_session_status", "valid");
             updateSessionBadgesUI("valid", statusData);
             if (isManual && typeof showToast === "function") {
@@ -870,29 +905,15 @@ async function verifyCookiesSession(isManual = false, showModalOnExpired = true)
             localStorage.setItem("soundstash_yt_session_status", "expired");
             updateSessionBadgesUI("expired", statusData);
 
-            if (showModalOnExpired) {
-                if (typeof showModalConfirm === "function") {
-                    const goToSettings = await showModalConfirm(
-                        "Session YouTube Expirée",
-                        "Votre session YouTube (cookies.txt) a expiré ou a été révoquée par Google (suite à un changement de mot de passe ou à l'expiration des identifiants).\n\nPour continuer à télécharger sans blocage anti-bot et profiter des flux de qualité maximale, veuillez réimporter un nouveau fichier cookies.txt dans les Paramètres.",
-                        "Ouvrir les Paramètres",
-                        false,
-                        "Ignorer"
-                    );
-                    if (goToSettings && typeof openSettingsModal === "function") {
-                        openSettingsModal("subtab-system");
-                    }
-                } else if (typeof showModalAlert === "function") {
-                    showModalAlert(
-                        "Session YouTube Expirée",
-                        "Google a invalidé ou révoqué cette session. Rendez-vous dans les Paramètres > Système (Cookies) pour importer votre nouveau fichier cookies.txt.",
-                        "warning"
-                    );
-                }
+            // Afficher la modale uniquement si demandé explicitement (ex: import manuel)
+            // ou si l'Atelier est actuellement ouvert et que l'alerte n'a pas encore été affichée
+            if (showModalOnExpired || (window.isWorkshopDrawerOpen && !isManual && !window._hasShownExpiredCookiesModal)) {
+                await promptExpiredCookiesModal();
             } else if (isManual && typeof showToast === "function") {
                 showToast("⚠️ Votre session YouTube (cookies.txt) a expiré. Pensez à la réimporter dans les Paramètres.", "warning");
             }
         } else if (data.status === "no_cookies" || data.status === "anonymous") {
+            window._hasShownExpiredCookiesModal = false;
             localStorage.removeItem("soundstash_yt_session_status");
             updateSessionBadgesUI("no_cookies", statusData);
             if (isManual && typeof showToast === "function") {
@@ -917,35 +938,72 @@ async function verifyCookiesSession(isManual = false, showModalOnExpired = true)
 }
 window.verifyCookiesSession = verifyCookiesSession;
 
+async function notifyExpiredCookiesOnWorkshopOpen() {
+    if (window._hasShownExpiredCookiesModal || window._isShowingExpiredCookiesModal) return;
+
+    const currentStatus = (window.youtubeSessionState && window.youtubeSessionState.status) || localStorage.getItem("soundstash_yt_session_status");
+    if (currentStatus === "expired") {
+        await promptExpiredCookiesModal();
+        return;
+    }
+
+    if (!currentStatus || currentStatus === "checking") {
+        try {
+            const res = await fetch("/api/cookies/status");
+            if (!res.ok) return;
+            const statusData = await res.json();
+            if (!statusData.exists) return;
+
+            if (statusData.is_expired || statusData.verified_status === "expired") {
+                updateSessionBadgesUI("expired", statusData);
+                if (window.isWorkshopDrawerOpen && !window._hasShownExpiredCookiesModal) {
+                    await promptExpiredCookiesModal();
+                }
+            } else if (!window._startupCookiesVerifyInFlight) {
+                await verifyCookiesSession(false, true);
+            }
+        } catch (err) {
+            console.warn("[Cookies Workshop] Erreur vérification session à l'ouverture de l'Atelier:", err);
+        }
+    }
+}
+window.notifyExpiredCookiesOnWorkshopOpen = notifyExpiredCookiesOnWorkshopOpen;
+
 async function checkYouTubeSessionOnStartup() {
+    if (window._startupCookiesVerifyInFlight) return;
+    window._startupCookiesVerifyInFlight = true;
     try {
         const res = await fetch("/api/cookies/status");
         if (!res.ok) return;
         const statusData = await res.json();
 
         if (!statusData.exists) {
+            window._hasShownExpiredCookiesModal = false;
             localStorage.removeItem("soundstash_yt_session_status");
             updateSessionBadgesUI("no_cookies", statusData);
             return;
         }
 
         // Si le cookie existe :
-        // Affichage immédiat du statut connu (si déjà expiré, aucun scintillement vert !)
+        // Affichage immédiat du statut connu sur les badges (si déjà expiré, aucun scintillement vert !)
         if (statusData.is_expired || statusData.verified_status === "expired" || localStorage.getItem("soundstash_yt_session_status") === "expired") {
             updateSessionBadgesUI("expired", statusData);
         } else {
             updateSessionBadgesUI("checking", statusData);
         }
 
-        // Lancement immédiat du test en direct auprès de YouTube avec affichage de la modale si expiré
-        await verifyCookiesSession(false, true);
+        // Vérification silencieuse en arrière-plan au démarrage :
+        // N'affiche pas la modale pendant l'écoute musicale (elle ne s'affichera qu'à l'ouverture de l'Atelier)
+        await verifyCookiesSession(false, false);
     } catch (err) {
         console.warn("[Cookies Startup] Erreur test session au démarrage:", err);
+    } finally {
+        window._startupCookiesVerifyInFlight = false;
     }
 }
 window.checkYouTubeSessionOnStartup = checkYouTubeSessionOnStartup;
 
-// Test proactif et immédiat de la session YouTube au démarrage
+// Vérification silencieuse de la session YouTube au démarrage (sans interrompre le lecteur audio)
 setTimeout(() => {
     checkYouTubeSessionOnStartup();
 }, 400);

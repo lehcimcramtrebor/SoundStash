@@ -112,7 +112,23 @@ try:
     assert badge_info["isSuccess"] is False, "Le badge ne doit SURTOUT PAS être 'badge-success' !"
     print("  ✓ SUCCÈS : Le badge au démarrage indique immédiatement et fidèlement '⚠️ Session expirée'")
 
-    # Vérification de l'apparition de la modale de notification
+    # Vérification qu'AUCUNE modale n'apparaît au démarrage sur le Lecteur Audio
+    startup_modal_info = cdp.eval("""
+        (() => {
+            const backdrop = document.getElementById('custom-modal-backdrop');
+            const isVisible = Boolean(backdrop && backdrop.classList.contains('active') && backdrop.style.display !== 'none');
+            return { isVisible, isWorkshopOpen: Boolean(window.isWorkshopDrawerOpen) };
+        })()
+    """)
+    print(f"  Modale au démarrage (Lecteur Audio): {startup_modal_info}")
+    assert startup_modal_info["isVisible"] is False, f"Aucune modale ne doit gêner le lecteur au démarrage ! Trouvé: {startup_modal_info}"
+    print("  ✓ SUCCÈS : Aucune modale intrusive au démarrage en mode écoute musicale")
+
+    # Ouverture de l'Atelier -> déclenchement immédiat de la modale d'alerte
+    print("\n1b. Ouverture de l'Atelier (openWorkshopDrawer)...")
+    cdp.eval("openWorkshopDrawer('tab-search');")
+    time.sleep(0.5)
+
     modal_info = cdp.eval("""
         (() => {
             const backdrop = document.getElementById('custom-modal-backdrop');
@@ -123,11 +139,11 @@ try:
             return { isVisible, title, message, btnConfirm };
         })()
     """)
-    print(f"  Modale de notification: {modal_info}")
-    assert modal_info["isVisible"] is True, f"La modale de notification doit être active et visible ! Trouvé: {modal_info}"
+    print(f"  Modale de notification à l'ouverture de l'Atelier: {modal_info}")
+    assert modal_info["isVisible"] is True, f"La modale de notification doit être active et visible à l'ouverture de l'Atelier ! Trouvé: {modal_info}"
     assert "Session YouTube Expirée" in modal_info["title"], f"Titre incorrect : {modal_info['title']}"
     assert "Ouvrir les Paramètres" in modal_info["btnConfirm"], f"Bouton d'action incorrect : {modal_info['btnConfirm']}"
-    print("  ✓ SUCCÈS : La modale d'alerte de session expirée est apparue au centre de l'écran avec bouton 'Ouvrir les Paramètres'")
+    print("  ✓ SUCCÈS : La modale d'alerte de session expirée est apparue à l'ouverture de l'Atelier avec bouton 'Ouvrir les Paramètres'")
 
     cdp.capture_screenshot("session_expired_startup_modal.png")
 
