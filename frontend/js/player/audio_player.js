@@ -278,6 +278,302 @@ const AudioPlayer = {
     isAudioOutputFlyoutOpen: false,
     currentAudioOutputTriggerBtn: null,
 
+    // Mémorisation & Reprise transparente de session musicale (v5.0.4)
+    _hasPlayedInCurrentRun: false,
+    _lastSessionSaveMs: 0,
+    _pendingResumeSeekTime: 0,
+    _pendingResumeDuration: 0,
+    _isRestoringSavedSession: false,
+    _showResumeNotificationOnLoad: false,
+    _pendingAllCollectionHydration: false,
+    _restoredTargetTrackPath: "",
+    _restoredTargetTrackId: "",
+
+    _serializeTrackForSession(t) {
+        if (!t) return null;
+        return {
+            id: t.id || "",
+            type: t.type || "audio",
+            title: t.title || "",
+            artist: t.artist || "",
+            album: t.album || "",
+            album_path: t.album_path || "",
+            duration: t.duration || "--:--",
+            duration_seconds: t.duration_seconds || 0,
+            path: t.path || "",
+            filepath: t.filepath || "",
+            rel_path: t.rel_path || "",
+            stream_url: t.stream_url || "",
+            cover_url: t.cover_url || "",
+            thumbnail_url: t.thumbnail_url || "",
+            track_number: t.track_number || 1,
+            format: t.format || "M4A",
+            bitrate: t.bitrate || t.bitrate_kbps || 0,
+            is_video: Boolean(t.is_video),
+            is_concert: Boolean(t.is_concert)
+        };
+    },
+
+    savePlaybackSession(markAsNewSave = true) {
+        try {
+            if (!this.currentAlbum || !this.playlist || this.playlist.length === 0 || this.currentIndex < 0) {
+                return;
+            }
+            const albPath = String(this.currentAlbum.path || "");
+            if (this.currentAlbum.is_online || albPath.startsWith("online:")) {
+                return;
+            }
+            const curTrk = this.playlist[this.currentIndex] || this.currentTrack;
+            if (!curTrk || curTrk.is_online) {
+                return;
+            }
+
+            let curTime = 0;
+            if (this.audio && this.audio.currentTime > 0) {
+                curTime = this.audio.currentTime;
+            } else if (this._pendingResumeSeekTime > 0) {
+                curTime = this._pendingResumeSeekTime;
+            }
+
+            let dur = 0;
+            if (this.audio && this.audio.duration && !isNaN(this.audio.duration) && this.audio.duration > 0) {
+                dur = this.audio.duration;
+            } else if (curTrk.duration_seconds > 0) {
+                dur = curTrk.duration_seconds;
+            } else if (this._pendingResumeDuration > 0) {
+                dur = this._pendingResumeDuration;
+            }
+
+            let notifiedOnRestore = false;
+            if (!markAsNewSave) {
+                try {
+                    const prevRaw = localStorage.getItem("soundstash_saved_playback_session");
+                    if (prevRaw) {
+                        const prev = JSON.parse(prevRaw);
+                        if (prev && prev.notifiedOnRestore === true) {
+                            notifiedOnRestore = true;
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            const isAllCollection = (albPath === "system:all-collection");
+            let savedPlaylist = [];
+            let savedIndex = this.currentIndex;
+
+            if (this.playlist.length <= 400) {
+                savedPlaylist = this.playlist.map(t => this._serializeTrackForSession(t));
+            } else {
+                const halfWin = 100;
+                const startWin = Math.max(0, this.currentIndex - halfWin);
+                const endWin = Math.min(this.playlist.length, startWin + 200);
+                savedPlaylist = this.playlist.slice(startWin, endWin).map(t => this._serializeTrackForSession(t));
+                savedIndex = this.currentIndex - startWin;
+            }
+
+            const sessionPayload = {
+                version: 1,
+                savedAt: Date.now(),
+                notifiedOnRestore: notifiedOnRestore,
+                currentAlbum: {
+                    title: this.currentAlbum.title || "",
+                    artist: this.currentAlbum.artist || "",
+                    year: this.currentAlbum.year || "",
+                    genre: this.currentAlbum.genre || "",
+                    cover_url: this.currentAlbum.cover_url || "/static/placeholder-cover.svg",
+                    path: albPath,
+                    is_collection: Boolean(this.currentAlbum.is_collection),
+                    is_playlist: Boolean(this.currentAlbum.is_playlist),
+                    is_video: Boolean(this.currentAlbum.is_video),
+                    is_concert: Boolean(this.currentAlbum.is_concert)
+                },
+                currentTrack: this._serializeTrackForSession(curTrk),
+                targetTrackPath: curTrk.filepath || curTrk.path || "",
+                targetTrackId: curTrk.id || "",
+                playlist: savedPlaylist,
+                currentIndex: savedIndex,
+                isAllCollection: isAllCollection,
+                fullPlaylistLength: this.playlist.length,
+                currentTime: Math.round(curTime * 100) / 100,
+                duration: Math.round(dur * 100) / 100,
+                isShuffle: Boolean(this.isShuffle),
+                repeatMode: this.repeatMode || "all",
+                isUserPlaylistActive: Boolean(this.isUserPlaylistActive),
+                librarySource: this.librarySource || "library",
+                playbackOrigin: this.playbackOrigin || null,
+                userQueue: (this.userQueue || []).slice(0, 50).map(t => this._serializeTrackForSession(t))
+            };
+
+            localStorage.setItem("soundstash_saved_playback_session", JSON.stringify(sessionPayload));
+        } catch (err) {
+            console.warn("[PlaybackResume] Impossible de sauvegarder la session:", err);
+        }
+    },
+
+    clearSavedPlaybackSession() {
+        this._pendingResumeSeekTime = 0;
+        this._pendingResumeDuration = 0;
+        this._isRestoringSavedSession = false;
+        this._showResumeNotificationOnLoad = false;
+        this._pendingAllCollectionHydration = false;
+        try {
+            localStorage.removeItem("soundstash_saved_playback_session");
+        } catch (_) {}
+    },
+
+    restoreSavedPlaybackSession() {
+        try {
+            const raw = localStorage.getItem("soundstash_saved_playback_session");
+            if (!raw) return false;
+            const saved = JSON.parse(raw);
+            if (!saved || !saved.currentAlbum || !Array.isArray(saved.playlist) || saved.playlist.length === 0) {
+                return false;
+            }
+
+            const idx = Math.max(0, Math.min(saved.currentIndex || 0, saved.playlist.length - 1));
+            const trk = saved.playlist[idx] || saved.currentTrack;
+            if (!trk) return false;
+
+            const isVideo = Boolean(
+                trk.type === "video" ||
+                trk.is_video ||
+                (trk.filepath && /\.(mp4|mkv|webm)$/i.test(trk.filepath)) ||
+                (trk.path && /\.(mp4|mkv|webm)$/i.test(trk.path))
+            );
+            if (isVideo) return false;
+
+            const trkPath = trk.filepath || trk.path || "";
+            const streamUrl = trk.stream_url || (trkPath ? `/api/audio/stream-local?path=${encodeURIComponent(trkPath)}` : "");
+            if (!streamUrl) return false;
+
+            this.currentAlbum = saved.currentAlbum;
+            this.playlist = saved.playlist.slice();
+            this.activePlaylist = saved.playlist.slice();
+            this.currentIndex = idx;
+            this.currentTrack = trk;
+            this.activeAlbumPath = saved.currentAlbum.path || null;
+            this.isUserPlaylistActive = Boolean(saved.isUserPlaylistActive);
+            this.playbackOrigin = saved.playbackOrigin || null;
+            this.playbackContext = {
+                album: this.currentAlbum,
+                playlist: this.playlist.slice(),
+                currentIndex: idx
+            };
+
+            if (typeof saved.isShuffle === "boolean") {
+                this.isShuffle = saved.isShuffle;
+                this.updateShuffleUI();
+            }
+            if (saved.repeatMode && ["none", "all", "one"].includes(saved.repeatMode)) {
+                this.repeatMode = saved.repeatMode;
+                this.updateRepeatUI();
+            }
+            if (Array.isArray(saved.userQueue) && saved.userQueue.length > 0) {
+                this.userQueue = saved.userQueue;
+                this.updateQueueBadges();
+            }
+
+            if (saved.isAllCollection || (this.currentAlbum.path === "system:all-collection" && saved.fullPlaylistLength > this.playlist.length)) {
+                this._pendingAllCollectionHydration = true;
+                this._restoredTargetTrackPath = saved.targetTrackPath || trkPath;
+                this._restoredTargetTrackId = saved.targetTrackId || trk.id || "";
+            }
+
+            const savedTime = (typeof saved.currentTime === "number" && saved.currentTime > 0) ? saved.currentTime : 0;
+            const savedDur = (typeof saved.duration === "number" && saved.duration > 0) ? saved.duration : (trk.duration_seconds || 0);
+
+            this._pendingResumeSeekTime = savedTime;
+            this._pendingResumeDuration = savedDur;
+            this._isRestoringSavedSession = true;
+            this._showResumeNotificationOnLoad = (saved.notifiedOnRestore !== true);
+            this.isPlaying = false;
+
+            this.audio.preload = "metadata";
+            this.audio.src = streamUrl;
+            this.audio.load();
+
+            this.updateCurrentTrackUI(trk);
+            this.renderPlayerTab();
+            this.updateDurationUI();
+            this.updateProgressUI();
+            this.updatePlayStateUI();
+            return true;
+        } catch (err) {
+            console.warn("[PlaybackResume] Erreur lors de la restauration de la session:", err);
+            return false;
+        }
+    },
+
+    hydrateRestoredAllCollection() {
+        if (!this._pendingAllCollectionHydration) return;
+        if (!this.currentAlbum || this.currentAlbum.path !== "system:all-collection") {
+            this._pendingAllCollectionHydration = false;
+            return;
+        }
+        if (!this.allCatalog || !Array.isArray(this.allCatalog.albums) || this.allCatalog.albums.length === 0) {
+            return;
+        }
+        this._pendingAllCollectionHydration = false;
+
+        const tracks = [];
+        for (const alb of this.allCatalog.albums) {
+            const cover = alb.cover_url || `/api/audio/cover?path=${encodeURIComponent(alb.path)}`;
+            const albTitle = alb.title || "";
+            const albArtist = alb.artist || "";
+            const albPath = alb.path || "";
+            for (let idx = 0; idx < (alb.tracks || []).length; idx++) {
+                const t = alb.tracks[idx];
+                const fp = t.filepath || t.path || "";
+                tracks.push({
+                    id: `collection-${albPath}-${idx}`,
+                    type: "audio",
+                    title: t.title || `Piste ${idx + 1}`,
+                    artist: t.artist || albArtist,
+                    album: t.album || albTitle,
+                    album_path: albPath,
+                    duration: t.duration || "--:--",
+                    duration_seconds: t.duration_seconds || 0,
+                    path: fp,
+                    filepath: fp,
+                    rel_path: fp,
+                    stream_url: t.stream_url || `/api/audio/stream-local?path=${encodeURIComponent(fp)}`,
+                    cover_url: cover,
+                    thumbnail_url: cover,
+                    track_number: t.track_number || (idx + 1),
+                    format: t.format || "M4A"
+                });
+            }
+        }
+        if (tracks.length === 0) return;
+
+        const targetPath = (this._restoredTargetTrackPath || "").replace(/\\/g, "/").toLowerCase();
+        const targetId = this._restoredTargetTrackId || "";
+        let foundIdx = -1;
+        if (targetPath) {
+            foundIdx = tracks.findIndex(t => String(t.filepath || t.path || "").replace(/\\/g, "/").toLowerCase() === targetPath);
+        }
+        if (foundIdx === -1 && targetId) {
+            foundIdx = tracks.findIndex(t => t.id === targetId);
+        }
+        if (foundIdx === -1 && this.currentTrack && this.currentTrack.title) {
+            foundIdx = tracks.findIndex(t => t.title === this.currentTrack.title && t.artist === this.currentTrack.artist);
+        }
+        if (foundIdx === -1) foundIdx = 0;
+
+        this.playlist = tracks;
+        this.activePlaylist = tracks.slice();
+        this.currentIndex = foundIdx;
+        this.currentTrack = tracks[foundIdx];
+        if (this.playbackContext) {
+            this.playbackContext.playlist = tracks.slice();
+            this.playbackContext.currentIndex = foundIdx;
+        }
+        if (this.currentAlbum) {
+            this.currentAlbum.artist = `${this.allCatalog.albums.length} albums • ${tracks.length} pistes`;
+        }
+        this.renderPlayerTab();
+    },
+
     init() {
         window.AudioPlayer = this;
         this.audio = document.getElementById("global-audio-engine");
@@ -345,6 +641,7 @@ const AudioPlayer = {
         this.updateQueueBadges();
         this.updateEqualizerUI();
         if (window.UserPlaylists) window.UserPlaylists.updateBadge();
+        this.restoreSavedPlaybackSession();
         this.onTabActivated();
     },
 
@@ -354,12 +651,15 @@ const AudioPlayer = {
         a.addEventListener("play", () => {
             this.setupAudioContext();
             this.isPlaying = true;
+            this._hasPlayedInCurrentRun = true;
             this.updatePlayStateUI();
+            this.savePlaybackSession(true);
         });
 
         a.addEventListener("pause", () => {
             this.isPlaying = false;
             this.updatePlayStateUI();
+            this.savePlaybackSession(Boolean(this._hasPlayedInCurrentRun));
         });
 
         a.addEventListener("ended", () => {
@@ -373,16 +673,76 @@ const AudioPlayer = {
             if (!this.currentTrackPlayLogged && this.audio && !this.audio.paused && (this.audio.currentTime >= 10 || (this.audio.duration > 0 && this.audio.currentTime / this.audio.duration >= 0.5))) {
                 this.recordCurrentTrackPlay();
             }
+            if (!this.audio.paused) {
+                const nowMs = Date.now();
+                if (nowMs - (this._lastSessionSaveMs || 0) >= 2000) {
+                    this._lastSessionSaveMs = nowMs;
+                    this.savePlaybackSession(true);
+                }
+            }
             if (this.isSeeking) return;
             this.updateProgressUI();
         });
 
         a.addEventListener("loadedmetadata", () => {
+            const wasRestoring = this._isRestoringSavedSession;
+            this._isRestoringSavedSession = false;
+
+            if (this._pendingResumeSeekTime && this._pendingResumeSeekTime > 0) {
+                const targetTime = this._pendingResumeSeekTime;
+                this._pendingResumeSeekTime = 0;
+                try {
+                    const maxTime = (a.duration && !isNaN(a.duration) && a.duration > 1) ? Math.max(0, a.duration - 0.5) : targetTime;
+                    a.currentTime = Math.min(targetTime, maxTime);
+                } catch (e) {}
+            }
+            this._pendingResumeDuration = 0;
             this.updateDurationUI();
+            this.updateProgressUI();
+
+            if (wasRestoring && this._showResumeNotificationOnLoad) {
+                this._showResumeNotificationOnLoad = false;
+                try {
+                    const raw = localStorage.getItem("soundstash_saved_playback_session");
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (parsed) {
+                            parsed.notifiedOnRestore = true;
+                            localStorage.setItem("soundstash_saved_playback_session", JSON.stringify(parsed));
+                        }
+                    }
+                } catch (_) {}
+
+                const curTrk = this.currentTrack || (this.playlist && this.playlist[this.currentIndex]);
+                if (curTrk && typeof showToast === "function") {
+                    const posSec = a.currentTime || 0;
+                    const posStr = posSec > 0 ? ` (${this.formatTime(posSec)})` : "";
+                    setTimeout(() => {
+                        showToast(
+                            `🎧 Reprise prête : « ${curTrk.title} »${posStr} — Appuyez sur Espace ou cliquez sur ▶ pour reprendre votre écoute`,
+                            "info",
+                            6000
+                        );
+                    }, 550);
+                }
+            }
+        });
+
+        window.addEventListener("beforeunload", () => {
+            this.savePlaybackSession(Boolean(this._hasPlayedInCurrentRun));
+        });
+        window.addEventListener("pagehide", () => {
+            this.savePlaybackSession(Boolean(this._hasPlayedInCurrentRun));
         });
 
         a.addEventListener("error", (e) => {
             if (!a.getAttribute("src") || !a.src || a.src === window.location.href || a.src.endsWith("/") || a.src === "") {
+                return;
+            }
+            if (this._isRestoringSavedSession) {
+                console.warn("[PlaybackResume] Fichier audio de la session précédente introuvable, réinitialisation silencieuse.");
+                this.clearSavedPlaybackSession();
+                this.stopAndHide();
                 return;
             }
             if (window.currentModalVideoItem || window.isVideoPlayingInBackground || document.getElementById("video-modal-backdrop")?.classList.contains("active")) {
@@ -476,6 +836,9 @@ const AudioPlayer = {
                 }
                 if (a.duration) {
                     a.currentTime = (miniSeekBar.value / 100) * a.duration;
+                    this._pendingResumeSeekTime = 0;
+                    this._hasPlayedInCurrentRun = true;
+                    this.savePlaybackSession(true);
                 }
             });
         }
@@ -948,6 +1311,9 @@ const AudioPlayer = {
                 this.isSeeking = false;
                 if (a.duration) {
                     a.currentTime = (playerSeekSlider.value / 100) * a.duration;
+                    this._pendingResumeSeekTime = 0;
+                    this._hasPlayedInCurrentRun = true;
+                    this.savePlaybackSession(true);
                 }
             });
         }
@@ -3836,6 +4202,9 @@ const AudioPlayer = {
                 if (!res.ok) throw new Error("Erreur HTTP " + res.status + " lors du chargement du catalogue");
                 const data = await res.json();
                 this.allCatalog = data;
+                if (this._pendingAllCollectionHydration) {
+                    this.hydrateRestoredAllCollection();
+                }
 
                 // Indexation instantanée pour recherche (< 1ms pour l'ensemble des pistes)
                 if (this.allCatalog && this.allCatalog.albums) {
@@ -6537,7 +6906,9 @@ const AudioPlayer = {
         if (!this.audio) return;
         if (!this.audio.src) {
             if (this.playlist.length > 0 && this.currentIndex >= 0) {
-                this.playTrackAtIndex(this.currentIndex);
+                const resumeSec = this._pendingResumeSeekTime || 0;
+                this._pendingResumeSeekTime = 0;
+                this.playTrackAtIndex(this.currentIndex, resumeSec);
             }
             return;
         }
@@ -6545,6 +6916,14 @@ const AudioPlayer = {
             if (window.closeVideoModal && (window.isVideoPlayingInBackground || (document.getElementById("video-modal-player") && !document.getElementById("video-modal-player").paused))) {
                 window.closeVideoModal(true);
             }
+            if (this._pendingResumeSeekTime && this._pendingResumeSeekTime > 0 && this.audio.readyState >= 1) {
+                const targetTime = this._pendingResumeSeekTime;
+                this._pendingResumeSeekTime = 0;
+                try {
+                    this.audio.currentTime = targetTime;
+                } catch (e) {}
+            }
+            this._hasPlayedInCurrentRun = true;
             AudioFader.fadeIn(this.audio, this.isMuted ? 0 : this.volume, 500);
             this.audio.play().catch(e => console.warn(e));
         }
@@ -7372,6 +7751,7 @@ const AudioPlayer = {
     async toggleShuffle() {
         this.isShuffle = !this.isShuffle;
         this.updateShuffleUI();
+        this.savePlaybackSession(Boolean(this._hasPlayedInCurrentRun));
 
         if (this.isQueueDrawerOpen && typeof this.renderQueueDrawer === "function") {
             this.renderQueueDrawer();
@@ -7392,6 +7772,7 @@ const AudioPlayer = {
             localStorage.setItem("ytm_player_repeat_mode", this.repeatMode);
         } catch (e) {}
         this.updateRepeatUI();
+        this.savePlaybackSession(Boolean(this._hasPlayedInCurrentRun));
 
         const isFromAll = (this.currentView === "all" || (this.playbackOrigin && this.playbackOrigin.view === "all") || (this.currentAlbum && (this.currentAlbum.path === "system:all-collection" || this.currentAlbum.path === "system:search-results")));
 
@@ -8446,8 +8827,12 @@ const AudioPlayer = {
     },
 
     updateProgressUI() {
-        const cur = this.audio.currentTime || 0;
-        const dur = this.audio.duration || 0;
+        const cur = (this._pendingResumeSeekTime > 0 && (!this.audio.currentTime || this.audio.currentTime < 0.5))
+            ? this._pendingResumeSeekTime
+            : (this.audio.currentTime || 0);
+        const dur = (this.audio.duration && !isNaN(this.audio.duration) && this.audio.duration > 0)
+            ? this.audio.duration
+            : (this._pendingResumeDuration || 0);
         const pct = dur > 0 ? (cur / dur) * 100 : 0;
 
         const miniSeekBar = document.getElementById("mini-player-seek-bar");
@@ -8470,11 +8855,16 @@ const AudioPlayer = {
         const cur = this.audio.currentTime || 0;
         const target = Math.max(0, Math.min(this.audio.duration, cur + seconds));
         this.audio.currentTime = target;
+        this._pendingResumeSeekTime = 0;
+        this._hasPlayedInCurrentRun = true;
         this.updateProgressUI();
+        this.savePlaybackSession(true);
     },
 
     updateDurationUI() {
-        const dur = this.audio.duration || 0;
+        const dur = (this.audio.duration && !isNaN(this.audio.duration) && this.audio.duration > 0)
+            ? this.audio.duration
+            : (this._pendingResumeDuration || 0);
         const miniTimeTot = document.getElementById("mini-player-time-total");
         const playerTimeTot = document.getElementById("player-time-total");
         const ambientTimeTot = document.getElementById("ambient-time-total");
@@ -8726,6 +9116,11 @@ const AudioPlayer = {
 
     playTrackAtIndex(index, seekTime = 0) {
         if (!this.playlist || index < 0 || index >= this.playlist.length) return;
+        this._isRestoringSavedSession = false;
+        this._showResumeNotificationOnLoad = false;
+        this._pendingResumeSeekTime = 0;
+        this._pendingResumeDuration = 0;
+        this._hasPlayedInCurrentRun = true;
         this.currentIndex = index;
         this.currentTrackIsFromQueue = false;
         this.currentQueueTrack = null;
@@ -8826,6 +9221,7 @@ const AudioPlayer = {
 
         this.updateCurrentTrackUI(trk);
         this.updatePlayStateUI();
+        this.savePlaybackSession(true);
         if (this.isQueueDrawerOpen) this.renderQueueDrawer();
     },
 
@@ -9374,6 +9770,7 @@ const AudioPlayer = {
         } else {
             AudioFader.stop(this.audio);
         }
+        this.clearSavedPlaybackSession();
         this.audio.pause();
         this.audio.src = "";
         this.isPlaying = false;

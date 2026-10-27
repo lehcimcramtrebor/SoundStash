@@ -5,7 +5,7 @@
  */
 
 window.AppUpdater = {
-    currentVersion: "5.0.3",
+    currentVersion: "5.0.4",
     latestRelease: null,
     isChecking: false,
     isDownloading: false,
@@ -396,6 +396,10 @@ window.AppUpdater = {
                     }
                 }
             } catch (ignore) {}
+
+            if (window.AudioPlayer && typeof window.AudioPlayer.savePlaybackSession === "function") {
+                window.AudioPlayer.savePlaybackSession(true);
+            }
 
             // 1. Priorité Electron native : détachement absolu de l'installeur et fermeture propre
             if (window.electronAPI && typeof window.electronAPI.installUpdate === "function") {

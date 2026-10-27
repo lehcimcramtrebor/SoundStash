@@ -2348,6 +2348,9 @@ function setupCloseConfirmModal() {
                     console.warn("[GracefulShutdown] Exception fetch:", e);
                 }
             }
+            if (window.AudioPlayer && typeof window.AudioPlayer.savePlaybackSession === "function") {
+                window.AudioPlayer.savePlaybackSession(Boolean(window.AudioPlayer._hasPlayedInCurrentRun));
+            }
             closeModal();
             if (window.electronAPI && window.electronAPI.confirmQuit) {
                 window.electronAPI.confirmQuit();

@@ -1,4 +1,4 @@
-# 🎵 SoundStash v5.0.3
+# 🎵 SoundStash v5.0.4
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -11,6 +11,15 @@
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v5.0.4
+
+### ⏯️ Mémorisation & Reprise Transparente de Session Musicale (Smart Resume)
+- **Sauvegarde automatique et continue de votre écoute** : Lorsque vous fermez SoundStash ou installez une mise à jour, l'application mémorise intégralement l'état de votre écoute (morceau actif, position exacte à la seconde près, album, playlist ou catalogue complet « Tout », mode Aléatoire, mode Répétition et file d'attente prioritaire).
+- **Reprise instantanée en 1 touche (`Espace` ou `▶`)** : Dès la réouverture de l'application, votre titre vous attend dans le centre de commandes inférieur exactement là où vous l'aviez laissé. Une simple pression sur la **barre d'espace** (ou un clic sur **Play**) relance immédiatement la musique avec fondu doux sans perdre le fil de votre session.
+- **Notification intelligente de première réouverture** : Lors de la première réouverture suivant une sauvegarde de lecture, une notification discrète vous informe que votre morceau est prêt à reprendre à son horodatage exact.
 
 ---
 
