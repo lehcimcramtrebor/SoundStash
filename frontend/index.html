@@ -11,7 +11,7 @@
             document.documentElement.setAttribute("data-theme", savedTheme);
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=5.0.4">
+    <link rel="stylesheet" href="/static/style.css?v=5.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -229,7 +229,7 @@
                         <div class="search-bar-row">
                             <div class="search-input-wrapper">
                                 <svg class="search-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                                <input type="text" id="search-query-input" placeholder="Rechercher un album, un artiste ou un titre (ex: Daft Punk Discovery, Pink Floyd)..." autocomplete="off">
+                                <input type="text" id="search-query-input" placeholder="Rechercher un album, un EP, un single, un artiste, un titre ou un clip (ex: Daft Punk Discovery)..." autocomplete="off">
                                 <button type="button" id="search-clear-btn" class="search-clear-btn" style="display: none;" title="Effacer">&times;</button>
                             </div>
                             <button type="submit" id="search-submit-btn" class="btn btn-primary">
@@ -247,11 +247,13 @@
                                 </label>
                                 <select id="search-filter-type-select" class="search-filter-select" title="Filtrer les résultats de recherche par type">
                                     <option value="all" selected>Tous les types</option>
-                                    <option value="album">💿 Albums officiels</option>
+                                    <option value="album">💿 Albums, EPs &amp; Singles</option>
+                                    <option value="ep">📀 EPs officiels</option>
+                                    <option value="single">💿 Singles officiels</option>
                                     <option value="artist">🎤 Artistes</option>
-                                    <option value="playlist">📑 Playlists & Compilations</option>
+                                    <option value="playlist">📑 Playlists &amp; Compilations</option>
                                     <option value="track">🎵 Morceaux individuels</option>
-                                    <option value="video">🎬 Vidéos & Clips</option>
+                                    <option value="video">🎬 Vidéos, Clips &amp; Concerts</option>
                                 </select>
                             </div>
 
@@ -393,18 +395,32 @@
                             <div class="results-header-row">
                                 <div class="results-meta-left">
                                     <span id="search-results-count" class="text-muted" style="font-size: 0.88rem;">0 résultat</span>
-                                    <!-- Sous-filtres spécifiques aux albums (masqué par défaut, actif si filter === 'album') -->
+                                    <!-- Sous-filtres spécifiques aux albums, EPs et singles -->
                                     <div id="album-subfilters-group" class="album-subfilters-group" style="display: none;">
                                         <span class="subfilter-separator">•</span>
                                         <div class="subfilter-pills" id="album-subfilter-pills">
                                             <button type="button" class="subfilter-pill active" data-subfilter="all">Tous</button>
                                             <button type="button" class="subfilter-pill" data-subfilter="lp" title="Albums complets (≥ 6 pistes)">💿 Albums Studio</button>
-                                            <button type="button" class="subfilter-pill" data-subfilter="single_ep" title="Singles et EPs (1 à 5 pistes)">⚡ Singles & EPs</button>
+                                            <button type="button" class="subfilter-pill" data-subfilter="ep" title="Mini-albums et EPs (4 à 6 pistes ou tag EP)">📀 EPs</button>
+                                            <button type="button" class="subfilter-pill" data-subfilter="single" title="Singles (1 à 3 pistes ou tag Single)">💿 Singles</button>
+                                            <button type="button" class="subfilter-pill" data-subfilter="single_ep" title="Regrouper Singles et EPs">⚡ Singles &amp; EPs</button>
                                         </div>
                                         <!-- Pilule de Verrouillage Artiste Strict -->
                                         <button type="button" id="btn-strict-artist" class="btn-strict-artist" title="Masquer les albums d'autres artistes portant ce nom dans le titre (ex: hommages, reprises)">
                                             🎯 Artiste strict
                                         </button>
+                                    </div>
+                                    <!-- Sous-filtres rapides de catégories (actif en mode 'Tous les types') -->
+                                    <div id="all-subfilters-group" class="album-subfilters-group" style="display: none;">
+                                        <span class="subfilter-separator">•</span>
+                                        <div class="subfilter-pills" id="all-subfilter-pills">
+                                            <button type="button" class="subfilter-pill active" data-catfilter="all">Tout</button>
+                                            <button type="button" class="subfilter-pill" data-catfilter="album" title="Afficher uniquement les Albums, EPs et Singles trouvés">💿 Albums / EPs</button>
+                                            <button type="button" class="subfilter-pill" data-catfilter="track" title="Afficher uniquement les morceaux individuels">🎵 Titres</button>
+                                            <button type="button" class="subfilter-pill" data-catfilter="video" title="Afficher uniquement les vidéos, clips et concerts">🎬 Vidéos</button>
+                                            <button type="button" class="subfilter-pill" data-catfilter="artist" title="Afficher uniquement les profils d'artistes">🎤 Artistes</button>
+                                            <button type="button" class="subfilter-pill" data-catfilter="playlist" title="Afficher uniquement les playlists">📑 Playlists</button>
+                                        </div>
                                     </div>
                                     <!-- Filtre Masquer Déjà Possédés -->
                                     <button type="button" id="btn-filter-hide-owned" class="subfilter-pill btn-hide-owned" title="Masquer les albums déjà présents dans votre collection ou en cours dans le dossier temporaire">
@@ -2447,7 +2463,7 @@
                                         Mise à Jour de l'Application SoundStash
                                     </h3>
                                     <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
-                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v5.0.4</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
+                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v5.1.0</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
                                     </p>
                                 </div>
                                 <button type="button" id="btn-check-app-update" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
@@ -4620,46 +4636,46 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Socle JavaScript Modulaire Core -->
-    <script src="/static/js/core/icons.js?v=5.0.4"></script>
-    <script src="/static/js/core/utils.js?v=5.0.4"></script>
-    <script src="/static/js/core/modals.js?v=5.0.4"></script>
-    <script src="/static/js/core/websocket.js?v=5.0.4"></script>
-    <script src="/static/js/core/app_updater.js?v=5.0.4"></script>
+    <script src="/static/js/core/icons.js?v=5.1.0"></script>
+    <script src="/static/js/core/utils.js?v=5.1.0"></script>
+    <script src="/static/js/core/modals.js?v=5.1.0"></script>
+    <script src="/static/js/core/websocket.js?v=5.1.0"></script>
+    <script src="/static/js/core/app_updater.js?v=5.1.0"></script>
 
     <!-- Modules Autonomes : Mode Ambiance & Synthwave -->
-    <script src="/static/js/ambient/synthwave_canvas.js?v=5.0.4"></script>
-    <script src="/static/js/ambient/ambient_manager.js?v=5.0.4"></script>
+    <script src="/static/js/ambient/synthwave_canvas.js?v=5.1.0"></script>
+    <script src="/static/js/ambient/ambient_manager.js?v=5.1.0"></script>
 
     <!-- Modules Autonomes : Playlists Utilisateur -->
-    <script src="/static/js/playlists/user_playlists.js?v=5.0.4"></script>
+    <script src="/static/js/playlists/user_playlists.js?v=5.1.0"></script>
 
     <!-- Modules Autonomes : Configuration, Veille & Sécurité -->
-    <script src="/static/js/extras/settings.js?v=5.0.4"></script>
-    <script src="/static/js/extras/sleep_timer.js?v=5.0.4"></script>
-    <script src="/static/js/extras/party_lock.js?v=5.0.4"></script>
-    <script src="/static/js/extras/user_guide.js?v=5.0.4"></script>
+    <script src="/static/js/extras/settings.js?v=5.1.0"></script>
+    <script src="/static/js/extras/sleep_timer.js?v=5.1.0"></script>
+    <script src="/static/js/extras/party_lock.js?v=5.1.0"></script>
+    <script src="/static/js/extras/user_guide.js?v=5.1.0"></script>
 
     <!-- Modules Métier : Atelier de Recherche, Téléchargement & Exportation -->
-    <script src="/static/js/workshop/workbench.js?v=5.0.4"></script>
-    <script src="/static/js/workshop/search.js?v=5.0.4"></script>
-    <script src="/static/js/workshop/download.js?v=5.0.4"></script>
-    <script src="/static/js/workshop/exporter.js?v=5.0.4"></script>
+    <script src="/static/js/workshop/workbench.js?v=5.1.0"></script>
+    <script src="/static/js/workshop/search.js?v=5.1.0"></script>
+    <script src="/static/js/workshop/download.js?v=5.1.0"></script>
+    <script src="/static/js/workshop/exporter.js?v=5.1.0"></script>
 
     <!-- Modules Métier : Éditeur de Tags & Reconstitution -->
-    <script src="/static/js/editor/reconstitute.js?v=5.0.4"></script>
-    <script src="/static/js/editor/tag_editor.js?v=5.0.4"></script>
+    <script src="/static/js/editor/reconstitute.js?v=5.1.0"></script>
+    <script src="/static/js/editor/tag_editor.js?v=5.1.0"></script>
 
     <!-- Modules Métier : Discothèque & Corbeille -->
-    <script src="/static/js/library/library_manager.js?v=5.0.4"></script>
+    <script src="/static/js/library/library_manager.js?v=5.1.0"></script>
 
     <!-- Modules Métier : Lecteur Audio, Égaliseur & Raccourcis -->
-    <script src="/static/js/player/audio_player.js?v=5.0.4"></script>
-    <script src="/static/js/player/shortcuts.js?v=5.0.4"></script>
+    <script src="/static/js/player/audio_player.js?v=5.1.0"></script>
+    <script src="/static/js/player/shortcuts.js?v=5.1.0"></script>
 
     <!-- Modules Métier : Lecteur Vidéo Clip & Moteur Audio Vidéo -->
-    <script src="/static/js/video/video_player.js?v=5.0.4"></script>
+    <script src="/static/js/video/video_player.js?v=5.1.0"></script>
 
     <!-- Orchestrateur Principal -->
-    <script src="/static/app.js?v=5.0.4"></script>
+    <script src="/static/app.js?v=5.1.0"></script>
 </body>
 </html>

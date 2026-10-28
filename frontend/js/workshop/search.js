@@ -24,6 +24,8 @@ function setupSearch() {
     const resultsCount = document.getElementById("search-results-count");
     const albumSubfiltersGroup = document.getElementById("album-subfilters-group");
     const albumSubfilterPills = document.querySelectorAll("#album-subfilter-pills .subfilter-pill");
+    const allSubfiltersGroup = document.getElementById("all-subfilters-group");
+    const allSubfilterPills = document.querySelectorAll("#all-subfilter-pills .subfilter-pill");
     const sortSelect = document.getElementById("search-sort-select");
     const loadMoreContainer = document.getElementById("search-load-more-container");
     const loadMoreBtn = document.getElementById("search-load-more-btn");
@@ -40,14 +42,18 @@ function setupSearch() {
 
     if (!searchForm || !queryInput) return;
 
+    const isAlbumFamilyFilter = (f) => f === "album" || f === "ep" || f === "single";
+
     let currentFilter = "all";
     let currentContinuationToken = null;
     let currentRawResults = [];
     let currentSort = "relevance";
     let currentAlbumSubfilter = "all";
+    let currentAllCategorySubfilter = "all";
     let strictArtistFilterActive = false;
     let hideOwnedFilterActive = false;
     let currentArtistLock = "";
+    let lastSearchedQuery = "";
     let isOfficialDiscographyMode = false;
     let savedSearchBeforeDiscography = null;
 
@@ -56,10 +62,25 @@ function setupSearch() {
     const MIN_VISIBLE_TILES_THRESHOLD = 15;
     const MAX_CONSECUTIVE_AUTO_LOADS = 4;
 
+    function syncAlbumSubfilterPillsUI() {
+        albumSubfilterPills.forEach(p => {
+            p.classList.toggle("active", p.getAttribute("data-subfilter") === currentAlbumSubfilter);
+        });
+    }
+
+    function syncAllCategoryPillsUI() {
+        allSubfilterPills.forEach(p => {
+            p.classList.toggle("active", p.getAttribute("data-catfilter") === currentAllCategorySubfilter);
+        });
+    }
+
     // Affichage / masquage du bouton clear et persistance du texte saisi
     queryInput.addEventListener("input", () => {
         const val = queryInput.value;
         clearBtn.style.display = val.trim() ? "block" : "none";
+        if (searchGenreSelect && searchGenreSelect.value && val.trim() !== searchGenreSelect.value) {
+            searchGenreSelect.value = "";
+        }
         try {
             if (val.trim()) {
                 localStorage.setItem("ytm_search_query", val);
@@ -78,63 +99,114 @@ function setupSearch() {
         currentContinuationToken = null;
         currentRawResults = [];
         window.currentSearchResults = [];
+        lastSearchedQuery = "";
+        isOfficialDiscographyMode = false;
+        savedSearchBeforeDiscography = null;
         currentSort = "relevance";
         if (sortSelect) sortSelect.value = "relevance";
         try {
             localStorage.removeItem("ytm_search_sort");
         } catch (e) {}
-        currentAlbumSubfilter = "all";
-        albumSubfilterPills.forEach(p => {
-            if (p.getAttribute("data-subfilter") === "all") p.classList.add("active");
-            else p.classList.remove("active");
-        });
+        currentAlbumSubfilter = (currentFilter === "ep") ? "ep" : ((currentFilter === "single") ? "single" : "all");
+        syncAlbumSubfilterPillsUI();
+        currentAllCategorySubfilter = "all";
+        syncAllCategoryPillsUI();
         try {
             localStorage.removeItem("ytm_album_subfilter");
         } catch (e) {}
+        if (resultsGrid) resultsGrid.innerHTML = "";
+        if (resultsContainer) resultsContainer.style.display = "none";
+        if (errorBox) errorBox.style.display = "none";
+        if (loading) loading.style.display = "none";
+        if (placeholder) placeholder.style.display = "";
+        if (artistDiscographyBanner) artistDiscographyBanner.style.display = "none";
         if (albumSubfiltersGroup) albumSubfiltersGroup.style.display = "none";
+        if (allSubfiltersGroup) allSubfiltersGroup.style.display = "none";
         if (loadMoreContainer) loadMoreContainer.style.display = "none";
         if (allHint) allHint.style.display = "none";
         if (searchGenreSelect) searchGenreSelect.value = "";
+        updateSubfilterPillCounts([]);
         queryInput.focus();
     });
 
     // Gestion du filtre déroulant par type
     if (searchTypeSelect) {
         searchTypeSelect.addEventListener("change", () => {
+            const prevFilter = currentFilter;
             currentFilter = searchTypeSelect.value || "all";
             try {
                 localStorage.setItem("ytm_search_filter", currentFilter);
             } catch (e) {}
 
-            // Réinitialiser le sous-filtre d'album à 'all'
-            currentAlbumSubfilter = "all";
-            albumSubfilterPills.forEach(p => {
-                if (p.getAttribute("data-subfilter") === "all") p.classList.add("active");
-                else p.classList.remove("active");
-            });
+            // Synchroniser le sous-filtre d'album avec le choix du menu déroulant
+            if (currentFilter === "ep") {
+                currentAlbumSubfilter = "ep";
+            } else if (currentFilter === "single") {
+                currentAlbumSubfilter = "single";
+            } else {
+                currentAlbumSubfilter = "all";
+            }
+            syncAlbumSubfilterPillsUI();
             try {
-                localStorage.setItem("ytm_album_subfilter", "all");
+                localStorage.setItem("ytm_album_subfilter", currentAlbumSubfilter);
             } catch (e) {}
+
+            currentAllCategorySubfilter = "all";
+            syncAllCategoryPillsUI();
+
             if (albumSubfiltersGroup) {
-                albumSubfiltersGroup.style.display = (currentFilter === "album" && currentRawResults.length > 0) ? "inline-flex" : "none";
+                albumSubfiltersGroup.style.display = (isAlbumFamilyFilter(currentFilter) && currentRawResults.length > 0) ? "inline-flex" : "none";
+            }
+            if (allSubfiltersGroup) {
+                allSubfiltersGroup.style.display = (currentFilter === "all" && currentRawResults.length > 0) ? "inline-flex" : "none";
             }
 
-            if (queryInput.value.trim()) {
-                performSearch(queryInput.value.trim(), currentFilter);
+            const qTrim = queryInput.value.trim();
+            // Si on bascule simplement entre Albums / EPs / Singles sur la même recherche déjà chargée, filtrer instantanément
+            if (isAlbumFamilyFilter(prevFilter) && isAlbumFamilyFilter(currentFilter) && currentRawResults.length > 0 && qTrim && qTrim === lastSearchedQuery) {
+                applyFiltersAndSort(false);
+                return;
+            }
+
+            if (qTrim) {
+                performSearch(qTrim, currentFilter);
             }
         });
     }
 
-    // Gestion des sous-filtres d'albums (Tous / Albums Studio / Singles & EPs)
+    // Gestion des sous-filtres d'albums (Tous / Albums Studio / EPs / Singles / Singles & EPs)
     albumSubfilterPills.forEach(pill => {
         pill.addEventListener("click", () => {
-            albumSubfilterPills.forEach(p => p.classList.remove("active"));
-            pill.classList.add("active");
             currentAlbumSubfilter = pill.getAttribute("data-subfilter") || "all";
+            syncAlbumSubfilterPillsUI();
+            if (isAlbumFamilyFilter(currentFilter) && searchTypeSelect) {
+                if (currentAlbumSubfilter === "ep") {
+                    currentFilter = "ep";
+                    searchTypeSelect.value = "ep";
+                } else if (currentAlbumSubfilter === "single") {
+                    currentFilter = "single";
+                    searchTypeSelect.value = "single";
+                } else {
+                    currentFilter = "album";
+                    searchTypeSelect.value = "album";
+                }
+                try {
+                    localStorage.setItem("ytm_search_filter", currentFilter);
+                } catch (e) {}
+            }
             try {
                 localStorage.setItem("ytm_album_subfilter", currentAlbumSubfilter);
             } catch (e) {}
-            applyFiltersAndSort();
+            applyFiltersAndSort(false);
+        });
+    });
+
+    // Gestion des sous-filtres rapides de catégories en mode 'Tous les types'
+    allSubfilterPills.forEach(pill => {
+        pill.addEventListener("click", () => {
+            currentAllCategorySubfilter = pill.getAttribute("data-catfilter") || "all";
+            syncAllCategoryPillsUI();
+            applyFiltersAndSort(false);
         });
     });
 
@@ -245,15 +317,25 @@ function setupSearch() {
                 currentContinuationToken = data.continuation || null;
 
                 if (moreItems.length > 0) {
-                    const startIdx = currentRawResults.length;
-                    moreItems.forEach((item, idx) => {
-                        item._originalIndex = startIdx + idx;
+                    const existingKeys = new Set(currentRawResults.map(it => it.url || it.id));
+                    const uniqueMore = moreItems.filter(it => {
+                        const k = it.url || it.id;
+                        if (!k || existingKeys.has(k)) return false;
+                        existingKeys.add(k);
+                        return true;
                     });
-                    currentRawResults = currentRawResults.concat(moreItems);
+                    const startIdx = currentRawResults.length;
+                    uniqueMore.forEach((item, idx) => {
+                        item._originalIndex = startIdx + idx;
+                        if (item.type === "album") {
+                            item.subtype = getResolvedAlbumSubtype(item);
+                        }
+                    });
+                    currentRawResults = currentRawResults.concat(uniqueMore);
                     window.currentSearchResults = currentRawResults;
 
                     // Enrichir le statut bibliothèque des nouveaux éléments (sans récursion de filtres)
-                    await enrichItemsWithLibraryStatus(moreItems, false);
+                    await enrichItemsWithLibraryStatus(uniqueMore, false);
                     applyFiltersAndSort(false);
 
                     setTimeout(() => {
@@ -296,11 +378,21 @@ function setupSearch() {
                 const moreItems = data.results || [];
 
                 if (moreItems.length > 0) {
-                    const startIdx = currentRawResults.length;
-                    moreItems.forEach((item, idx) => {
-                        item._originalIndex = startIdx + idx;
+                    const existingKeys = new Set(currentRawResults.map(it => it.url || it.id));
+                    const uniqueMore = moreItems.filter(it => {
+                        const k = it.url || it.id;
+                        if (!k || existingKeys.has(k)) return false;
+                        existingKeys.add(k);
+                        return true;
                     });
-                    currentRawResults = currentRawResults.concat(moreItems);
+                    const startIdx = currentRawResults.length;
+                    uniqueMore.forEach((item, idx) => {
+                        item._originalIndex = startIdx + idx;
+                        if (item.type === "album") {
+                            item.subtype = getResolvedAlbumSubtype(item);
+                        }
+                    });
+                    currentRawResults = currentRawResults.concat(uniqueMore);
                     window.currentSearchResults = currentRawResults;
                     applyFiltersAndSort();
                 }
@@ -574,15 +666,41 @@ function setupSearch() {
     }
     window.enrichItemsWithLibraryStatus = enrichItemsWithLibraryStatus;
 
+    function getResolvedAlbumSubtype(item) {
+        if (!item || item.type !== "album") return item ? item.subtype : null;
+        const rawSub = (item.subtype || "album").toLowerCase();
+        const trackCount = parseInt(item.track_count, 10);
+        const hasTrackCount = !isNaN(trackCount) && trackCount > 0;
+
+        if (hasTrackCount) {
+            if (trackCount === 1) return "single";
+            if (trackCount >= 2 && trackCount <= 3) {
+                if (rawSub !== "ep" && !(item.subtype_explicit && rawSub === "album")) return "single";
+            }
+            if (trackCount >= 4 && trackCount <= 6) {
+                if (rawSub === "single" || (rawSub === "album" && !item.subtype_explicit && trackCount <= 5)) return "ep";
+            }
+            if (trackCount >= 7) {
+                if ((rawSub === "single" || rawSub === "ep") && !(item.subtype_explicit && rawSub === "ep" && trackCount <= 7)) return "album";
+            }
+        }
+        if (rawSub === "ep" || rawSub === "single" || rawSub === "album") return rawSub;
+        return "album";
+    }
+
     function createSearchResultCard(item) {
         if (item.artist) item.artist = cleanArtistName(item.artist);
         if (item.type === "artist" && item.title) item.title = cleanArtistName(item.title);
+        if (item.type === "album") {
+            item.subtype = getResolvedAlbumSubtype(item);
+        }
 
         const card = document.createElement("div");
         card.className = "search-result-card";
 
+        // Ne promouvoir en concert que si l'élément est déjà une vidéo (ou marqué concert par le backend)
         const isConcert = Boolean(item.is_concert) || (
-            (item.type === "video" || item.type === "track") && (
+            item.type === "video" && (
                 (item.duration && (item.duration.split(":").length >= 3 || (item.duration.split(":").length === 2 && parseInt(item.duration.split(":")[0], 10) >= 20))) ||
                 /(full\s+concert|live\s+at|live\s+in|concert\s+complet|live\s+tour|festival\s+live|live\s+session|live\s+show|en\s+concert)/i.test(item.title || "")
             )
@@ -725,9 +843,8 @@ function setupSearch() {
                             ▶ Écouter
                         </button>
                         <button type="button" class="btn btn-secondary search-card-subaction-btn search-card-view-video-btn" title="${isConcert ? "Regarder le concert dans l'application" : "Regarder le clip vidéo dans l'application"}">
-                            ${isConcert ? "👁 Voir concert" : "👁 Voir clip"}
+                            ${isConcert ? "👁 Concert" : "👁 Voir clip"}
                         </button>
-                        ${artistBtnHtml}
                         <a href="${escapeHtml(item.url)}" target="_blank" class="search-card-link-btn" title="Ouvrir le flux source">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
                         </a>
@@ -754,7 +871,6 @@ function setupSearch() {
                         <button type="button" class="btn btn-secondary search-card-subaction-btn search-card-view-video-btn" title="Regarder la vidéo dans l'application">
                             👁 Clip
                         </button>
-                        ${artistBtnHtml}
                         <a href="${escapeHtml(item.url)}" target="_blank" class="search-card-link-btn" title="Ouvrir le lien source">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
                         </a>
@@ -766,9 +882,9 @@ function setupSearch() {
         const isArtistCard = item.type === "artist";
         const thumbContainerClass = isArtistCard ? "search-thumb-container artist-thumb-container" : "search-thumb-container";
         const artistLineHtml = isArtistCard 
-            ? `<p class="search-card-artist" title="Fiche artiste officielle">🎤 Profil officiel</p>`
+            ? `<p class="search-card-artist" title="Fiche artiste officielle"><span>🎤 Profil officiel</span></p>`
             : `<p class="search-card-artist" title="${escapeHtml(item.artist)}">
-                <span>${escapeHtml(item.artist)}</span>
+                <span class="search-card-artist-text">${escapeHtml(item.artist)}</span>
                 ${hasArtistBtn ? `<button type="button" class="btn-artist-search-jump" title="Rechercher l'artiste « ${escapeHtml(item.artist)} »" data-artist="${escapeHtml(item.artist)}">🎤</button>` : ""}
                </p>`;
 
@@ -935,17 +1051,33 @@ function setupSearch() {
             .trim();
     }
 
+    const TRIBUTE_ARTIST_RE = /\b(tribute|hommage|karaoke|karaok[eé]|8[\s-]*bit|lullaby|lullabies|piano\s+covers?|string\s+quartet|vitamin\s+string|made\s+famous\s+by|originally\s+performed\s+by|in\s+the\s+style\s+of|cover\s+band|reprise)\b/i;
+
     function isArtistMatch(artistA, artistB) {
+        if (!artistA || !artistB) return false;
+        // Rejeter systématiquement les artistes d'hommage/reprise/karaoké si l'artiste verrouillé n'en est pas un
+        if (TRIBUTE_ARTIST_RE.test(artistA) && !TRIBUTE_ARTIST_RE.test(artistB)) {
+            return false;
+        }
         const a = normalizeArtistForMatch(artistA);
         const b = normalizeArtistForMatch(artistB);
         if (!a || !b) return false;
         if (a === b) return true;
-        if (a.includes(b) || b.includes(a)) return true;
 
-        // Comparaison sans espaces (ex: 'acdc' vs 'ac dc')
         const noSpaceA = a.replace(/\s+/g, "");
         const noSpaceB = b.replace(/\s+/g, "");
-        if (noSpaceA === noSpaceB || noSpaceA.includes(noSpaceB) || noSpaceB.includes(noSpaceA)) return true;
+        if (noSpaceA === noSpaceB) return true;
+
+        // Vérifier les collaborations (ex: 'Daft Punk & Pharrell Williams', 'Renaud, Axelle Red')
+        const collabParts = String(artistA).split(/[,;&\/]|\b(?:feat\.?|ft\.?|with|avec|et|and|vs\.?|x)\b/i);
+        if (collabParts.length > 1) {
+            for (const part of collabParts) {
+                const pNorm = normalizeArtistForMatch(part);
+                if (pNorm && (pNorm === b || pNorm.replace(/\s+/g, "") === noSpaceB)) {
+                    return true;
+                }
+            }
+        }
 
         // Recouvrement des tokens pour artistes multi-mots (indice de Jaccard >= 0.75)
         const tokensA = new Set(a.split(/\s+/).filter(Boolean));
@@ -957,11 +1089,50 @@ function setupSearch() {
         return (intersection / union) >= 0.75;
     }
 
-    function filterResults(items) {
-        let res = items;
+    function resolveStrictArtistTarget(rawQuery, items) {
+        const qTrim = (rawQuery || "").trim();
+        if (!qTrim || !items || items.length === 0) return qTrim;
+        const qNorm = normalizeArtistForMatch(qTrim);
+        if (!qNorm) return qTrim;
 
-        // 1. Filtrage strict par artiste (si activé manuellement en recherche textuelle d'albums)
-        if (strictArtistFilterActive && currentArtistLock && currentFilter === "album") {
+        // 1. Si un artiste des résultats correspond exactement à la requête, garder son nom propre
+        for (const it of items) {
+            const art = it.artist || (it.type === "artist" ? it.title : "");
+            if (!art || art === "Artiste inconnu" || TRIBUTE_ARTIST_RE.test(art)) continue;
+            if (normalizeArtistForMatch(art) === qNorm) {
+                return art;
+            }
+        }
+
+        // 2. Si la requête contient "Artiste + Titre d'album" (ex: "Daft Punk Discovery"),
+        // identifier l'artiste récurrent présent en préfixe/sous-chaîne de la requête
+        const counts = new Map();
+        for (const it of items) {
+            const art = it.artist || (it.type === "artist" ? it.title : "");
+            if (!art || art === "Artiste inconnu" || TRIBUTE_ARTIST_RE.test(art)) continue;
+            const artNorm = normalizeArtistForMatch(art);
+            if (!artNorm || artNorm.length < 2) continue;
+            const qTokens = qNorm.split(/\s+/);
+            const artTokens = artNorm.split(/\s+/);
+            const allArtTokensInQuery = artTokens.every(t => qTokens.includes(t));
+            if (allArtTokensInQuery) {
+                const entry = counts.get(artNorm) || { name: art, count: 0, tokenLen: artTokens.length };
+                entry.count += 1;
+                counts.set(artNorm, entry);
+            }
+        }
+        if (counts.size > 0) {
+            const best = [...counts.values()].sort((x, y) => (y.count * 2 + y.tokenLen) - (x.count * 2 + x.tokenLen))[0];
+            if (best && best.name) return best.name;
+        }
+        return qTrim;
+    }
+
+    function getBaseFilteredResults(items) {
+        let res = items || [];
+
+        // 1. Filtrage strict par artiste (si activé manuellement en recherche d'albums/EPs/singles)
+        if (strictArtistFilterActive && currentArtistLock && isAlbumFamilyFilter(currentFilter)) {
             res = res.filter(item => {
                 const itemArtist = item.artist || (item.type === "artist" ? item.title : "");
                 if (!itemArtist) return false;
@@ -980,26 +1151,93 @@ function setupSearch() {
             });
         }
 
-        // 3. Sous-filtres LP vs Single/EP
-        if (currentFilter !== "album" || currentAlbumSubfilter === "all") {
-            return res;
-        }
-        return res.filter(item => {
-            const subtype = (item.subtype || "").toLowerCase();
-            const trackCount = parseInt(item.track_count, 10);
-            const hasTrackCount = !isNaN(trackCount);
+        return res;
+    }
 
-            if (currentAlbumSubfilter === "lp") {
-                if (subtype === "single" || subtype === "ep") return false;
-                if (hasTrackCount && trackCount < 6) return false;
-                return true;
-            } else if (currentAlbumSubfilter === "single_ep") {
-                if (subtype === "single" || subtype === "ep") return true;
-                if (hasTrackCount && trackCount > 0 && trackCount < 6) return true;
-                return false;
-            }
+    function matchesAlbumSubfilter(item, subfilter) {
+        if (!subfilter || subfilter === "all") return true;
+        if (!item || item.type !== "album") return false;
+        const resolvedSub = getResolvedAlbumSubtype(item);
+        const trackCount = parseInt(item.track_count, 10);
+        const hasTrackCount = !isNaN(trackCount) && trackCount > 0;
+
+        if (subfilter === "lp") {
+            if (resolvedSub === "single" || resolvedSub === "ep") return false;
+            if (hasTrackCount && trackCount < 6 && !item.subtype_explicit) return false;
             return true;
+        }
+        if (subfilter === "ep") {
+            return resolvedSub === "ep";
+        }
+        if (subfilter === "single") {
+            return resolvedSub === "single";
+        }
+        if (subfilter === "single_ep") {
+            return resolvedSub === "single" || resolvedSub === "ep";
+        }
+        return true;
+    }
+
+    function updateSubfilterPillCounts(baseItems) {
+        const list = baseItems || [];
+        const hasItems = list.length > 0;
+
+        const albumLabels = {
+            all: "Tous",
+            lp: "💿 Albums Studio",
+            ep: "📀 EPs",
+            single: "💿 Singles",
+            single_ep: "⚡ Singles & EPs"
+        };
+        albumSubfilterPills.forEach(pill => {
+            const sub = pill.getAttribute("data-subfilter") || "all";
+            const baseLabel = albumLabels[sub] || pill.textContent;
+            if (!hasItems || !isAlbumFamilyFilter(currentFilter)) {
+                pill.textContent = baseLabel;
+                return;
+            }
+            const cnt = list.filter(it => matchesAlbumSubfilter(it, sub)).length;
+            pill.textContent = `${baseLabel} (${cnt})`;
         });
+
+        const allLabels = {
+            all: "Tout",
+            album: "💿 Albums / EPs",
+            track: "🎵 Titres",
+            video: "🎬 Vidéos",
+            artist: "🎤 Artistes",
+            playlist: "📑 Playlists"
+        };
+        allSubfilterPills.forEach(pill => {
+            const cat = pill.getAttribute("data-catfilter") || "all";
+            const baseLabel = allLabels[cat] || pill.textContent;
+            if (!hasItems || currentFilter !== "all") {
+                pill.textContent = baseLabel;
+                return;
+            }
+            const cnt = cat === "all" ? list.length : list.filter(it => it.type === cat).length;
+            pill.textContent = `${baseLabel} (${cnt})`;
+            // Masquer les pilules de catégories à 0 élément (sauf 'Tout' et la pilule active) pour épurer l'UI
+            pill.style.display = (cnt === 0 && cat !== "all" && currentAllCategorySubfilter !== cat) ? "none" : "";
+        });
+    }
+
+    function filterResults(items) {
+        const base = getBaseFilteredResults(items);
+
+        // En mode 'Tous les types', appliquer le sous-filtre rapide de catégorie s'il est actif
+        if (currentFilter === "all") {
+            if (!currentAllCategorySubfilter || currentAllCategorySubfilter === "all") {
+                return base;
+            }
+            return base.filter(item => item.type === currentAllCategorySubfilter);
+        }
+
+        // En mode Album / EP / Single, appliquer le sous-filtre de format
+        if (!isAlbumFamilyFilter(currentFilter) || currentAlbumSubfilter === "all") {
+            return base;
+        }
+        return base.filter(item => matchesAlbumSubfilter(item, currentAlbumSubfilter));
     }
 
     function sortResults(items) {
@@ -1040,7 +1278,18 @@ function setupSearch() {
         }
     }
 
+    function getSubfilterHumanLabel(sub) {
+        if (sub === "lp") return "Albums Studio";
+        if (sub === "ep") return "EPs";
+        if (sub === "single") return "Singles";
+        if (sub === "single_ep") return "Singles & EPs";
+        return "Tous";
+    }
+
     function applyFiltersAndSort(shouldEnrich = true) {
+        const baseFiltered = getBaseFilteredResults(currentRawResults);
+        updateSubfilterPillCounts(baseFiltered);
+
         const filtered = filterResults(currentRawResults);
         const sorted = sortResults(filtered);
 
@@ -1057,7 +1306,9 @@ function setupSearch() {
             enrichItemsWithLibraryStatus(sorted, true);
         }
 
-        if (hideOwnedFilterActive || (currentFilter === "album" && (currentAlbumSubfilter !== "all" || (strictArtistFilterActive && currentArtistLock)))) {
+        const hasSubfilterActive = (isAlbumFamilyFilter(currentFilter) && (currentAlbumSubfilter !== "all" || (strictArtistFilterActive && currentArtistLock))) ||
+                                   (currentFilter === "all" && currentAllCategorySubfilter !== "all");
+        if (hideOwnedFilterActive || hasSubfilterActive) {
             resultsCount.textContent = `${sorted.length} sur ${currentRawResults.length} résultat(s) affiché(s)`;
         } else {
             resultsCount.textContent = `${currentRawResults.length} résultat(s) trouvé(s)`;
@@ -1071,20 +1322,19 @@ function setupSearch() {
             emptyMsg.style.padding = "40px 10px";
             emptyMsg.style.fontSize = "0.95rem";
             let reason = "";
+            const subLabel = getSubfilterHumanLabel(currentAlbumSubfilter);
             if (strictArtistFilterActive && currentArtistLock && currentAlbumSubfilter !== "all") {
-                const subLabel = currentAlbumSubfilter === "lp" ? "Albums Studio" : "Singles & EPs";
                 reason = `aux critères combinés (Artiste strict « <strong>${escapeHtml(currentArtistLock)}</strong> » et sous-filtre <strong>${subLabel}</strong>)`;
             } else if (strictArtistFilterActive && currentArtistLock) {
                 reason = `au filtre artiste strict « <strong>${escapeHtml(currentArtistLock)}</strong> »`;
-            } else if (currentAlbumSubfilter !== "all") {
-                const subLabel = currentAlbumSubfilter === "lp" ? "Albums Studio" : "Singles & EPs";
+            } else if (isAlbumFamilyFilter(currentFilter) && currentAlbumSubfilter !== "all") {
                 reason = `au sous-filtre <strong>${subLabel}</strong>`;
             } else if (hideOwnedFilterActive) {
                 reason = `au filtre « Masquer déjà possédés » (tous les éléments chargés font déjà partie de votre collection)`;
             } else {
                 reason = `aux filtres actifs`;
             }
-            emptyMsg.innerHTML = `⚠️ Aucun résultat ne correspond ${reason} parmi les résultats actuellement chargés.<br><span style="font-size: 0.82rem; opacity: 0.8;">Vous pouvez cliquer sur « ➕ Voir plus de résultats » ci-dessous pour en charger davantage.</span>`;
+            emptyMsg.innerHTML = `⚠️ Aucun résultat ne correspond ${reason} parmi les résultats actuellement chargés.<br><span style="font-size: 0.82rem; opacity: 0.8;">Vous pouvez cliquer sur « ➕ Voir plus de résultats » ci-dessous pour en charger davantage, ou sélectionner « Tous ».</span>`;
             resultsGrid.appendChild(emptyMsg);
         }
     }
@@ -1093,7 +1343,19 @@ function setupSearch() {
         // Réinitialiser le mode discographie officielle lors d'une recherche textuelle standard
         isOfficialDiscographyMode = false;
         if (artistDiscographyBanner) artistDiscographyBanner.style.display = "none";
-        currentArtistLock = query.trim();
+        lastSearchedQuery = query.trim();
+        currentArtistLock = lastSearchedQuery;
+
+        if (filter === "ep") {
+            currentAlbumSubfilter = "ep";
+            syncAlbumSubfilterPillsUI();
+        } else if (filter === "single") {
+            currentAlbumSubfilter = "single";
+            syncAlbumSubfilterPillsUI();
+        } else if (filter === "all") {
+            currentAllCategorySubfilter = "all";
+            syncAllCategoryPillsUI();
+        }
 
         placeholder.style.display = "none";
         errorBox.style.display = "none";
@@ -1128,21 +1390,30 @@ function setupSearch() {
                 return;
             }
 
-            // Indexation initiale des résultats pour la pertinence
+            // Indexation initiale des résultats et harmonisation des sous-types d'albums
             results.forEach((item, idx) => {
                 item._originalIndex = idx;
+                if (item.type === "album") {
+                    item.subtype = getResolvedAlbumSubtype(item);
+                }
             });
             currentRawResults = results;
             window.currentSearchResults = results;
 
-            // Afficher le groupe de sous-filtres uniquement pour les albums
+            // Affiner automatiquement l'artiste cible pour '🎯 Artiste strict' (ex: requête 'Daft Punk Discovery' -> 'Daft Punk')
+            currentArtistLock = resolveStrictArtistTarget(lastSearchedQuery, results);
+
+            // Afficher le groupe de sous-filtres approprié (Albums/EPs/Singles ou Catégories 'Tous les types')
             if (albumSubfiltersGroup) {
-                albumSubfiltersGroup.style.display = (filter === "album" && results.length > 0) ? "inline-flex" : "none";
+                albumSubfiltersGroup.style.display = (isAlbumFamilyFilter(filter) && results.length > 0) ? "inline-flex" : "none";
+            }
+            if (allSubfiltersGroup) {
+                allSubfiltersGroup.style.display = (filter === "all" && results.length > 0) ? "inline-flex" : "none";
             }
             if (btnStrictArtist) {
-                btnStrictArtist.style.display = (filter === "album" && results.length > 0) ? "inline-flex" : "none";
+                btnStrictArtist.style.display = (isAlbumFamilyFilter(filter) && results.length > 0) ? "inline-flex" : "none";
                 btnStrictArtist.classList.toggle("active", strictArtistFilterActive);
-                btnStrictArtist.title = `Ne garder que les albums créés par « ${escapeHtml(currentArtistLock)} » (masquer hommages, reprises et tiers)`;
+                btnStrictArtist.title = `Ne garder que les sorties de « ${escapeHtml(currentArtistLock)} » (masquer hommages, reprises et tiers)`;
             }
 
             // Rendre le conteneur visible avant d'insérer les cartes pour éviter les problèmes de rendu Chromium/Blink
@@ -1214,19 +1485,28 @@ function setupSearch() {
                 return;
             }
 
-            // Indexation
+            // Indexation et résolution des sous-types (Album / EP / Single)
             results.forEach((item, idx) => {
                 item._originalIndex = idx;
+                if (item.type === "album") {
+                    item.subtype = getResolvedAlbumSubtype(item);
+                }
             });
             currentRawResults = results;
             window.currentSearchResults = results;
 
             // Filtre album
             currentFilter = "album";
+            currentAlbumSubfilter = "all";
+            syncAlbumSubfilterPillsUI();
             if (searchTypeSelect) searchTypeSelect.value = "album";
-            try { localStorage.setItem("ytm_search_filter", "album"); } catch(e) {}
+            try {
+                localStorage.setItem("ytm_search_filter", "album");
+                localStorage.setItem("ytm_album_subfilter", "all");
+            } catch(e) {}
 
             currentArtistLock = artistName;
+            lastSearchedQuery = artistName;
             queryInput.value = artistName;
             clearBtn.style.display = "block";
 
@@ -1236,9 +1516,12 @@ function setupSearch() {
                 artistDiscographyBanner.style.display = "flex";
             }
 
-            // Affichage des sous-filtres d'albums
+            // Affichage des sous-filtres d'albums et masquage des filtres 'all'
             if (albumSubfiltersGroup) {
                 albumSubfiltersGroup.style.display = "inline-flex";
+            }
+            if (allSubfiltersGroup) {
+                allSubfiltersGroup.style.display = "none";
             }
             if (btnStrictArtist) {
                 // En mode discographie certifiée, les résultats sont déjà 100% garantis de l'artiste

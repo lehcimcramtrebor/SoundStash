@@ -13,14 +13,21 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
     }
     try {
         const defaultQuality = currentConfig.default_quality || (document.getElementById("quality-select") ? document.getElementById("quality-select").value : "auto");
+        const videoQuality = document.getElementById("video-quality-select") ? document.getElementById("video-quality-select").value : (currentConfig.default_video_quality || "1080p");
         const autoRetag = currentConfig.auto_retag !== false;
         const namingPattern = currentConfig.naming_pattern || "{track:02d} {title}";
         const cleanTitles = currentConfig.clean_titles !== false;
 
         const isPlaylist = isPlaylistUrlOrItem(item, url);
+        const itemType = (item && item.type) ? String(item.type).toLowerCase() : "";
+        const isAlbumRelease = itemType === "album" || itemType === "ep" || itemType === "single" || url.includes("OLAK") || url.includes("MPREb_");
 
         const effectiveTitle = (item && item.title) ? item.title : title;
-        const effectiveArtist = (item && item.artist) ? item.artist : null;
+        const rawArtist = (item && item.artist) ? item.artist.trim() : "";
+        const effectiveArtist = (rawArtist && rawArtist.toLowerCase() !== "artiste inconnu") ? rawArtist : null;
+        const effectiveAlbum = (isPlaylist || isAlbumRelease) ? effectiveTitle : null;
+        const effectiveYear = (item && item.year) ? String(item.year).trim() : null;
+
         const dlRes = await fetch("/api/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -29,12 +36,14 @@ async function downloadItemFromSearch(url, title, formatParam, btnEl = null, ori
                 title: effectiveTitle,
                 format: formatParam,
                 quality: defaultQuality,
+                video_quality: videoQuality,
                 auto_retag: autoRetag,
                 naming_pattern: namingPattern,
                 clean_titles: cleanTitles,
                 is_playlist: isPlaylist,
-                custom_album: isPlaylist ? effectiveTitle : null,
-                custom_artist: isPlaylist ? effectiveArtist : null,
+                custom_album: effectiveAlbum,
+                custom_artist: effectiveArtist,
+                custom_year: effectiveYear,
                 origin_album: (item && item.type === "track" && item.album) ? item.album : null,
                 thumbnail_url: item && item.thumbnail ? item.thumbnail : null
             })

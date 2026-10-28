@@ -1,4 +1,4 @@
-# 🎵 SoundStash v5.0.4
+# 🎵 SoundStash v5.1.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -11,6 +11,23 @@
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v5.1.0
+
+### 🔍 Refonte du Moteur & de l'Interface de Recherche de l'Atelier (Albums, EPs, Singles, Vidéos)
+- **Enrichissement automatique par la discographie officielle de l'artiste** : Lors d'une recherche d'artiste en filtre `Albums`, `EPs` ou `Singles`, SoundStash sonde en parallèle la page officielle de l'artiste sur YouTube Music et fusionne sa discographie studio officielle complète (Albums Studio, EPs, Singles) tout en pénalisant les albums hommages, karaoké et reprises non sollicités.
+- **Extraction de la carte « Résultat Principal » (`musicCardShelfRenderer`)** : Détection et intégration native du résultat vedette (album ou artiste exact) et surclassement systématique des miniatures en haute définition (`544×544`).
+- **Classification déterministe Album vs EP vs Single** : Réconciliation croisée entre le tag officiel d'en-tête YouTube Music (`Album`, `EP`, `Single`) et le nombre de pistes (1-3 pistes = `Single`, 4-6 pistes = `EP`, ≥ 7 pistes = `Album`), alignant le badge de chaque carte, son bouton d'action et son filtre.
+- **Nouveaux filtres et sous-pilules dynamiques** : Ajout des filtres dédiés `📀 EPs officiels` et `💿 Singles officiels`, barre de 5 sous-pilules (`Tous`, `💿 Albums Studio`, `📀 EPs`, `💿 Singles`, `⚡ Singles & EPs`) synchronisées instantanément sans requête réseau superflue, et pilules de filtrage rapide par catégorie en mode `Tous les types` avec compteurs en temps réel.
+- **Protection des pistes audio Live & Durcissement « Artiste strict »** : Les morceaux audio officiels (`ATV`) contenant *Live* restent classés comme pistes audio, et le mode `🎯 Artiste strict` écarte désormais automatiquement les artistes hommages (*Tribute to...*, *Hommage à...*) tout en résolvant l'artiste lors d'une recherche combinée *« Artiste + Album »*.
+
+### 📥 Fiabilisation des Téléchargements, des Tags & de l'Éditeur de l'Atelier
+- **Résolution InnerTube proactive des albums officiels (`MPREb_` / `OLAK`) & Persistance `.album_meta.json`** : Avant chaque téléchargement d'album, d'EP ou de single officiel, SoundStash résout et sauvegarde la tracklist de référence dans `.album_meta.json` (nombre total de pistes, titres, artistes, durées et année officielle) et verrouille un dossier de destination unique et déterministe dans `temp_downloads`, éliminant toute scission d'un même album en plusieurs dossiers lorsque certaines pistes ont un tag d'album hétérogène sur YouTube.
+- **Préservation des featurings natifs YouTube Music & Extraction `Artiste - Titre`** : Correction de l'ordre des règles `--parse-metadata` de `yt-dlp` (`%(artist,creator,channel,uploader)s:%(artist)s` avant `%(title)s:%(artist)s - %(title)s`) afin de ne jamais écraser les artistes et featurings natifs de piste par le nom de la chaîne YouTube (`- Topic`), et indexation exacte des crédits par numéro de piste réel dans `uniformize_album`.
+- **Transmission complète des métadonnées depuis la Recherche & File d'attente enrichie** : `downloadItemFromSearch` transmet désormais systématiquement l'album, l'artiste, l'année et la qualité vidéo (`video_quality`) pour tous les types de médias ; la file d'attente affiche `Artiste — Titre` ainsi que la résolution vidéo (`MP4 · 1080p`), et réinitialise proprement la barre de progression à `0%` entre deux tâches consécutives.
+- **Persistance intégrale des brouillons & Isolation de la Galerie des Jaquettes** : Mémorisation du type manuel d'album (`manual_type`) et des numéros de pistes MusicBrainz dans les brouillons de l'Éditeur et lors du `Tout exporter`, prise en charge des types `video` et `clip` sur `/api/album/set-type`, et isolation complète de la Galerie des Jaquettes (`🖼️ Jaquettes`) pour ne jamais altérer l'album en cours d'édition dans l'onglet individuel.
 
 ---
 

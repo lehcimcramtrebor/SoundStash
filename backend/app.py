@@ -278,6 +278,7 @@ class DownloadRequest(BaseModel):
     is_playlist: Optional[bool] = None
     custom_album: Optional[str] = None
     custom_artist: Optional[str] = None
+    custom_year: Optional[str] = None
     origin_album: Optional[str] = None
     thumbnail_url: Optional[str] = None
     is_external: Optional[bool] = None
@@ -935,6 +936,7 @@ async def trigger_download(req: DownloadRequest):
         is_playlist=req.is_playlist,
         custom_album=req.custom_album,
         custom_artist=clean_artist_name(req.custom_artist) if req.custom_artist else None,
+        custom_year=req.custom_year,
         origin_album=req.origin_album,
         thumbnail_url=req.thumbnail_url,
         video_quality=req.video_quality,
@@ -961,6 +963,12 @@ async def search_endpoint(query: str = Query(..., min_length=1), filter_type: st
     elif filter_type == "album":
         if "album" not in clean_q.lower():
             search_query += " album official"
+    elif filter_type == "ep":
+        if "ep" not in clean_q.lower():
+            search_query += " EP official"
+    elif filter_type == "single":
+        if "single" not in clean_q.lower():
+            search_query += " single official"
     elif filter_type == "playlist":
         if "playlist" not in clean_q.lower():
             search_query += " playlist"
@@ -1041,13 +1049,14 @@ async def search_endpoint(query: str = Query(..., min_length=1), filter_type: st
                 item_type = "album" if (item_id.startswith("OLAK") or item_id.startswith("MPREb_")) else "playlist"
             elif is_concert or is_clip or filter_type == "video":
                 item_type = "video"
-            elif filter_type == "album":
+            elif filter_type in ("album", "ep", "single"):
                 item_type = "album"
             elif filter_type == "track":
                 item_type = "track"
 
             # Si filter_type spécifique, respecter le filtrage strict
-            if filter_type != "all" and item_type != filter_type:
+            expected_type = "album" if filter_type in ("album", "ep", "single") else filter_type
+            if filter_type != "all" and item_type != expected_type:
                 continue
 
             results.append({
@@ -2187,9 +2196,9 @@ async def set_album_type_endpoint(req: SetAlbumTypeRequest):
     target_dir = p.parent if p.is_file() else p
     type_file = target_dir / ".album_type"
     cat = (req.album_type or "").strip().lower()
-    if cat in ("album", "single", "rip", "playlist", "concert"):
+    if cat in ("album", "single", "rip", "playlist", "concert", "video", "clip"):
         try:
-            type_file.write_text(cat, encoding="utf-8")
+            type_file.write_text("video" if cat == "clip" else cat, encoding="utf-8")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erreur écriture : {e}")
     elif cat == "auto":

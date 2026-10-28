@@ -102,7 +102,8 @@ function setupLibrary() {
                                         rename_files: true,
                                         clean_titles: true,
                                         custom_tracks: (draft.tracks && draft.tracks.length > 0) ? draft.tracks : undefined,
-                                        is_playlist: draft.is_playlist
+                                        is_playlist: draft.is_playlist,
+                                        custom_album_type: draft.manual_type || "auto"
                                     })
                                 });
                                 clearCurrentEditorDraft(albPath);

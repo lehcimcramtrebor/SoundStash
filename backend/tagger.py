@@ -2119,15 +2119,35 @@ def uniformize_album(
         len(set(orig_nums)) == len(tracks)
     )
 
+    meta_track_artists: Dict[str, str] = {}
+    meta_total_tracks = 0
+    meta_file_path = album_dir / ".album_meta.json"
+    if meta_file_path.is_file():
+        try:
+            import json
+            with open(meta_file_path, "r", encoding="utf-8") as mf:
+                meta_obj = json.load(mf)
+            meta_trks = meta_obj.get("tracks") or []
+            if isinstance(meta_trks, list) and meta_trks:
+                meta_total_tracks = len(meta_trks)
+                for idx_m, mt in enumerate(meta_trks, start=1):
+                    if isinstance(mt, dict):
+                        m_pos = str(mt.get("index") or idx_m)
+                        m_art = (mt.get("artist") or "").strip()
+                        if m_art and not is_empty_or_na(m_art) and m_art != "Artiste inconnu":
+                            meta_track_artists[m_pos] = m_art
+        except Exception:
+            pass
+
     if has_valid_orig_nums and not is_playlist:
         max_track_num = max(orig_nums)
         for t in tracks:
             m = re.match(r"^\d+/(\d+)$", str(t.get("track_number", "")).strip())
             if m:
                 max_track_num = max(max_track_num, int(m.group(1)))
-        total_for_tag = max(len(tracks), max_track_num)
+        total_for_tag = max(len(tracks), max_track_num, meta_total_tracks)
     else:
-        total_for_tag = len(tracks)
+        total_for_tag = max(len(tracks), meta_total_tracks if not is_playlist else 0)
 
     updated_tracks = []
 
@@ -2157,13 +2177,18 @@ def uniformize_album(
 
         custom_t = custom_by_file.get(old_path.name) or custom_by_idx.get(index, {})
         current_title = custom_t.get("title") or track["title"]
-        # Priorité : custom frontend > MB > yt-dlp > album artist
+        pos_key = str(orig_nums[index - 1] if (has_valid_orig_nums and not is_playlist) else index)
+        # Priorité : custom frontend > MB > .album_meta.json > yt-dlp > album artist
         track_artist = clean_artist_name(custom_t.get("artist") or track["artist"] or final_artist)
-        if mb_track_artists and not custom_t.get("artist"):
-            # Utiliser la position de piste pour chercher dans les crédits MB
-            mb_artist = mb_track_artists.get(str(index))
-            if mb_artist and not is_empty_or_na(mb_artist):
-                track_artist = clean_artist_name(mb_artist)
+        if not custom_t.get("artist"):
+            if mb_track_artists:
+                mb_artist = mb_track_artists.get(pos_key)
+                if mb_artist and not is_empty_or_na(mb_artist):
+                    track_artist = clean_artist_name(mb_artist)
+            elif meta_track_artists:
+                meta_artist = meta_track_artists.get(pos_key)
+                if meta_artist and not is_empty_or_na(meta_artist):
+                    track_artist = clean_artist_name(meta_artist)
         if is_empty_or_na(track_artist):
             track_artist = final_artist
         track_artist = clean_artist_name(track_artist)

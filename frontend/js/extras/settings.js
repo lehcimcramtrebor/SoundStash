@@ -1576,8 +1576,10 @@ function openCoverSearchModal(preloadedLocalFile = null, overrideAlbum = null, p
         return;
     }
 
-    // Sauvegarder le chemin de l'album ciblé
-    window.currentAlbumPath = albumPath;
+    // Sauvegarder le chemin de l'album ciblé sans écraser l'album actif de l'éditeur individuel si overrideAlbum est fourni
+    if (!overrideAlbum) {
+        window.currentAlbumPath = albumPath;
+    }
     window._coverModalTargetAlbumPath = albumPath;
     window._coverModalOverrideAlbum = overrideAlbum;
 
@@ -1869,9 +1871,9 @@ async function applySelectedCover() {
                 return c1 === c2;
             }
 
-            // 1. Mettre à jour l'image de couverture dans l'Éditeur
+            // 1. Mettre à jour l'image de couverture dans l'Éditeur uniquement si c'est l'album actif de l'éditeur
             const editorCover = document.getElementById("editor-cover");
-            if (editorCover) {
+            if (editorCover && (!window._coverModalOverrideAlbum || isSameAlbumPath(window.currentAlbumPath, canonicalPath))) {
                 editorCover.src = newCoverSrc;
             }
 

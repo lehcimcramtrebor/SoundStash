@@ -94,7 +94,7 @@ def get_app_version() -> str:
                         return str(data["version"]).strip()
         except Exception:
             pass
-    return "5.0.4"
+    return "5.1.0"
 
 APP_VERSION = get_app_version()
 

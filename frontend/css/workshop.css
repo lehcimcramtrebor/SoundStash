@@ -2354,9 +2354,31 @@ textarea:focus {
     font-size: 0.82rem;
     color: var(--text-muted);
     margin: 0 0 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.search-card-artist-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.btn-card-listen-local {
+    flex: 0 0 auto !important;
+    padding: 8px 11px !important;
+    border-color: rgba(16, 185, 129, 0.45) !important;
+    background: rgba(16, 185, 129, 0.14) !important;
+    color: #34d399 !important;
+}
+
+.btn-card-listen-local:hover {
+    background: rgba(16, 185, 129, 0.28) !important;
+    border-color: #10b981 !important;
+    color: #ffffff !important;
 }
 
 .search-card-actions {

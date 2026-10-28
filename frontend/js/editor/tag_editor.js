@@ -2102,7 +2102,8 @@ function setupEditorActions() {
                                         rename_files: true,
                                         clean_titles: true,
                                         custom_tracks: (draft.tracks && draft.tracks.length > 0) ? draft.tracks : undefined,
-                                        is_playlist: draft.is_playlist
+                                        is_playlist: draft.is_playlist,
+                                        custom_album_type: draft.manual_type || "auto"
                                     })
                                 });
                                 const retagData = await retagRes.json();
@@ -2282,6 +2283,7 @@ function captureCurrentEditorDraft() {
         genre: genreInput ? genreInput.value : "",
         is_playlist: !!currentAlbumIsPlaylist,
         is_concert: !!currentAlbumIsConcert,
+        manual_type: currentAlbumManualType || null,
         tracks: tracks,
         updated_at: Date.now()
     };
@@ -2939,7 +2941,12 @@ async function loadAlbumInEditor(albumPath, modeOrIsCollection = null) {
 
         currentAlbumDetectedType = info.album_type || initialToggleMode;
 
-        if (info.is_manual_type && info.manual_type) {
+        const draftManualType = (activeDraft && activeDraft.manual_type !== undefined) ? activeDraft.manual_type : null;
+        if (draftManualType) {
+            currentAlbumManualType = draftManualType;
+            updateEditorTypeToggleUI(currentAlbumManualType, true);
+            updateEditorBadgePreview(currentAlbumManualType, true);
+        } else if (info.is_manual_type && info.manual_type) {
             currentAlbumManualType = info.manual_type;
             updateEditorTypeToggleUI(currentAlbumManualType, true);
             updateEditorBadgePreview(currentAlbumManualType, true);
@@ -3019,14 +3026,16 @@ async function loadAlbumInEditor(albumPath, modeOrIsCollection = null) {
                     return {
                         title: dt.title !== undefined ? dt.title : (track.title || ""),
                         artist: dt.artist !== undefined ? dt.artist : (track.artist || info.album_artist || ""),
-                        genre: dt.genre !== undefined ? dt.genre : (track.genre || info.genre || "")
+                        genre: dt.genre !== undefined ? dt.genre : (track.genre || info.genre || ""),
+                        track_number: dt.track_number !== undefined ? dt.track_number : null
                     };
                 }
             }
             return {
                 title: track.title || "",
                 artist: track.artist || info.album_artist || "",
-                genre: track.genre || info.genre || ""
+                genre: track.genre || info.genre || "",
+                track_number: null
             };
         }
 
@@ -3178,18 +3187,18 @@ async function loadAlbumInEditor(albumPath, modeOrIsCollection = null) {
                     } else if (tracksByNum.has(i)) {
                         const track = tracksByNum.get(i);
                         const fields = getTrackFieldValues(track);
-                        tbody.appendChild(createEditorTrackRow(track, track.track_number || String(i).padStart(2, '0'), fields));
+                        tbody.appendChild(createEditorTrackRow(track, fields.track_number || track.track_number || String(i).padStart(2, '0'), fields));
                     }
                 }
                 unnumberedTracks.forEach(track => {
                     const fields = getTrackFieldValues(track);
-                    tbody.appendChild(createEditorTrackRow(track, track.track_number || "--", fields));
+                    tbody.appendChild(createEditorTrackRow(track, fields.track_number || track.track_number || "--", fields));
                 });
             } else {
                 const isSingleOrRip = info.tracks.length === 1 || (info.album_name && info.album_name.toLowerCase().includes("singles"));
                 info.tracks.forEach((track, idx) => {
-                    const displayNum = isSingleOrRip ? "--" : (track.track_number || String(idx + 1).padStart(2, '0'));
                     const fields = getTrackFieldValues(track);
+                    const displayNum = isSingleOrRip ? "--" : (fields.track_number || track.track_number || String(idx + 1).padStart(2, '0'));
                     tbody.appendChild(createEditorTrackRow(track, displayNum, fields));
                 });
             }
@@ -4091,24 +4100,6 @@ function renderCoversGallery() {
 
 function openCoverSearchModalForAlbum(alb) {
     if (!alb || !alb.path) return;
-
-    window.currentAlbumPath = alb.path;
-    const albumTitle = alb.title || alb.album_name || "";
-    const albumArtist = alb.artist || alb.album_artist || "";
-
-    // Mettre à jour les champs de l'éditeur pour cohérence
-    const pathEl = document.getElementById("editor-album-path");
-    if (pathEl) pathEl.textContent = alb.path;
-    const artistInput = document.getElementById("edit-album-artist");
-    if (artistInput) artistInput.value = albumArtist;
-    const albumInput = document.getElementById("edit-album-name");
-    if (albumInput) albumInput.value = albumTitle;
-
-    const query = [albumArtist, albumTitle].filter(Boolean).join(" ");
-    const coverSearchInput = document.getElementById("cover-search-query-input");
-    if (coverSearchInput) {
-        coverSearchInput.value = query;
-    }
 
     if (window.openCoverSearchModal) {
         window.openCoverSearchModal(null, alb);

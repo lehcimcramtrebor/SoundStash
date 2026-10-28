@@ -112,7 +112,8 @@ class DownloadManager:
         origin_album: Optional[str] = None,
         thumbnail_url: Optional[str] = None,
         video_quality: Optional[str] = None,
-        is_external: bool = False
+        is_external: bool = False,
+        custom_year: Optional[str] = None
     ) -> dict:
         clean_art = clean_artist_name(custom_artist) if custom_artist else None
         effective_title = (title or custom_album or origin_album or "").strip()
@@ -129,6 +130,7 @@ class DownloadManager:
             "is_playlist": is_playlist,
             "custom_album": custom_album,
             "custom_artist": clean_art,
+            "custom_year": str(custom_year).strip() if custom_year else None,
             "origin_album": origin_album,
             "thumbnail_url": thumbnail_url,
             "is_external": is_external,
@@ -180,8 +182,9 @@ class DownloadManager:
                 if self.queue:
                     # ── Cooldown anti rate-limit YouTube ──────────────────────────
                     # Pause entre les téléchargements pour éviter un blocage IP.
+                    url_low = task.get("url", "").lower()
                     task_was_playlist = task.get("is_playlist") or (
-                        "playlist" in task.get("url", "").lower()
+                        "playlist" in url_low or "mpreb_" in url_low or "olak" in url_low
                     )
                     cooldown = config.cooldown_album if task_was_playlist else config.cooldown_single
                     if cooldown > 0:
@@ -229,39 +232,50 @@ class DownloadManager:
         elif task_is_playlist is None:
             task_is_playlist = is_playlist_url(url)
 
-        # Résolution proactive des playlists YouTube Music pour télécharger directement
-        # les versions audio officielles actives et éviter les redirections yt-dlp
+        # Résolution proactive des playlists et albums YouTube Music via InnerTube :
+        # - Pour les playlists : génère le fichier batch des pistes disponibles
+        # - Pour les albums officiels (MPREb_ / OLAK) : sauvegarde la tracklist de référence (.album_meta.json),
+        #   l'année officielle, la pochette HD et le nom d'album unifié pour éviter toute scission de dossier
         batch_file_path = None
-        if task_is_playlist:
-            browse_id = extract_ytm_browse_id(url)
-            if browse_id:
-                try:
-                    await self.broadcast("log", {
-                        "text": f"[SoundStash] Analyse de la discographie ({browse_id})...",
-                        "progress": None
-                    })
-                    ytm_info = await browse_ytm_innertube(browse_id)
-                    if ytm_info and ytm_info.get("tracks"):
-                        task["ytm_info"] = ytm_info
-                        active_tracks = [t for t in ytm_info["tracks"] if t.get("is_available") and t.get("video_id")]
-                        if active_tracks:
-                            batch_file = temp_dir / f"ytm_batch_{task['id']}.txt"
-                            with open(batch_file, "w", encoding="utf-8") as bf:
-                                for tr in active_tracks:
-                                    bf.write(f"https://www.youtube.com/watch?v={tr['video_id']}\n")
-                            batch_file_path = batch_file
-                            if not task.get("custom_album") and ytm_info.get("title"):
-                                task["custom_album"] = ytm_info["title"]
-                            if not task.get("thumbnail_url") and ytm_info.get("thumbnail"):
-                                task["thumbnail_url"] = ytm_info["thumbnail"]
-                            if not task.get("custom_artist") and ytm_info.get("artist") and ytm_info["artist"] != "Artiste inconnu":
-                                task["custom_artist"] = clean_artist_name(ytm_info["artist"])
-                            await self.broadcast("log", {
-                                "text": f"[SoundStash] {len(active_tracks)} pistes officielles actives resolues dans la playlist.",
-                                "progress": None
-                            })
-                except Exception as e:
-                    logger.warning(f"Résolution playlist YTM: {e}")
+        browse_id = extract_ytm_browse_id(url)
+        if browse_id:
+            try:
+                await self.broadcast("log", {
+                    "text": f"[SoundStash] Analyse de la discographie ({browse_id})...",
+                    "progress": None
+                })
+                ytm_info = await browse_ytm_innertube(browse_id)
+                if ytm_info and ytm_info.get("tracks"):
+                    task["ytm_info"] = ytm_info
+                    if not task.get("custom_album") and ytm_info.get("title"):
+                        task["custom_album"] = ytm_info["title"]
+                    if not task.get("title") and ytm_info.get("title"):
+                        task["title"] = ytm_info["title"]
+                    if not task.get("thumbnail_url") and ytm_info.get("thumbnail"):
+                        task["thumbnail_url"] = ytm_info["thumbnail"]
+                    if not task.get("custom_artist") and ytm_info.get("artist") and ytm_info["artist"] != "Artiste inconnu":
+                        task["custom_artist"] = clean_artist_name(ytm_info["artist"])
+                    if not task.get("custom_year") and ytm_info.get("year"):
+                        task["custom_year"] = str(ytm_info["year"]).strip()
+
+                    active_tracks = [t for t in ytm_info["tracks"] if t.get("is_available") and t.get("video_id")]
+                    if task_is_playlist and active_tracks:
+                        batch_file = temp_dir / f"ytm_batch_{task['id']}.txt"
+                        with open(batch_file, "w", encoding="utf-8") as bf:
+                            for tr in active_tracks:
+                                bf.write(f"https://www.youtube.com/watch?v={tr['video_id']}\n")
+                        batch_file_path = batch_file
+                        await self.broadcast("log", {
+                            "text": f"[SoundStash] {len(active_tracks)} pistes officielles actives resolues dans la playlist.",
+                            "progress": None
+                        })
+                    elif not task_is_playlist:
+                        await self.broadcast("log", {
+                            "text": f"[SoundStash] Album officiel résolu : {ytm_info.get('title') or browse_id} ({len(ytm_info['tracks'])} pistes).",
+                            "progress": None
+                        })
+            except Exception as e:
+                logger.warning(f"Résolution InnerTube YTM ({browse_id}): {e}")
 
         is_video = audio_format.lower() == "mp4"
         is_single = not task_is_playlist and ("watch?v=" in url.lower() or "youtu.be/" in url.lower() or "/shorts/" in url.lower())
@@ -350,12 +364,11 @@ class DownloadManager:
                 cmd_args += ['--audio-format', a_format, '--audio-quality', '0']
             cmd_args += ['--embed-metadata', '--embed-thumbnail', '--write-thumbnail', '--convert-thumbnails', 'jpg']
             cmd_args += ['--parse-metadata', 'playlist_index:%(track_number)s']
-            cmd_args += ['--parse-metadata', '%(title)s:%(artist)s - %(title)s']
-            # Pour les playlists, ne pas écraser l'artiste par le channel YouTube :
-            # chaque piste a son propre artiste extrait par yt-dlp et le channel est
-            # souvent un tiers (ex: "Ferris Durandochine") qui n'a rien à voir.
+            # Pour les non-playlists, utiliser channel/uploader uniquement en repli si artist/creator est absent,
+            # AVANT d'extraire 'Artiste - Titre' depuis le titre vidéo. Cela préserve les featurings natifs YTM.
             if not task_is_playlist:
-                cmd_args += ['--parse-metadata', '%(channel,uploader)s:%(artist)s']
+                cmd_args += ['--parse-metadata', '%(artist,creator,channel,uploader)s:%(artist)s']
+            cmd_args += ['--parse-metadata', '%(title)s:%(artist)s - %(title)s']
             cmd_args += ['--parse-metadata', '%(artist)s:%(album_artist)s']
             if not is_external:
                 cmd_args += ['--parse-metadata', '%(album|Extrait Video)s:%(album)s']
@@ -394,6 +407,21 @@ class DownloadManager:
             if '-o' not in cmd_args:
                 if is_external and not task_is_playlist:
                     default_template = f'{temp_dir}/%(title)s/%(title)s.%(ext)s'
+                elif is_single:
+                    single_label = (task.get("title") or task.get("custom_album") or "").strip()
+                    if single_label and not is_empty_or_na(single_label):
+                        art_prefix = clean_artist_name(task["custom_artist"]) if (task.get("custom_artist") and not is_empty_or_na(task["custom_artist"])) else ""
+                        folder_raw = f"{art_prefix} - {single_label}" if (art_prefix and art_prefix.lower() not in single_label.lower()) else single_label
+                        safe_single_dir = sanitize_folder_name(folder_raw)
+                        default_template = f'{temp_dir}/{safe_single_dir}/%(title)s.%(ext)s'
+                    else:
+                        default_template = f'{temp_dir}/%(title)s/%(title)s.%(ext)s'
+                elif task.get("custom_album") and not is_empty_or_na(task.get("custom_album")):
+                    art_prefix = clean_artist_name(task["custom_artist"]) if (task.get("custom_artist") and not is_empty_or_na(task["custom_artist"])) else ""
+                    alb_label = task["custom_album"].strip()
+                    folder_raw = f"{art_prefix} - {alb_label}" if (art_prefix and art_prefix not in {"Various Artists", "Artiste inconnu"}) else alb_label
+                    safe_alb_dir = sanitize_folder_name(folder_raw)
+                    default_template = f'{temp_dir}/{safe_alb_dir}/%(playlist_index)02d %(title)s.%(ext)s'
                 else:
                     default_template = f'{temp_dir}/%(album,playlist_title,title)s/%(playlist_index)02d %(title)s.%(ext)s'
                 cmd_args += ['-o', default_template]
@@ -775,6 +803,7 @@ class DownloadManager:
                         album_dir=album_dir,
                         custom_album=task.get("custom_album"),
                         custom_artist=clean_artist_name(task.get("custom_artist")) if task.get("custom_artist") else None,
+                        custom_year=task.get("custom_year"),
                         rename_files=True,
                         naming_pattern=naming_pattern,
                         clean_titles=clean_titles,

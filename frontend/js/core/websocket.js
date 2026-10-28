@@ -274,6 +274,16 @@ let _wsLibraryUpdatedTimer = null;
             window.currentTaskIsPlaylist = !!data.is_playlist || (typeof isPlaylistUrlOrItem === "function" ? isPlaylistUrlOrItem(null, data.url) : false);
             window.currentTaskIsSingle = !!data.is_single;
 
+            // Réinitialisation visuelle de la barre de progression pour la nouvelle tâche
+            const fillEl = document.getElementById("progress-fill");
+            if (fillEl) fillEl.style.width = "0%";
+            const pctEl = document.getElementById("progress-percentage");
+            if (pctEl) pctEl.textContent = "0%";
+            const speedEl = document.getElementById("progress-speed");
+            if (speedEl) speedEl.textContent = "Vitesse : --";
+            const etaEl = document.getElementById("progress-eta");
+            if (etaEl) etaEl.textContent = "ETA : --";
+
             const itemCountEl = document.getElementById("progress-item-count");
             if (itemCountEl) {
                 if (window.currentTaskIsPlaylist) {
@@ -523,10 +533,28 @@ function renderQueue(queue = [], current = null, isDownloading = false) {
 
     const esc = typeof escapeHtml === "function" ? escapeHtml : (window.escapeHtml || (s => s));
 
+    function formatQueueItemLabel(itemObj, fallback) {
+        const baseTitle = (itemObj.title || itemObj.custom_album || itemObj.url || fallback).trim();
+        const art = (itemObj.custom_artist || "").trim();
+        if (art && art.toLowerCase() !== "artiste inconnu" && art.toLowerCase() !== "various artists" && !baseTitle.toLowerCase().includes(art.toLowerCase())) {
+            return `${art} — ${baseTitle}`;
+        }
+        return baseTitle;
+    }
+
+    function formatQueueQuality(itemObj) {
+        const fmt = itemObj.format ? itemObj.format.toUpperCase() : "M4A";
+        if (fmt === "MP4") {
+            return itemObj.video_quality || "1080p";
+        }
+        const q = itemObj.quality || "auto";
+        return q.toLowerCase() === "auto" ? "Auto" : q;
+    }
+
     if (hasCurrent) {
-        const currentTitle = current.title || current.custom_album || current.url || "Téléchargement en cours";
+        const currentTitle = formatQueueItemLabel(current, "Téléchargement en cours");
         const currentFmt = current.format ? current.format.toUpperCase() : "M4A";
-        const currentQual = current.quality || "128K";
+        const currentQual = formatQueueQuality(current);
         const activeDiv = document.createElement("div");
         activeDiv.className = "queue-item queue-item-current";
         activeDiv.style.borderLeft = "3px solid var(--accent, #89b4fa)";
@@ -554,9 +582,9 @@ function renderQueue(queue = [], current = null, isDownloading = false) {
     queue.forEach((item, idx) => {
         const div = document.createElement("div");
         div.className = "queue-item";
-        const itemTitle = item.title || item.custom_album || item.url || "En attente";
+        const itemTitle = formatQueueItemLabel(item, "En attente");
         const itemFmt = item.format ? item.format.toUpperCase() : "M4A";
-        const itemQual = item.quality || "128K";
+        const itemQual = formatQueueQuality(item);
         div.innerHTML = `
             <div class="queue-item-info">
                 <span class="queue-item-badge">#${idx + 1 + (hasCurrent ? 1 : 0)}</span>
