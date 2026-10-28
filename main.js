@@ -36,9 +36,10 @@ ipcMain.handle('read-clipboard', () => {
 // Handler IPC pour ouverture du dialogue natif de sélection de dossier
 ipcMain.handle('select-folder', async (event, initialDir) => {
     try {
+        const isEn = getEffectiveLang() === 'en';
         const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
         const options = {
-            title: "Sélectionner un dossier",
+            title: isEn ? "Select a folder" : "Sélectionner un dossier",
             properties: ['openDirectory', 'createDirectory']
         };
         if (initialDir && fs.existsSync(initialDir)) {
@@ -61,11 +62,17 @@ ipcMain.handle('select-folder', async (event, initialDir) => {
 // Handler IPC pour sélection de fichiers multimédias multiples
 ipcMain.handle('select-files', async (event, initialDir) => {
     try {
+        const isEn = getEffectiveLang() === 'en';
         const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
         const options = {
-            title: "Sélectionner des fichiers multimédias à importer",
+            title: isEn ? "Select media files to import" : "Sélectionner des fichiers multimédias à importer",
             properties: ['openFile', 'multiSelections'],
-            filters: [
+            filters: isEn ? [
+                { name: 'All Media (Audio & Video)', extensions: ['m4a', 'mp3', 'flac', 'ogg', 'wav', 'aac', 'opus', 'alac', 'mp4', 'mkv', 'webm', 'avi', 'mov'] },
+                { name: 'Audio Files', extensions: ['m4a', 'mp3', 'flac', 'ogg', 'wav', 'aac', 'opus', 'alac'] },
+                { name: 'Music Videos', extensions: ['mp4', 'mkv', 'webm', 'avi', 'mov'] },
+                { name: 'All Files (*.*)', extensions: ['*'] }
+            ] : [
                 { name: 'Tous les Médias (Audio & Vidéo)', extensions: ['m4a', 'mp3', 'flac', 'ogg', 'wav', 'aac', 'opus', 'alac', 'mp4', 'mkv', 'webm', 'avi', 'mov'] },
                 { name: 'Fichiers Audio', extensions: ['m4a', 'mp3', 'flac', 'ogg', 'wav', 'aac', 'opus', 'alac'] },
                 { name: 'Clips Vidéo', extensions: ['mp4', 'mkv', 'webm', 'avi', 'mov'] },
@@ -298,6 +305,20 @@ function updateAppConfigField(key, value) {
     }
 }
 
+function getEffectiveLang() {
+    try {
+        const cfg = getAppConfig();
+        const pref = String(cfg.language || 'auto').trim().toLowerCase();
+        if (pref === 'en' || pref === 'fr') return pref;
+    } catch (e) {}
+    try {
+        const sysLocale = String((app.isReady() ? app.getLocale() : '') || Intl.DateTimeFormat().resolvedOptions().locale || 'fr').toLowerCase();
+        return sysLocale.startsWith('fr') ? 'fr' : 'en';
+    } catch (e) {
+        return 'fr';
+    }
+}
+
 // Trouver un port libre
 function findFreePort(startPort) {
     return new Promise((resolve) => {
@@ -404,10 +425,13 @@ function startPythonServer(port) {
             // 4. En cas d'échecs critiques répétés uniquement
             if (mainWindow && !mainWindow.isDestroyed()) {
                 const { dialog } = require('electron');
+                const isEn = getEffectiveLang() === 'en';
                 dialog.showMessageBoxSync(mainWindow, {
                     type: 'error',
-                    title: 'Erreur Serveur',
-                    message: 'Le serveur local s\'est interrompu et n\'a pas pu redémarrer automatiquement. L\'application va redémarrer.',
+                    title: isEn ? 'Server Error' : 'Erreur Serveur',
+                    message: isEn
+                        ? 'The local server stopped and could not restart automatically. The application will now restart.'
+                        : 'Le serveur local s\'est interrompu et n\'a pas pu redémarrer automatiquement. L\'application va redémarrer.',
                     buttons: ['OK']
                 });
                 app.relaunch();
@@ -552,10 +576,11 @@ function updateThumbarButtons(isPlaying) {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (process.platform !== 'win32') return;
 
+    const isEn = getEffectiveLang() === 'en';
     try {
         mainWindow.setThumbarButtons([
             {
-                tooltip: 'Piste précédente',
+                tooltip: isEn ? 'Previous track' : 'Piste précédente',
                 icon: THUMBAR_ICONS.prev,
                 click() {
                     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -564,7 +589,7 @@ function updateThumbarButtons(isPlaying) {
                 }
             },
             {
-                tooltip: isPlaying ? 'Mettre en pause' : 'Lire',
+                tooltip: isPlaying ? (isEn ? 'Pause' : 'Mettre en pause') : (isEn ? 'Play' : 'Lire'),
                 icon: isPlaying ? THUMBAR_ICONS.pause : THUMBAR_ICONS.play,
                 click() {
                     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -573,7 +598,7 @@ function updateThumbarButtons(isPlaying) {
                 }
             },
             {
-                tooltip: 'Piste suivante',
+                tooltip: isEn ? 'Next track' : 'Piste suivante',
                 icon: THUMBAR_ICONS.next,
                 click() {
                     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -622,11 +647,12 @@ function createTray() {
 function updateTrayMenu() {
     if (!tray) return;
 
+    const isEn = getEffectiveLang() === 'en';
     const isPlaying = currentMediaState.isPlaying;
     const isVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
     const trackLabel = currentMediaState.title
         ? `🎵 ${currentMediaState.title}${currentMediaState.artist ? ' — ' + currentMediaState.artist : ''}`
-        : '🎵 Aucun morceau en cours';
+        : (isEn ? '🎵 No track playing' : '🎵 Aucun morceau en cours');
 
     // Mettre à jour l'infobulle (tooltip) près de l'horloge
     if (currentMediaState.title) {
@@ -639,7 +665,7 @@ function updateTrayMenu() {
         { label: trackLabel, enabled: false },
         { type: 'separator' },
         {
-            label: isPlaying ? '⏸ Mettre en pause' : '▶ Lire',
+            label: isPlaying ? (isEn ? '⏸ Pause' : '⏸ Mettre en pause') : (isEn ? '▶ Play' : '▶ Lire'),
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     currentMediaState.isPlaying = !currentMediaState.isPlaying;
@@ -649,7 +675,7 @@ function updateTrayMenu() {
             }
         },
         {
-            label: '⏮ Piste précédente',
+            label: isEn ? '⏮ Previous track' : '⏮ Piste précédente',
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('media-action', 'prev');
@@ -657,7 +683,7 @@ function updateTrayMenu() {
             }
         },
         {
-            label: '⏭ Piste suivante',
+            label: isEn ? '⏭ Next track' : '⏭ Piste suivante',
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('media-action', 'next');
@@ -666,7 +692,7 @@ function updateTrayMenu() {
         },
         { type: 'separator' },
         {
-            label: isVisible ? '👁 Masquer la fenêtre' : '👁 Afficher SoundStash',
+            label: isVisible ? (isEn ? '👁 Hide window' : '👁 Masquer la fenêtre') : (isEn ? '👁 Show SoundStash' : '👁 Afficher SoundStash'),
             click: () => {
                 if (!mainWindow || mainWindow.isDestroyed()) return;
                 if (mainWindow.isVisible()) {
@@ -680,7 +706,7 @@ function updateTrayMenu() {
             }
         },
         {
-            label: '⚙ Paramètres',
+            label: isEn ? '⚙ Settings' : '⚙ Paramètres',
             click: () => {
                 if (!mainWindow || mainWindow.isDestroyed()) return;
                 if (mainWindow.isMinimized()) mainWindow.restore();
@@ -692,7 +718,7 @@ function updateTrayMenu() {
         },
         { type: 'separator' },
         {
-            label: '✕ Quitter SoundStash',
+            label: isEn ? '✕ Quit SoundStash' : '✕ Quitter SoundStash',
             click: () => {
                 checkAndQuit();
             }
@@ -771,6 +797,15 @@ ipcMain.on('minimize-to-tray', () => {
 
 ipcMain.on('mark-tray-notice-seen', () => {
     updateAppConfigField('has_seen_tray_notice', true);
+});
+
+ipcMain.on('set-app-language', (event, lang) => {
+    const clean = String(lang || 'auto').trim().toLowerCase();
+    if (clean === 'auto' || clean === 'fr' || clean === 'en') {
+        updateAppConfigField('language', clean);
+        updateThumbarButtons(currentMediaState.isPlaying);
+        updateTrayMenu();
+    }
 });
 
 // Confirmation de fermeture définitive demandée depuis la modale
@@ -1014,7 +1049,9 @@ function createMainWindow(port) {
             extraHeaders: 'pragma: no-cache\ncache-control: no-cache'
         });
     } else {
-        const loadingHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:#0f1115;color:#cdd6f4;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;user-select:none;flex-direction:column;}.title{font-size:1.6rem;font-weight:700;color:#ff2a4b;margin-bottom:8px;letter-spacing:-0.02em;}.sub{font-size:0.85rem;color:#6c7086;}</style></head><body><div class="title">SoundStash</div><div class="sub">Initialisation du studio musical autonome...</div></body></html>`;
+        const isEn = getEffectiveLang() === 'en';
+        const subText = isEn ? 'Initializing standalone music studio...' : 'Initialisation du studio musical autonome...';
+        const loadingHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:#0f1115;color:#cdd6f4;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;user-select:none;flex-direction:column;}.title{font-size:1.6rem;font-weight:700;color:#ff2a4b;margin-bottom:8px;letter-spacing:-0.02em;}.sub{font-size:0.85rem;color:#6c7086;}</style></head><body><div class="title">SoundStash</div><div class="sub">${subText}</div></body></html>`;
         mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loadingHtml)}`);
     }
 
@@ -1165,9 +1202,12 @@ app.whenReady().then(async () => {
         }
     } catch (err) {
         console.error('[Electron] Erreur critique au démarrage :', err);
+        const isEn = getEffectiveLang() === 'en';
         dialog.showErrorBox(
-            "Erreur de démarrage",
-            `Impossible de démarrer le serveur local SoundStash :\n\n${err.message}`
+            isEn ? "Startup Error" : "Erreur de démarrage",
+            isEn
+                ? `Failed to start the local SoundStash server:\n\n${err.message}`
+                : `Impossible de démarrer le serveur local SoundStash :\n\n${err.message}`
         );
         app.quit();
     }

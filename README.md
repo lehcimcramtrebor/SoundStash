@@ -1,4 +1,4 @@
-# 🎵 SoundStash v5.1.0
+# 🎵 SoundStash v6.0.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -11,6 +11,17 @@
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v6.0.0
+
+### 🌍 Internationalisation Intégrale (Français & English) — Détection Automatique & Bascule à Chaud
+- **Détection transparente selon l'environnement utilisateur (`Auto`)** : Dès le premier lancement, SoundStash détecte automatiquement la langue de votre système d'exploitation / environnement (`navigator.language` & `app.getLocale()`) et affiche l'intégralité de l'application en **Français** ou en **Anglais** sans aucune configuration préalable.
+- **Sélecteur de langue avec bascule instantanée à chaud (sans rechargement)** : Choisissez à tout moment entre **`🌐 Automatique (selon le système)`**, **`🇫🇷 Français`** et **`🇬🇧 English`** depuis **Paramètres > Système** ou directement depuis l'assistant de premier démarrage (**Welcome Wizard**). L'interface complète bascule instantanément et réversiblement en temps réel (`Hot-Switch`), sans interrompre la lecture audio ou vidéo en cours.
+- **Couverture 100 % de l'application (`frontend/js/core/i18n.js`)** : Traduction intégrale de tous les espaces — **Sanctuaire Musical & Hub Vidéo 16:9**, **Mode Ambiant Plein Écran**, **Égaliseur 10 bandes & Presets DSP**, **Atelier de Recherche, File d'Attente & Éditeur de Tags**, **Outils de Bibliothèque** (Doublons, Reconstitution d'Albums, Nettoyage des Tags, Galerie des Jaquettes), **Paramètres**, **Modales, Infobulles & Notifications Toast**.
+- **Guide Utilisateur (`❓ Aide`) intégralement bilingue** : Les 10 chapitres complets du manuel interactif intégré (Présentation, Démarrage, Recherche, Téléchargement, Éditeur & Tags, Bibliothèque, Lecteur & Égaliseur, Mode Ambiant, Paramètres & Cookies, Raccourcis Clavier) sont disponibles intégralement en français et en anglais.
+- **Intégration native Windows / Electron (`main.js`)** : Localisation dynamique du menu de la zone de notification (**System Tray**), des boutons de contrôle média de la barre des tâches Windows (**Taskbar Thumbar Buttons**), de l'écran de démarrage (**Splash Screen**) et des boîtes de dialogue natives du système.
 
 ---
 

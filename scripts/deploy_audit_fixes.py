@@ -23,6 +23,7 @@ files_to_sync = [
     ("frontend/soundstash_logo.png", "frontend/soundstash_logo.png"),
     ("build/icon.ico", "build/icon.ico"),
     ("build/icon.png", "build/icon.png"),
+    ("backend/version.json", "backend/version.json"),
 ]
 
 # Ajouter dynamiquement tous les modules Python du backend

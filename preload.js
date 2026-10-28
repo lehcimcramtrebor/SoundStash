@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     isFullscreen: () => ipcRenderer.invoke('is-fullscreen'),
     hardReload: () => ipcRenderer.invoke('hard-reload'),
     markTrayNoticeSeen: () => ipcRenderer.send('mark-tray-notice-seen'),
+    setAppLanguage: (lang) => ipcRenderer.send('set-app-language', lang),
     onMediaAction: (callback) => {
         ipcRenderer.on('media-action', (event, action) => callback(action));
     },

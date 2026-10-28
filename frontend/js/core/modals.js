@@ -13,6 +13,7 @@ function isCustomModalOpen() {
 window.isCustomModalOpen = isCustomModalOpen;
 
 let _customModalGen = 0;
+const _trModal = (s) => (typeof window.t === "function" && typeof s === "string") ? window.t(s) : s;
 
 // ===================================================
 // Modale Alert Personnalisée
@@ -29,8 +30,8 @@ function showModalAlert(title, message, type = "info") {
         const btnConfirm = document.getElementById("modal-btn-confirm");
         const btnExtra = document.getElementById("modal-btn-extra");
 
-        titleEl.textContent = title;
-        msgEl.textContent = message;
+        titleEl.textContent = _trModal(title);
+        msgEl.textContent = _trModal(message);
         iconBox.className = `modal-icon-box icon-${type}`;
         iconBox.innerHTML = (window.ICONS_SVG && window.ICONS_SVG[type]) || (window.ICONS_SVG && window.ICONS_SVG.info) || "";
 
@@ -82,8 +83,8 @@ function showModalConfirm(title, message, confirmText = "Confirmer", isDanger = 
         const btnExtra = document.getElementById("modal-btn-extra");
 
         const type = isDanger ? "danger" : "warning";
-        titleEl.textContent = title;
-        msgEl.textContent = message;
+        titleEl.textContent = _trModal(title);
+        msgEl.textContent = _trModal(message);
         iconBox.className = `modal-icon-box icon-${type}`;
         iconBox.innerHTML = (window.ICONS_SVG && window.ICONS_SVG[type]) || (window.ICONS_SVG && window.ICONS_SVG.warning) || "";
 
@@ -92,9 +93,9 @@ function showModalConfirm(title, message, confirmText = "Confirmer", isDanger = 
         if (btnExtra) btnExtra.style.display = "none";
 
         btnCancel.style.display = "inline-flex";
-        btnCancel.textContent = cancelText;
+        btnCancel.textContent = _trModal(cancelText);
         btnConfirm.style.display = "inline-flex";
-        btnConfirm.textContent = confirmText;
+        btnConfirm.textContent = _trModal(confirmText);
         btnConfirm.className = isDanger ? "btn btn-danger" : "btn btn-primary";
 
         backdrop.style.display = "flex";
@@ -109,7 +110,7 @@ function showModalConfirm(title, message, confirmText = "Confirmer", isDanger = 
                 setTimeout(() => {
                     if (_customModalGen === myGen) {
                         backdrop.style.display = "none";
-                        btnCancel.textContent = "Annuler";
+                        btnCancel.textContent = _trModal("Annuler");
                     }
                 }, 200);
             }
@@ -141,8 +142,8 @@ function showModalPrompt(title, message, defaultValue = "", placeholder = "") {
         const btnConfirm = document.getElementById("modal-btn-confirm");
         const btnExtra = document.getElementById("modal-btn-extra");
 
-        titleEl.textContent = title;
-        msgEl.textContent = message;
+        titleEl.textContent = _trModal(title);
+        msgEl.textContent = _trModal(message);
         iconBox.className = "modal-icon-box icon-info";
         iconBox.innerHTML = (window.ICONS_SVG && window.ICONS_SVG.info) || "";
 
@@ -150,13 +151,13 @@ function showModalPrompt(title, message, defaultValue = "", placeholder = "") {
         if (inputEl) {
             inputEl.style.display = "block";
             inputEl.value = defaultValue;
-            inputEl.placeholder = placeholder;
+            inputEl.placeholder = _trModal(placeholder);
         }
 
         btnCancel.style.display = "inline-flex";
-        btnCancel.textContent = "Annuler";
+        btnCancel.textContent = _trModal("Annuler");
         btnConfirm.style.display = "inline-flex";
-        btnConfirm.textContent = "Valider";
+        btnConfirm.textContent = _trModal("Valider");
         btnConfirm.className = "btn btn-primary";
 
         backdrop.style.display = "flex";
@@ -227,8 +228,8 @@ function showModalChoice3(title, message, confirmText = "Confirmer", cancelText 
         const btnConfirm = document.getElementById("modal-btn-confirm");
         const btnExtra = document.getElementById("modal-btn-extra");
 
-        titleEl.textContent = title;
-        msgEl.textContent = message;
+        titleEl.textContent = _trModal(title);
+        msgEl.textContent = _trModal(message);
         iconBox.className = "modal-icon-box icon-warning";
         iconBox.innerHTML = (window.ICONS_SVG && window.ICONS_SVG.warning) || "";
 
@@ -236,16 +237,16 @@ function showModalChoice3(title, message, confirmText = "Confirmer", cancelText 
         if (inputEl) inputEl.style.display = "none";
 
         btnConfirm.style.display = "inline-flex";
-        btnConfirm.textContent = confirmText;
+        btnConfirm.textContent = _trModal(confirmText);
         btnConfirm.className = "btn btn-primary";
 
         btnCancel.style.display = "inline-flex";
-        btnCancel.textContent = cancelText;
+        btnCancel.textContent = _trModal(cancelText);
         btnCancel.className = "btn btn-secondary";
 
         if (btnExtra) {
             btnExtra.style.display = "inline-flex";
-            btnExtra.textContent = extraText;
+            btnExtra.textContent = _trModal(extraText);
             btnExtra.className = isDangerExtra ? "btn btn-danger" : "btn btn-secondary";
         }
 
@@ -266,7 +267,7 @@ function showModalChoice3(title, message, confirmText = "Confirmer", cancelText 
                             btnExtra.style.display = "none";
                             btnExtra.textContent = "Extra";
                         }
-                        btnCancel.textContent = "Annuler";
+                        btnCancel.textContent = _trModal("Annuler");
                     }
                 }, 200);
             }
@@ -303,10 +304,10 @@ function showExportConflictModal(albumTitle, artistName, existingTracksCount = 0
         const cancelBtn = document.getElementById("export-conflict-cancel-btn");
 
         if (albumEl) albumEl.textContent = albumTitle || "Album";
-        if (artistEl) artistEl.textContent = artistName || "Artiste";
+        if (artistEl) artistEl.textContent = artistName || _trModal("Artiste");
         if (tracksEl) {
             const count = parseInt(existingTracksCount, 10) || 0;
-            tracksEl.textContent = `${count} piste${count > 1 ? "s" : ""}`;
+            tracksEl.textContent = _trModal(`${count} piste${count > 1 ? "s" : ""}`);
         }
 
         const effPolicy = (defaultPolicy && ["merge", "overwrite", "distinct"].includes(defaultPolicy)) ? defaultPolicy : "merge";
@@ -422,7 +423,7 @@ function showToast(message, arg2 = null, arg3 = null, arg4 = null) {
 
     const content = document.createElement("div");
     content.className = "toast-content";
-    content.textContent = message;
+    content.textContent = _trModal(message);
     toast.appendChild(content);
 
     // Bouton d'action optionnel
@@ -430,7 +431,7 @@ function showToast(message, arg2 = null, arg3 = null, arg4 = null) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "toast-action-btn";
-        btn.textContent = actionLabel;
+        btn.textContent = _trModal(actionLabel);
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
             actionCallback();
@@ -444,7 +445,7 @@ function showToast(message, arg2 = null, arg3 = null, arg4 = null) {
     closeBtn.type = "button";
     closeBtn.className = "toast-close-btn";
     closeBtn.innerHTML = "&times;";
-    closeBtn.title = "Fermer";
+    closeBtn.title = _trModal("Fermer");
     closeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         toast.style.opacity = "0";
@@ -500,13 +501,13 @@ function showSyncToast(message, color = "orange", detail = "", duration = 5000) 
     
     const msgEl = document.createElement("div");
     msgEl.className = "toast-sync-title";
-    msgEl.textContent = message;
+    msgEl.textContent = _trModal(message);
     content.appendChild(msgEl);
 
     if (detail) {
         const detailEl = document.createElement("div");
         detailEl.className = "toast-sync-detail";
-        detailEl.textContent = detail;
+        detailEl.textContent = _trModal(detail);
         content.appendChild(detailEl);
     }
 

@@ -94,7 +94,7 @@ def get_app_version() -> str:
                         return str(data["version"]).strip()
         except Exception:
             pass
-    return "5.1.0"
+    return "6.0.0"
 
 APP_VERSION = get_app_version()
 
@@ -185,6 +185,8 @@ class AppConfig(BaseModel):
     cookies_file: Optional[str] = None
     # Qualité audio maximale automatique (256 kbps / source) si une session YouTube est active
     max_audio_quality_when_signed: bool = True
+    # Langue de l'interface ("auto", "fr", "en")
+    language: str = "auto"
 
     @validator('export_dir', 'video_export_dir', 'video_library_dir', 'library_dir', pre=True)
     def ensure_parent_exists(cls, v):

@@ -373,7 +373,8 @@ function setupSettings() {
                     cooldown_single: cooldownSingle,
                     auto_update_yt_dlp: document.getElementById("cfg-auto-update-yt-dlp") ? document.getElementById("cfg-auto-update-yt-dlp").checked : true,
                     auto_check_app_updates: document.getElementById("cfg-auto-check-app-updates") ? document.getElementById("cfg-auto-check-app-updates").checked : true,
-                    max_audio_quality_when_signed: document.getElementById("cfg-max-audio-quality-signed") ? document.getElementById("cfg-max-audio-quality-signed").checked : true
+                    max_audio_quality_when_signed: document.getElementById("cfg-max-audio-quality-signed") ? document.getElementById("cfg-max-audio-quality-signed").checked : true,
+                    language: document.getElementById("cfg-language") ? document.getElementById("cfg-language").value : "auto"
                 })
             });
             if (res.ok) {
@@ -384,6 +385,15 @@ function setupSettings() {
             await showModalAlert("Erreur", err.message, "danger");
         }
     });
+
+    const cfgLangSelect = document.getElementById("cfg-language");
+    if (cfgLangSelect) {
+        cfgLangSelect.addEventListener("change", () => {
+            if (window.I18n && typeof window.I18n.setLanguage === "function") {
+                window.I18n.setLanguage(cfgLangSelect.value, true);
+            }
+        });
+    }
 
     setupAppReset();
 }
@@ -1096,6 +1106,16 @@ async function loadConfiguration() {
         const maxAudioSignedEl = document.getElementById("cfg-max-audio-quality-signed");
         if (maxAudioSignedEl) {
             maxAudioSignedEl.checked = data.max_audio_quality_when_signed !== false;
+        }
+
+        // Langue de l'interface (v6.0.0)
+        const cfgLanguageEl = document.getElementById("cfg-language");
+        const prefLang = data.language || localStorage.getItem("soundstash_language") || "auto";
+        if (cfgLanguageEl) {
+            cfgLanguageEl.value = ["auto", "fr", "en"].includes(prefLang) ? prefLang : "auto";
+        }
+        if (window.I18n && typeof window.I18n.syncFromConfig === "function") {
+            window.I18n.syncFromConfig(prefLang);
         }
 
         // Charger l'état actuel de la bibliothèque indexée

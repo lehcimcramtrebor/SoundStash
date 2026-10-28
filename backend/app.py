@@ -360,6 +360,7 @@ class UpdateConfigRequest(BaseModel):
     auto_check_app_updates: Optional[bool] = None
     cookies_file: Optional[str] = None
     max_audio_quality_when_signed: Optional[bool] = None
+    language: Optional[str] = None
 
 class CookiesUploadRequest(BaseModel):
     content: Optional[str] = None
@@ -555,6 +556,7 @@ async def get_configuration():
         "cookies_file": getattr(config, "cookies_file", None),
         "has_cookies": bool(get_effective_cookies_file()),
         "max_audio_quality_when_signed": getattr(config, "max_audio_quality_when_signed", True),
+        "language": getattr(config, "language", "auto"),
         "app_version": APP_VERSION
     }
 
@@ -598,6 +600,8 @@ async def update_configuration(req: UpdateConfigRequest):
         config.cookies_file = req.cookies_file.strip() if (req.cookies_file and req.cookies_file.strip()) else None
     if req.max_audio_quality_when_signed is not None:
         config.max_audio_quality_when_signed = req.max_audio_quality_when_signed
+    if req.language is not None and req.language.strip().lower() in ("auto", "fr", "en"):
+        config.language = req.language.strip().lower()
     save_config(config)
     return {"success": True, "config": config.dict()}
 
