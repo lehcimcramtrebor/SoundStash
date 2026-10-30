@@ -51,6 +51,14 @@ if js_dir.exists():
         rel = f.relative_to(ROOT).as_posix()
         files_to_sync.append((rel, rel))
 
+# Ajouter dynamiquement tous les assets
+assets_dir = ROOT / "frontend" / "assets"
+if assets_dir.exists():
+    for f in assets_dir.rglob("*"):
+        if f.is_file():
+            rel = f.relative_to(ROOT).as_posix()
+            files_to_sync.append((rel, rel))
+
 targets = [DIST_RESOURCES, INSTALLED_SOUNDSTASH]
 
 for target_dir in targets:

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="grad-radio" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#313244"/>
+      <stop offset="100%" stop-color="#181825"/>
+    </linearGradient>
+    <linearGradient id="neon-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#89b4fa"/>
+      <stop offset="100%" stop-color="#00f0ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="64" fill="url(#grad-radio)"/>
+  <rect x="32" y="32" width="448" height="448" rx="48" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+  <!-- Antenne -->
+  <line x1="120" y1="170" x2="240" y2="70" stroke="url(#neon-glow)" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="240" cy="70" r="16" fill="#00f0ff"/>
+  <!-- Châssis Radio -->
+  <rect x="76" y="170" width="360" height="250" rx="36" fill="#1e1e2e" stroke="rgba(255,255,255,0.15)" stroke-width="8"/>
+  <!-- Haut-parleur circulaire -->
+  <circle cx="180" cy="295" r="76" fill="#181825" stroke="url(#neon-glow)" stroke-width="6"/>
+  <circle cx="180" cy="295" r="48" fill="#11111b" stroke="rgba(255,255,255,0.1)" stroke-width="4"/>
+  <circle cx="180" cy="295" r="20" fill="url(#neon-glow)"/>
+  <!-- Cadran et boutons -->
+  <rect x="290" y="210" width="116" height="60" rx="10" fill="#11111b" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+  <line x1="310" y1="240" x2="386" y2="240" stroke="#f38ba8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="340" cy="240" r="8" fill="#f38ba8"/>
+  <!-- Boutons rotatifs -->
+  <circle cx="315" cy="325" r="22" fill="#313244" stroke="rgba(255,255,255,0.2)" stroke-width="4"/>
+  <circle cx="375" cy="325" r="22" fill="#313244" stroke="rgba(255,255,255,0.2)" stroke-width="4"/>
+  <circle cx="345" cy="380" r="14" fill="#89b4fa"/>
+</svg>

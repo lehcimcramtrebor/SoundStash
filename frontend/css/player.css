@@ -385,12 +385,73 @@ body.ambient-mode-active .player-scroll-shade {
     outline: none !important;
 }
 
+/* Pastilles de compteur de recherche sur les sous-onglets */
+.player-subtab-btn .badge-tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 19px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    font-size: 0.70rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-left: 6px;
+    transition: all 0.18s ease;
+    box-sizing: border-box;
+}
+
+.player-subtab-btn .badge-tab-count.count-zero {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text-muted);
+    opacity: 0.55;
+}
+
+.player-subtab-btn .badge-tab-count.count-positive {
+    background: rgba(239, 68, 68, 0.20);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.20);
+}
+
+.player-subtab-btn.active .badge-tab-count.count-positive {
+    background: #ef4444;
+    border-color: #ef4444;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.45);
+}
+
+[data-theme="light"] .player-subtab-btn .badge-tab-count.count-zero {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.10);
+    color: #64748b;
+}
+
+[data-theme="light"] .player-subtab-btn .badge-tab-count.count-positive {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+}
+
+[data-theme="light"] .player-subtab-btn.active .badge-tab-count.count-positive {
+    background: #ef4444;
+    border-color: #ef4444;
+    color: #ffffff;
+}
+
 /* =========================================================
    BOUTON "EN COURS D'ÉCOUTE" DANS LES SOUS-ONGLETS DU LECTEUR
    ========================================================= */
+#player-subtab-radios {
+    margin-right: 6px;
+}
+
 #player-subtab-now-playing {
     position: relative;
     overflow: visible;
+    margin-left: 14px;
     transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -2032,6 +2093,7 @@ body.player-mode-active .nav-tabs {
 .mini-btn {
     background: transparent;
     border: none;
+    outline: none;
     color: var(--text-muted);
     cursor: pointer;
     display: flex;
@@ -2042,6 +2104,12 @@ body.player-mode-active .nav-tabs {
     transition: all 0.2s ease;
 }
 
+.mini-btn:focus,
+.mini-btn:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
 .mini-btn:hover {
     color: var(--text-main);
     background: var(--hover-overlay);
@@ -2050,6 +2118,7 @@ body.player-mode-active .nav-tabs {
 .mini-btn.active {
     color: var(--accent);
 }
+
 
 .mini-btn-video-toggle.disabled {
     opacity: 0.28 !important;
@@ -3771,21 +3840,12 @@ body.app-hidden #player-cache-warm-indicator .player-cache-spinner {
 .audio-output-item.active {
     background: rgba(255, 42, 75, 0.14);
     border-color: var(--accent, #ff2a4b);
+    border-left: 3px solid var(--accent, #ff2a4b);
     box-shadow: 0 0 16px rgba(255, 42, 75, 0.2);
 }
 
 .audio-output-item-indicator {
-    width: 3px;
-    height: 18px;
-    border-radius: 3px;
-    background: transparent;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-
-.audio-output-item.active .audio-output-item-indicator {
-    background: var(--accent, #ff2a4b);
-    box-shadow: 0 0 8px var(--accent, #ff2a4b);
+    display: none !important;
 }
 
 .audio-output-item-icon {

@@ -60,6 +60,7 @@ from backend.video_sync import synchronize_videos, set_video_sync_callback, set_
 from backend.tool_updater import get_yt_dlp_status, update_yt_dlp, background_startup_check
 from backend.library_migrator import check_migration_needed, execute_migration
 from backend.playlist_manager import playlist_manager
+from backend.radio_manager import radio_manager, parse_playlist_url, init_stations_cache_worker
 from backend.playback_stats import playback_stats
 from backend.app_updater import (
     check_app_update,
@@ -259,10 +260,16 @@ async def app_startup_sync_watcher():
             logger.debug(f"Erreur vérification jaquettes au démarrage: {e}")
 
     asyncio.create_task(_startup_cover_healing())
+    user_radio_countries = getattr(config, "radio_country_codes", ["FR", "BE", "CH", "CA", "GB", "US"])
+    init_stations_cache_worker(user_radio_countries)
 
 @app.on_event("shutdown")
 async def app_shutdown_sync_watcher():
     library_watcher.stop()
+    try:
+        radio_manager.stream_manager.stop()
+    except Exception:
+        pass
 
 
 # Modèles Pydantic pour requêtes
@@ -361,6 +368,7 @@ class UpdateConfigRequest(BaseModel):
     cookies_file: Optional[str] = None
     max_audio_quality_when_signed: Optional[bool] = None
     language: Optional[str] = None
+    radio_country_codes: Optional[List[str]] = None
 
 class CookiesUploadRequest(BaseModel):
     content: Optional[str] = None
@@ -557,6 +565,7 @@ async def get_configuration():
         "has_cookies": bool(get_effective_cookies_file()),
         "max_audio_quality_when_signed": getattr(config, "max_audio_quality_when_signed", True),
         "language": getattr(config, "language", "auto"),
+        "radio_country_codes": getattr(config, "radio_country_codes", ["FR", "BE", "CH", "CA", "GB", "US"]),
         "app_version": APP_VERSION
     }
 
@@ -602,6 +611,8 @@ async def update_configuration(req: UpdateConfigRequest):
         config.max_audio_quality_when_signed = req.max_audio_quality_when_signed
     if req.language is not None and req.language.strip().lower() in ("auto", "fr", "en"):
         config.language = req.language.strip().lower()
+    if req.radio_country_codes is not None:
+        config.radio_country_codes = [c.strip().upper() for c in req.radio_country_codes if c and c.strip()]
     save_config(config)
     return {"success": True, "config": config.dict()}
 
@@ -4252,6 +4263,10 @@ async def graceful_shutdown_endpoint():
     request_video_sync_stop()
     request_migrator_stop()
     download_manager.cancel_all()
+    try:
+        radio_manager.stream_manager.stop()
+    except Exception:
+        pass
 
     # Attente asynchrone sécurisée que les opérations actives terminent leur micro-opération unitaire (fichier en cours)
     start_time = time.time()
@@ -4643,6 +4658,154 @@ async def get_library_genres_endpoint():
         pass
 
     return {"genres": sorted(list(genres), key=lambda s: unicodedata.normalize('NFKD', s).lower())}
+
+
+# =========================================================================
+# MODULE 6.1.0 : RADIOS WEB & CONTRÔLE DU DIRECT (TIMESHIFTING)
+# =========================================================================
+
+class AddCustomRadioRequest(BaseModel):
+    name: str
+    url: str
+    tags: str = ""
+    favicon: str = ""
+    country: str = "Personnalisé"
+
+class ToggleFavoriteRadioRequest(BaseModel):
+    station: dict
+
+class PlayRadioRequest(BaseModel):
+    station: dict
+
+@app.get("/api/radio/list")
+def get_radios_list():
+    """Retourne la liste des stations favorites et personnalisées."""
+    return radio_manager.load_radios()
+
+@app.post("/api/radio/favorite/toggle")
+def toggle_radio_favorite(req: ToggleFavoriteRadioRequest):
+    """Ajoute ou retire une station des favoris."""
+    is_fav = radio_manager.toggle_favorite(req.station)
+    return {"success": True, "is_favorite": is_fav}
+
+@app.post("/api/radio/custom/add")
+def add_custom_radio_endpoint(req: AddCustomRadioRequest):
+    """Ajoute une station manuelle entrée par l'utilisateur."""
+    station = radio_manager.add_custom_radio(
+        name=req.name,
+        url=req.url,
+        tags=req.tags,
+        favicon=req.favicon,
+        country=req.country
+    )
+    return {"success": True, "station": station}
+
+@app.delete("/api/radio/custom/{radio_id}")
+def delete_custom_radio_endpoint(radio_id: str):
+    """Supprime une station manuelle."""
+    ok = radio_manager.delete_custom_radio(radio_id)
+    return {"success": ok}
+
+@app.get("/api/radio/browser/search")
+def search_radio_browser_endpoint(
+    name: str = "",
+    countrycode: str = "",
+    tag: str = "",
+    limit: int = 40,
+    offset: int = 0,
+    group: bool = True
+):
+    """Recherche des stations de radio dans l'annuaire mondial Radio Browser avec bouquets et cache pays."""
+    stations = radio_manager.search_stations(
+        name=name,
+        countrycode=countrycode,
+        tag=tag,
+        limit=limit,
+        offset=offset,
+        group=group
+    )
+    return {"stations": stations, "count": len(stations)}
+
+@app.post("/api/radio/test")
+def test_radio_stream_endpoint(url: str):
+    """Teste la joignabilité d'un flux audio distant."""
+    real_url = parse_playlist_url(url.strip())
+    headers = {"User-Agent": "SoundStash/6.1.0"}
+    try:
+        req = urllib.request.Request(real_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            return {
+                "success": True,
+                "resolved_url": real_url,
+                "content_type": content_type
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/radio/play")
+def play_radio_endpoint(req: PlayRadioRequest):
+    """Démarre la capture et le streaming d'une radio avec contrôle du direct."""
+    try:
+        radio_manager.stream_manager.start(req.station)
+        return {"success": True, "status": radio_manager.stream_manager.get_status()}
+    except Exception as e:
+        logger.warning(f"[RadioManager] Échec du démarrage de la radio: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/radio/stop")
+def stop_radio_endpoint():
+    """Arrête la radio et purge le tampon de Timeshifting."""
+    radio_manager.stream_manager.stop()
+    return {"success": True}
+
+@app.get("/api/radio/status")
+def get_radio_status_endpoint():
+    """Retourne les métadonnées en direct (Now Playing) et l'état du tampon Timeshift."""
+    return radio_manager.stream_manager.get_status()
+
+@app.get("/api/radio/stream")
+def stream_radio_endpoint(offset: float = 0.0):
+    """
+    Diffuse le flux audio en direct ou en différé (Timeshifting).
+    - offset = 0.0 : Direct
+    - offset < 0.0 (ex: -120) : Différé de 2 minutes en arrière
+    """
+    status = radio_manager.stream_manager.get_status()
+    if not status.get("is_active"):
+        raise HTTPException(status_code=400, detail="Aucune radio n'est active.")
+
+    content_type = status.get("content_type") or "audio/mpeg"
+    return StreamingResponse(
+        radio_manager.stream_manager.iter_audio(offset_seconds=offset),
+        media_type=content_type,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Accept-Ranges": "none",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
+
+@app.get("/api/radio/countries")
+def get_radio_countries_endpoint():
+    """Retourne la liste des codes pays configurés pour l'accès direct aux Radios Web."""
+    return {
+        "codes": getattr(config, "radio_country_codes", ["FR", "BE", "CH", "CA", "GB", "US"])
+    }
+
+class SetRadioCountriesRequest(BaseModel):
+    codes: List[str]
+
+@app.post("/api/radio/countries")
+def set_radio_countries_endpoint(req: SetRadioCountriesRequest):
+    """Enregistre les codes pays choisis par l'utilisateur pour la barre de filtres."""
+    valid_codes = [c.strip().upper() for c in req.codes if c and c.strip()]
+    if valid_codes:
+        config.radio_country_codes = valid_codes
+        save_config(config)
+    return {"success": True, "codes": config.radio_country_codes}
 
 # =========================================================================
 # MODULE 5.0.0 : EXPORTATION DE MÉDIAS (AUDIO & VIDÉO) & CONVERSION

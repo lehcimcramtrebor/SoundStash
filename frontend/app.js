@@ -56,6 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupWelcomeWizard();
     setupSleepTimerModal();
     if (window.PartyLock) window.PartyLock.init();
+    if (window.RadioManager) window.RadioManager.init();
     setupPlayerShortcutsAndWheel();
     setupSyncWatchIndicator();
     loadConfiguration();
@@ -324,15 +325,15 @@ function updateHeaderNowPlayingButton() {
     const isVideoModalActive = Boolean(isModalOpen || (isVideoBg && vPlayer && vPlayer.src));
     const isVideo = Boolean(isVideoModalActive || (isCurrentTrackVideo && ((vPlayer && !vPlayer.paused) || (ap && ap.isPlaying))));
 
-    // Un audio simple est actif si ce n'est pas une vidéo active et qu'un album/playlist avec piste courante audio existe
+    // Un flux radio ou un album audio est actif
+    const isRadio = Boolean(ap && ap.isRadioPlaying && ap.currentRadio);
     const isAudio = Boolean(
         !isVideoModalActive &&
         ap &&
-        ap.currentAlbum &&
-        ap.playlist &&
-        ap.playlist.length > 0 &&
-        currentTrack &&
-        !isCurrentTrackVideo
+        (
+            (ap.currentAlbum && ap.playlist && ap.playlist.length > 0 && currentTrack && !isCurrentTrackVideo) ||
+            isRadio
+        )
     );
 
     const nowPlayingSubtab = document.getElementById("player-subtab-now-playing");
@@ -340,35 +341,40 @@ function updateHeaderNowPlayingButton() {
     const subtabIcon = document.getElementById("player-subtab-now-playing-icon");
     const subtabLabel = document.getElementById("player-subtab-now-playing-label");
 
-    const hasActivePiste = Boolean(isVideo || isAudio);
+    const hasActivePiste = Boolean(isVideo || isAudio || isRadio);
 
-    // ── Grisage de l'onglet "En cours d'écoute" quand aucune lecture ──
+    // ── État de l'onglet "En cours d'écoute" (Album, Vidéo ou Radio Web) ──
     if (nowPlayingSubtab) {
         nowPlayingSubtab.classList.toggle("tab-disabled", !hasActivePiste);
         if (!hasActivePiste) {
             nowPlayingSubtab.title = "Aucune lecture en cours";
-            // Si l'utilisateur est sur cet onglet alors qu'il n'y a rien, revenir aux Albums
             if (window.AudioPlayer && window.AudioPlayer.currentView === "now-playing") {
                 window.AudioPlayer.setView("albums");
             }
         } else {
-            nowPlayingSubtab.title = isVideo ? "Afficher la vidéo en cours" : "Afficher la lecture en cours";
+            if (isVideo) {
+                nowPlayingSubtab.title = "Afficher la vidéo en cours";
+            } else if (isRadio) {
+                nowPlayingSubtab.title = "Afficher la radio en direct (Raccourci: N)";
+            } else {
+                nowPlayingSubtab.title = "Afficher la lecture en cours";
+            }
         }
     }
 
-    if (isVideo || isAudio) {
-        // Masquage contextuel intelligent : affiché dans le header uniquement si le tiroir Atelier est ouvert
-        // car dans le Lecteur, le sous-onglet #player-subtab-now-playing prend le relais !
+    if (isVideo || isAudio || isRadio) {
         const shouldShowInHeader = Boolean(isWorkshopDrawerOpen);
         btn.style.display = shouldShowInHeader ? "inline-flex" : "none";
         const isPlaying = Boolean(
             (isVideo && ((vPlayer && !vPlayer.paused) || (ap && ap.isPlaying))) ||
-            (isAudio && ap && ap.isPlaying)
+            (isAudio && ap && ap.isPlaying) ||
+            (isRadio && ap && ap.isPlaying)
         );
         if (eq) eq.style.display = isPlaying ? "inline-flex" : "none";
         if (nowPlayingSubtab) nowPlayingSubtab.classList.toggle("is-playing", isPlaying);
         if (subtabEq) subtabEq.style.display = isPlaying ? "inline-flex" : "none";
-        if (subtabIcon) subtabIcon.textContent = isVideo ? "🎬" : "🎧";
+        if (subtabIcon) subtabIcon.textContent = isVideo ? "🎬" : (isRadio ? "📻" : "🎧");
+        if (subtabLabel) subtabLabel.textContent = isRadio ? "Radio en direct" : "En cours d'écoute";
 
         btn.classList.toggle("is-video", isVideo);
         if (isVideo) {
@@ -379,12 +385,13 @@ function updateHeaderNowPlayingButton() {
         } else {
             if (iconAudio) iconAudio.style.display = "inline";
             if (iconVideo) iconVideo.style.display = "none";
-            if (label) label.textContent = "En cours";
-            btn.title = "Afficher la lecture en cours (Raccourci: N)";
+            if (label) label.textContent = isRadio ? "Radio" : "En cours";
+            btn.title = isRadio ? "Afficher la radio en direct (Raccourci: N)" : "Afficher la lecture en cours (Raccourci: N)";
         }
     } else {
         btn.style.display = "none";
         if (subtabEq) subtabEq.style.display = "none";
+        if (subtabLabel) subtabLabel.textContent = "En cours d'écoute";
     }
 }
 window.updateHeaderNowPlayingButton = updateHeaderNowPlayingButton;
@@ -408,6 +415,19 @@ window.goToNowPlaying = function() {
 
     const ap = window.AudioPlayer;
     if (!ap) return;
+
+    // Si une radio est en cours d'écoute, ouvrir immédiatement son Grand Écran
+    if (ap.isRadioPlaying && ap.currentRadio) {
+        if (typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen && typeof closeWorkshopDrawer === "function") {
+            closeWorkshopDrawer();
+        }
+        if (typeof enterPlayerMode === "function") {
+            enterPlayerMode();
+        }
+        ap.setView("now-playing");
+        ap.renderPlayerTab();
+        return;
+    }
 
     // Fermer le tiroir de la file d'attente s'il est ouvert pour dégager la vue
     if (ap && ap.isQueueDrawerOpen && typeof ap.closeQueueDrawer === "function") {

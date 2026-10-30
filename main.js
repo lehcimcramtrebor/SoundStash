@@ -559,6 +559,7 @@ function saveWindowState() {
 // Données d'état multimédia partagées (pour barre des tâches & tray)
 let currentMediaState = {
     isPlaying: false,
+    isRadio: false,
     title: '',
     artist: '',
     album: ''
@@ -577,36 +578,69 @@ function updateThumbarButtons(isPlaying) {
     if (process.platform !== 'win32') return;
 
     const isEn = getEffectiveLang() === 'en';
+    const isRadio = Boolean(currentMediaState.isRadio);
     try {
-        mainWindow.setThumbarButtons([
-            {
-                tooltip: isEn ? 'Previous track' : 'Piste précédente',
-                icon: THUMBAR_ICONS.prev,
-                click() {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('media-action', 'prev');
+        if (isRadio) {
+            mainWindow.setThumbarButtons([
+                {
+                    tooltip: isEn ? 'Rewind 15 seconds (Timeshift)' : 'Reculer de 15 secondes (Direct)',
+                    icon: THUMBAR_ICONS.prev,
+                    click() {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('media-action', 'radio-rewind');
+                        }
+                    }
+                },
+                {
+                    tooltip: isPlaying ? (isEn ? 'Pause live stream' : 'Mettre en pause le direct') : (isEn ? 'Resume live stream' : 'Reprendre le direct'),
+                    icon: isPlaying ? THUMBAR_ICONS.pause : THUMBAR_ICONS.play,
+                    click() {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('media-action', 'play-pause');
+                        }
+                    }
+                },
+                {
+                    tooltip: isEn ? 'Jump to Live stream' : 'Revenir au direct (Temps réel)',
+                    icon: THUMBAR_ICONS.next,
+                    click() {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('media-action', 'radio-live');
+                        }
                     }
                 }
-            },
-            {
-                tooltip: isPlaying ? (isEn ? 'Pause' : 'Mettre en pause') : (isEn ? 'Play' : 'Lire'),
-                icon: isPlaying ? THUMBAR_ICONS.pause : THUMBAR_ICONS.play,
-                click() {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('media-action', 'play-pause');
+            ]);
+        } else {
+            mainWindow.setThumbarButtons([
+                {
+                    tooltip: isEn ? 'Previous track' : 'Piste précédente',
+                    icon: THUMBAR_ICONS.prev,
+                    click() {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('media-action', 'prev');
+                        }
+                    }
+                },
+                {
+                    tooltip: isPlaying ? (isEn ? 'Pause' : 'Mettre en pause') : (isEn ? 'Play' : 'Lire'),
+                    icon: isPlaying ? THUMBAR_ICONS.pause : THUMBAR_ICONS.play,
+                    click() {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('media-action', 'play-pause');
+                        }
+                    }
+                },
+                {
+                    tooltip: isEn ? 'Next track' : 'Piste suivante',
+                    icon: THUMBAR_ICONS.next,
+                    click() {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('media-action', 'next');
+                        }
                     }
                 }
-            },
-            {
-                tooltip: isEn ? 'Next track' : 'Piste suivante',
-                icon: THUMBAR_ICONS.next,
-                click() {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('media-action', 'next');
-                    }
-                }
-            }
-        ]);
+            ]);
+        }
     } catch (e) {
         console.warn('[Electron] setThumbarButtons error:', e.message);
     }
@@ -649,10 +683,12 @@ function updateTrayMenu() {
 
     const isEn = getEffectiveLang() === 'en';
     const isPlaying = currentMediaState.isPlaying;
+    const isRadio = Boolean(currentMediaState.isRadio);
     const isVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
+    const trackIcon = isRadio ? '📻' : '🎵';
     const trackLabel = currentMediaState.title
-        ? `🎵 ${currentMediaState.title}${currentMediaState.artist ? ' — ' + currentMediaState.artist : ''}`
-        : (isEn ? '🎵 No track playing' : '🎵 Aucun morceau en cours');
+        ? `${trackIcon} ${currentMediaState.title}${currentMediaState.artist ? ' — ' + currentMediaState.artist : ''}`
+        : (isEn ? (isRadio ? '📻 Live Radio' : '🎵 No track playing') : (isRadio ? '📻 Radio Web en direct' : '🎵 Aucun morceau en cours'));
 
     // Mettre à jour l'infobulle (tooltip) près de l'horloge
     if (currentMediaState.title) {
@@ -661,35 +697,72 @@ function updateTrayMenu() {
         tray.setToolTip('SoundStash by Helmicretro');
     }
 
-    const contextMenu = Menu.buildFromTemplate([
+    const menuItems = [
         { label: trackLabel, enabled: false },
-        { type: 'separator' },
-        {
-            label: isPlaying ? (isEn ? '⏸ Pause' : '⏸ Mettre en pause') : (isEn ? '▶ Play' : '▶ Lire'),
-            click: () => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    currentMediaState.isPlaying = !currentMediaState.isPlaying;
-                    updateTrayMenu();
-                    mainWindow.webContents.send('media-action', 'play-pause');
+        { type: 'separator' }
+    ];
+
+    if (isRadio) {
+        menuItems.push(
+            {
+                label: isPlaying ? (isEn ? '⏸ Pause live stream' : '⏸ Mettre en pause le direct') : (isEn ? '▶ Resume live stream' : '▶ Reprendre le direct'),
+                click: () => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        currentMediaState.isPlaying = !currentMediaState.isPlaying;
+                        updateTrayMenu();
+                        mainWindow.webContents.send('media-action', 'play-pause');
+                    }
+                }
+            },
+            {
+                label: isEn ? '⏪ Rewind 15 seconds' : '⏪ Reculer de 15s (Direct)',
+                click: () => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('media-action', 'radio-rewind');
+                    }
+                }
+            },
+            {
+                label: isEn ? '🔴 Jump to Live' : '🔴 Revenir au direct',
+                click: () => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('media-action', 'radio-live');
+                    }
                 }
             }
-        },
-        {
-            label: isEn ? '⏮ Previous track' : '⏮ Piste précédente',
-            click: () => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('media-action', 'prev');
+        );
+    } else {
+        menuItems.push(
+            {
+                label: isPlaying ? (isEn ? '⏸ Pause' : '⏸ Mettre en pause') : (isEn ? '▶ Play' : '▶ Lire'),
+                click: () => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        currentMediaState.isPlaying = !currentMediaState.isPlaying;
+                        updateTrayMenu();
+                        mainWindow.webContents.send('media-action', 'play-pause');
+                    }
+                }
+            },
+            {
+                label: isEn ? '⏮ Previous track' : '⏮ Piste précédente',
+                click: () => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('media-action', 'prev');
+                    }
+                }
+            },
+            {
+                label: isEn ? '⏭ Next track' : '⏭ Piste suivante',
+                click: () => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('media-action', 'next');
+                    }
                 }
             }
-        },
-        {
-            label: isEn ? '⏭ Next track' : '⏭ Piste suivante',
-            click: () => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('media-action', 'next');
-                }
-            }
-        },
+        );
+    }
+
+    menuItems.push(
         { type: 'separator' },
         {
             label: isVisible ? (isEn ? '👁 Hide window' : '👁 Masquer la fenêtre') : (isEn ? '👁 Show SoundStash' : '👁 Afficher SoundStash'),
@@ -723,8 +796,9 @@ function updateTrayMenu() {
                 checkAndQuit();
             }
         }
-    ]);
+    );
 
+    const contextMenu = Menu.buildFromTemplate(menuItems);
     tray.setContextMenu(contextMenu);
 }
 
@@ -924,6 +998,7 @@ ipcMain.on('playback-state-changed', (event, state) => {
     if (!state) return;
     currentMediaState = {
         isPlaying: Boolean(state.isPlaying),
+        isRadio: Boolean(state.isRadio),
         title: state.title || '',
         artist: state.artist || '',
         album: state.album || ''

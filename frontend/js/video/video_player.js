@@ -914,8 +914,16 @@ function openVideoModal(item) {
     if (window.globalAudio && !window.globalAudio.paused) {
         window.globalAudio.pause();
     }
-    if (window.AudioPlayer && window.AudioPlayer.audio && !window.AudioPlayer.audio.paused) {
-        window.AudioPlayer.pause();
+    if (window.AudioPlayer) {
+        if (window.AudioPlayer.isRadioPlaying) {
+            window.AudioPlayer.isRadioPlaying = false;
+            window.AudioPlayer.currentRadio = null;
+            fetch("/api/radio/stop", { method: "POST" }).catch(() => {});
+            if (window.RadioManager) window.RadioManager.stopStatusPolling();
+        }
+        if (window.AudioPlayer.audio && !window.AudioPlayer.audio.paused) {
+            window.AudioPlayer.pause();
+        }
     }
 
     syncAudioPlayerWithVideo(item);

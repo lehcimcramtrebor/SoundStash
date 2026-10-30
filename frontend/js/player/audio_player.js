@@ -192,6 +192,8 @@ const AudioPlayer = {
     isSeeking: false,
     volume: 0.85,
     isMuted: false,
+    isRadioPlaying: false,
+    currentRadio: null,
 
     // État du navigateur de collection
     librarySource: "library", // "library" | "temp"
@@ -316,6 +318,35 @@ const AudioPlayer = {
 
     savePlaybackSession(markAsNewSave = true) {
         try {
+            if (this.isRadioPlaying && this.currentRadio) {
+                let notifiedOnRestore = false;
+                if (!markAsNewSave) {
+                    try {
+                        const prevRaw = localStorage.getItem("soundstash_saved_playback_session");
+                        if (prevRaw) {
+                            const prev = JSON.parse(prevRaw);
+                            if (prev && prev.notifiedOnRestore === true) {
+                                notifiedOnRestore = true;
+                            }
+                        }
+                    } catch (_) {}
+                }
+                const sessionPayload = {
+                    version: 1,
+                    savedAt: Date.now(),
+                    notifiedOnRestore: notifiedOnRestore,
+                    isRadio: true,
+                    currentRadio: this.currentRadio,
+                    isUserPlaylistActive: false,
+                    isShuffle: this.isShuffle,
+                    repeatMode: this.repeatMode,
+                    volume: this.volume,
+                    isMuted: this.isMuted,
+                    currentView: this.currentView || "radios"
+                };
+                localStorage.setItem("soundstash_saved_playback_session", JSON.stringify(sessionPayload));
+                return;
+            }
             if (!this.currentAlbum || !this.playlist || this.playlist.length === 0 || this.currentIndex < 0) {
                 return;
             }
@@ -426,7 +457,76 @@ const AudioPlayer = {
             const raw = localStorage.getItem("soundstash_saved_playback_session");
             if (!raw) return false;
             const saved = JSON.parse(raw);
-            if (!saved || !saved.currentAlbum || !Array.isArray(saved.playlist) || saved.playlist.length === 0) {
+            if (!saved) return false;
+
+            if (saved.isRadio && saved.currentRadio) {
+                this.isRadioPlaying = true;
+                this.currentRadio = saved.currentRadio;
+                this.currentAlbum = null;
+                this.playlist = [];
+                this.activePlaylist = [];
+                this.currentIndex = -1;
+                this.isPlaying = false;
+                this._isRestoringSavedSession = true;
+                this._showResumeNotificationOnLoad = !saved.notifiedOnRestore;
+                this.playbackOrigin = { type: "radios", view: "radios" };
+
+                const rad = saved.currentRadio;
+                let logo = rad.favicon;
+                if (!logo || logo.includes("radio_placeholder") || logo.includes("upload.wikimedia.org")) {
+                    if (window.RadioManager && typeof window.RadioManager.getProceduralStationCover === "function") {
+                        logo = window.RadioManager.getProceduralStationCover(rad.name, rad.tags, rad.country);
+                    } else {
+                        logo = "/static/assets/radio_placeholder.svg";
+                    }
+                }
+                const stationName = rad.name || "Radio Web";
+                const metaSubtitle = rad.sub_label
+                    ? (rad.sub_label_type === 'location' ? `📍 ${rad.sub_label} • ${rad.country || "Direct"}` : `🏷️ ${rad.sub_label}`)
+                    : (rad.tags || rad.country || "Flux en direct");
+
+                const miniThumb = document.getElementById("mini-player-thumb");
+                const miniTitle = document.getElementById("mini-player-title");
+                const miniArtist = document.getElementById("mini-player-artist");
+                if (miniThumb) miniThumb.src = logo;
+                if (miniTitle) miniTitle.textContent = stationName;
+                if (miniArtist) miniArtist.textContent = metaSubtitle;
+
+                const pCover = document.getElementById("player-cover-img");
+                const pFmt = document.getElementById("player-format-badge");
+                const pTitle = document.getElementById("player-track-title");
+                const pArtist = document.getElementById("player-track-artist");
+                const pAlbum = document.getElementById("player-track-album");
+                if (pCover) pCover.src = logo;
+                if (pFmt) pFmt.textContent = rad.codec ? (rad.codec + (rad.bitrate ? " " + rad.bitrate + "k" : "")) : "RADIO";
+                if (pTitle) pTitle.textContent = stationName;
+                if (pArtist) pArtist.textContent = metaSubtitle;
+                if (pAlbum) pAlbum.textContent = "Contrôle du direct • Timeshift 30 min";
+
+                if (window.RadioManager) {
+                    window.RadioManager.state.currentStation = rad;
+                    window.RadioManager.state.isPlaying = false;
+                }
+
+                this.showPlayerBar();
+                this.updatePlayStateUI();
+                this.updateMiniDockVisibility();
+                this.syncSystemMediaState();
+                this.renderPlayerTab();
+
+                setTimeout(() => {
+                    if (this._showResumeNotificationOnLoad && !this._hasPlayedInCurrentRun) {
+                        this._showResumeNotificationOnLoad = false;
+                        if (typeof showToast === "function") {
+                            showToast(`📻 Session précédente : « ${stationName} » prête. Appuyez sur ▶ ou Espace pour écouter.`, "info", 5000);
+                        }
+                    }
+                }, 1200);
+
+                return true;
+            }
+
+            if (!saved.currentAlbum || !Array.isArray(saved.playlist) || saved.playlist.length === 0) {
                 return false;
             }
 
@@ -649,6 +749,7 @@ const AudioPlayer = {
         const a = this.audio;
 
         a.addEventListener("play", () => {
+            this._radioReconnectAttempts = 0;
             this.setupAudioContext();
             this.isPlaying = true;
             this._hasPlayedInCurrentRun = true;
@@ -663,6 +764,19 @@ const AudioPlayer = {
         });
 
         a.addEventListener("ended", () => {
+            if (this.isRadioPlaying) {
+                console.log("[AudioPlayer] Flux radio terminé côté serveur, reprise automatique en direct...");
+                if (this.isPlaying) {
+                    setTimeout(() => {
+                        if (this.isRadioPlaying && this.isPlaying) {
+                            this.audio.src = `/api/radio/stream?offset=0&_t=${Date.now()}`;
+                            this.audio.load();
+                            this.audio.play().catch(e => console.warn("[AudioPlayer] Reprise radio post-ended:", e));
+                        }
+                    }, 800);
+                }
+                return;
+            }
             if (!this.currentTrackPlayLogged) {
                 this.recordCurrentTrackPlay();
             }
@@ -751,7 +865,27 @@ const AudioPlayer = {
             const errCode = a.error ? a.error.code : "inconnu";
             const errMsg = a.error ? a.error.message : "";
             console.warn(`Erreur lecture audio (Code: ${errCode}, Msg: ${errMsg}, Src: ${a.src}):`, e);
-            showToast("Impossible de lire ce flux audio (format ou réseau non supporté).", "warning");
+            if (this.isRadioPlaying) {
+                this._radioReconnectAttempts = (this._radioReconnectAttempts || 0) + 1;
+                if (this._radioReconnectAttempts <= 5) {
+                    console.log(`[AudioPlayer] Reprise automatique du flux radio (${this._radioReconnectAttempts}/5)...`);
+                    setTimeout(() => {
+                        if (this.isRadioPlaying && this.isPlaying) {
+                            if (window.RadioManager && this.currentRadio && this._radioReconnectAttempts >= 2) {
+                                window.RadioManager.playStation(this.currentRadio);
+                            } else {
+                                this.audio.src = `/api/radio/stream?offset=0&_t=${Date.now()}`;
+                                this.audio.load();
+                                this.audio.play().catch(err => console.warn("[AudioPlayer] Reprise échouée:", err));
+                            }
+                        }
+                    }, 1200);
+                    return;
+                }
+                showToast("Flux radio momentanément indisponible ou interrompu.", "warning");
+            } else {
+                showToast("Impossible de lire ce flux audio (format ou réseau non supporté).", "warning");
+            }
             this.isPlaying = false;
             this.updatePlayStateUI();
         });
@@ -792,11 +926,19 @@ const AudioPlayer = {
         }
         if (miniPrevBtn) {
             miniPrevBtn.addEventListener("click", () => {
+                if (this.isRadioPlaying && window.RadioManager) {
+                    window.RadioManager.seekRelative(-15);
+                    return;
+                }
                 this.playPrev();
             });
         }
         if (miniNextBtn) {
             miniNextBtn.addEventListener("click", () => {
+                if (this.isRadioPlaying && window.RadioManager) {
+                    window.RadioManager.seekRelative(+15);
+                    return;
+                }
                 this.playNext();
             });
         }
@@ -814,6 +956,17 @@ const AudioPlayer = {
             miniSeekBar.addEventListener("mousedown", () => { this.isSeeking = true; });
             miniSeekBar.addEventListener("touchstart", () => { this.isSeeking = true; });
             miniSeekBar.addEventListener("input", () => {
+                if (this.isRadioPlaying) {
+                    const offset = parseFloat(miniSeekBar.value);
+                    const tc = document.getElementById("mini-player-time-current");
+                    if (tc) {
+                        const s = Math.floor(Math.abs(offset));
+                        const mins = Math.floor(s / 60);
+                        const secs = s % 60;
+                        tc.textContent = (offset >= -2) ? "0:00" : `-${mins}:${secs < 10 ? "0" : ""}${secs}`;
+                    }
+                    return;
+                }
                 const vPlayer = document.getElementById("video-modal-player");
                 if (window.isVideoPlayingInBackground && vPlayer && vPlayer.duration) {
                     const cur = (miniSeekBar.value / 100) * vPlayer.duration;
@@ -829,6 +982,10 @@ const AudioPlayer = {
             });
             miniSeekBar.addEventListener("change", () => {
                 this.isSeeking = false;
+                if (this.isRadioPlaying) {
+                    if (window.RadioManager) window.RadioManager.seekOffset(parseFloat(miniSeekBar.value));
+                    return;
+                }
                 const vPlayer = document.getElementById("video-modal-player");
                 if (window.isVideoPlayingInBackground && vPlayer && vPlayer.duration) {
                     vPlayer.currentTime = (miniSeekBar.value / 100) * vPlayer.duration;
@@ -932,7 +1089,7 @@ const AudioPlayer = {
             }
         }, { passive: true });
 
-        // 4. Sous-Onglets de Vue (Albums, Artistes, Genres, En cours d'écoute)
+        // 4. Sous-Onglets de Vue (Albums, Artistes, Genres, Clips, Concerts, Playlists, Radios, En cours d'écoute)
         document.querySelectorAll(".player-subtab-btn").forEach(btn => {
             btn.addEventListener("click", () => {
                 try { btn.blur(); } catch (_) {}
@@ -943,9 +1100,6 @@ const AudioPlayer = {
                     }
                     return;
                 }
-                if (this.currentView === "search" || this.unifiedSearchQuery) {
-                    this.clearUnifiedSearch(false);
-                }
                 if (v === "albums" && this.currentView === "albums" && this.isAlbumDetailOpen) {
                     this.closeAlbumDetail(true);
                     return;
@@ -955,7 +1109,9 @@ const AudioPlayer = {
                     return;
                 }
                 if (v === "now-playing") {
-                    if (typeof window.goToNowPlaying === "function") {
+                    if (this.isRadioPlaying && this.currentRadio) {
+                        this.setView("now-playing");
+                    } else if (typeof window.goToNowPlaying === "function") {
                         window.goToNowPlaying();
                     } else {
                         this.setView("now-playing");
@@ -1010,7 +1166,7 @@ const AudioPlayer = {
             if (typeof syncPlayerControlsHeight === "function") syncPlayerControlsHeight();
         });
 
-        // 5. Barre d'outils (Recherche Unifiée, Tri & Filtres)
+        // 5. Barre d'outils (Recherche Unifiée Globale, Tri & Filtres)
         const searchInput = document.getElementById("player-search-input");
         const searchClearBtn = document.getElementById("player-search-clear-btn");
         const sortSelect = document.getElementById("player-sort-select");
@@ -1022,7 +1178,7 @@ const AudioPlayer = {
                 if (searchClearBtn) searchClearBtn.style.display = q ? "block" : "none";
                 clearTimeout(this._unifiedSearchDebounceTimer);
                 this._unifiedSearchDebounceTimer = setTimeout(() => {
-                    this.onSearchInputChanged(q);
+                    this.setGlobalSearch(q, searchInput);
                 }, 120);
             });
 
@@ -1030,14 +1186,14 @@ const AudioPlayer = {
             searchInput.addEventListener("keydown", (e) => {
                 if (e.key === "Escape") {
                     e.preventDefault();
-                    this.clearUnifiedSearch(true);
+                    this.clearGlobalSearch();
                 }
             });
         }
 
         if (searchClearBtn) {
             searchClearBtn.addEventListener("click", () => {
-                this.clearUnifiedSearch(true);
+                this.clearGlobalSearch();
             });
         }
 
@@ -1301,6 +1457,17 @@ const AudioPlayer = {
             playerSeekSlider.addEventListener("mousedown", () => { this.isSeeking = true; });
             playerSeekSlider.addEventListener("touchstart", () => { this.isSeeking = true; });
             playerSeekSlider.addEventListener("input", () => {
+                if (this.isRadioPlaying) {
+                    const offset = parseFloat(playerSeekSlider.value);
+                    const tc = document.getElementById("player-time-current");
+                    if (tc) {
+                        const s = Math.floor(Math.abs(offset));
+                        const mins = Math.floor(s / 60);
+                        const secs = s % 60;
+                        tc.textContent = (offset >= -2) ? "0:00" : `-${mins}:${secs < 10 ? "0" : ""}${secs}`;
+                    }
+                    return;
+                }
                 if (a.duration) {
                     const cur = (playerSeekSlider.value / 100) * a.duration;
                     const tc = document.getElementById("player-time-current");
@@ -1309,6 +1476,10 @@ const AudioPlayer = {
             });
             playerSeekSlider.addEventListener("change", () => {
                 this.isSeeking = false;
+                if (this.isRadioPlaying) {
+                    if (window.RadioManager) window.RadioManager.seekOffset(parseFloat(playerSeekSlider.value));
+                    return;
+                }
                 if (a.duration) {
                     a.currentTime = (playerSeekSlider.value / 100) * a.duration;
                     this._pendingResumeSeekTime = 0;
@@ -1330,9 +1501,31 @@ const AudioPlayer = {
         if ('mediaSession' in navigator) {
             navigator.mediaSession.setActionHandler('play', () => this.play());
             navigator.mediaSession.setActionHandler('pause', () => this.pause());
-            navigator.mediaSession.setActionHandler('previoustrack', () => this.playPrev());
-            navigator.mediaSession.setActionHandler('nexttrack', () => this.playNext());
+            navigator.mediaSession.setActionHandler('previoustrack', () => {
+                if (this.isRadioPlaying && window.RadioManager && typeof window.RadioManager.seekOffset === "function") {
+                    window.RadioManager.seekOffset(-15);
+                } else {
+                    this.playPrev();
+                }
+            });
+            navigator.mediaSession.setActionHandler('nexttrack', () => {
+                if (this.isRadioPlaying && window.RadioManager && typeof window.RadioManager.jumpToLive === "function") {
+                    window.RadioManager.jumpToLive();
+                } else {
+                    this.playNext();
+                }
+            });
             try {
+                navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+                    const offset = -(details.seekOffset || 15);
+                    if (this.isRadioPlaying && window.RadioManager) window.RadioManager.seekOffset(offset);
+                    else if (this.audio) this.audio.currentTime = Math.max(0, this.audio.currentTime + offset);
+                });
+                navigator.mediaSession.setActionHandler('seekforward', (details) => {
+                    const offset = (details.seekOffset || 15);
+                    if (this.isRadioPlaying && window.RadioManager) window.RadioManager.seekOffset(offset);
+                    else if (this.audio) this.audio.currentTime = Math.min(this.audio.duration || 0, this.audio.currentTime + offset);
+                });
                 navigator.mediaSession.setActionHandler('seekto', (details) => {
                     if (details.seekTime !== undefined && this.audio && this.audio.duration) {
                         this.audio.currentTime = details.seekTime;
@@ -1349,10 +1542,30 @@ const AudioPlayer = {
                 }
                 if (action === 'play-pause') {
                     this.togglePlayPause();
+                } else if (action === 'radio-rewind') {
+                    if (window.RadioManager && typeof window.RadioManager.seekOffset === "function") {
+                        window.RadioManager.seekOffset(-15);
+                    }
+                } else if (action === 'radio-live') {
+                    if (window.RadioManager && typeof window.RadioManager.jumpToLive === "function") {
+                        window.RadioManager.jumpToLive();
+                    }
                 } else if (action === 'next') {
-                    this.playNext();
+                    if (this.isRadioPlaying) {
+                        if (window.RadioManager && typeof window.RadioManager.jumpToLive === "function") {
+                            window.RadioManager.jumpToLive();
+                        }
+                    } else {
+                        this.playNext();
+                    }
                 } else if (action === 'prev') {
-                    this.playPrev();
+                    if (this.isRadioPlaying) {
+                        if (window.RadioManager && typeof window.RadioManager.seekOffset === "function") {
+                            window.RadioManager.seekOffset(-15);
+                        }
+                    } else {
+                        this.playPrev();
+                    }
                 }
             });
         }
@@ -1844,6 +2057,7 @@ const AudioPlayer = {
             "videos": document.getElementById("player-view-videos"),
             "concerts": document.getElementById("player-view-concerts"),
             "playlists": document.getElementById("player-view-playlists"),
+            "radios": document.getElementById("player-view-radios"),
             "now-playing": document.getElementById("player-view-now-playing")
         };
 
@@ -1858,6 +2072,7 @@ const AudioPlayer = {
         if (toolbar) {
             const shouldHideToolbar = (
                 view === "now-playing" ||
+                view === "radios" ||
                 (view === "albums" && this.isAlbumDetailOpen)
             );
             toolbar.style.display = shouldHideToolbar ? "none" : "flex";
@@ -1868,23 +2083,35 @@ const AudioPlayer = {
         // Mettre à jour la barre de retour depuis "En cours d'écoute"
         this.updateNowPlayingBackLabel();
 
-        // Synchroniser le champ de recherche et son bouton d'effacement
+        // Synchroniser le champ de recherche globale et son bouton d'effacement
         const searchInput = document.getElementById("player-search-input");
         const searchClearBtn = document.getElementById("player-search-clear-btn");
+        const radiosSearchInput = document.getElementById("radios-search-input");
+        const radiosClearBtn = document.getElementById("radios-search-clear-btn");
+
+        const q = this.globalSearchQuery || "";
         if (searchInput && document.activeElement !== searchInput) {
-            if (view === "search") {
-                searchInput.value = this.unifiedSearchQuery || "";
-            } else if (view === "all") {
-                searchInput.value = this.allSearchQuery || "";
-            } else if (view === "albums" || view === "artists" || view === "genres") {
-                searchInput.value = this.searchFilter || "";
-            }
-            if (searchClearBtn) {
-                searchClearBtn.style.display = searchInput.value ? "block" : "none";
-            }
-        } else if (searchInput && searchClearBtn) {
-            searchClearBtn.style.display = searchInput.value ? "block" : "none";
+            searchInput.value = q;
+            if (searchClearBtn) searchClearBtn.style.display = q ? "block" : "none";
         }
+        if (radiosSearchInput && document.activeElement !== radiosSearchInput) {
+            radiosSearchInput.value = q;
+            if (radiosClearBtn) radiosClearBtn.style.display = q ? "flex" : "none";
+        }
+
+        // Répercuter la recherche active sur les filtres de la vue courante
+        this.searchFilter = q;
+        this.videosSearchFilter = q;
+        this.concertsSearchFilter = q;
+        this.allSearchQuery = q;
+        if (window.UserPlaylists) window.UserPlaylists.searchFilter = q;
+        if (view === "radios" && window.RadioManager) {
+            window.RadioManager.state.searchQuery = q;
+            window.RadioManager.handleSearch(q);
+        }
+
+        // Maintenir les pastilles de résultat à jour sur chaque sous-onglet
+        this.updateSearchTabBadges(q);
 
         this.updateSortSelectForView(view);
 
@@ -2153,6 +2380,19 @@ const AudioPlayer = {
             return;
         }
 
+        // Flux Radio Web actif : ouvrir la vue Grand Écran de la radio en direct
+        if (this.isRadioPlaying && this.currentRadio) {
+            if (typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen && typeof closeWorkshopDrawer === "function") {
+                closeWorkshopDrawer();
+            }
+            if (typeof isPlayerModeActive !== "undefined" && !isPlayerModeActive && typeof enterPlayerMode === "function") {
+                enterPlayerMode();
+            }
+            this.setView("now-playing");
+            this.renderPlayerTab();
+            return;
+        }
+
         if (!this.currentAlbum && !this.isPlaying && (!this.playlist || this.playlist.length === 0)) {
             showToast("Aucun morceau en cours de lecture", "info", 2000);
             return;
@@ -2310,10 +2550,11 @@ const AudioPlayer = {
             "genres": "Retourner aux Genres",
             "videos": "Retourner aux Clips",
             "concerts": "Retourner aux Concerts",
-            "playlists": "Retourner aux Playlists"
+            "playlists": "Retourner aux Playlists",
+            "radios": "Retourner aux Radios"
         };
-        const prev = this.previousView || "albums";
-        labelEl.textContent = viewNames[prev] || "Retourner à la collection";
+        const prev = this.previousView || (this.isRadioPlaying ? "radios" : "albums");
+        labelEl.textContent = viewNames[prev] || (this.isRadioPlaying ? "Retourner aux Radios" : "Retourner à la collection");
     },
 
     updateDetailContextBar() {
@@ -2399,7 +2640,7 @@ const AudioPlayer = {
             exitPlayerMode();
             return;
         }
-        const targetView = (this.previousView && this.previousView !== "now-playing") ? this.previousView : "albums";
+        const targetView = (this.previousView && this.previousView !== "now-playing") ? this.previousView : (this.isRadioPlaying ? "radios" : "albums");
         const savedY = (this.savedScrollPositions && typeof this.savedScrollPositions[targetView] === "number")
             ? this.savedScrollPositions[targetView]
             : 0;
@@ -3301,12 +3542,18 @@ const AudioPlayer = {
             if (window.UserPlaylists && !window.UserPlaylists.isDetailOpen) {
                 window.UserPlaylists.loadAndRenderPlaylists();
             }
+        } else if (this.currentView === "radios") {
+            if (window.RadioManager) {
+                window.RadioManager.render();
+            }
         } else if (this.currentView === "search") {
             this.renderUnifiedSearch();
         } else if (this.currentView === "now-playing") {
             this.updateMiniDockVisibility();
             this.renderPlayerTab();
-            this.updateDisplayedAlbumUI();
+            if (!this.isRadioPlaying) {
+                this.updateDisplayedAlbumUI();
+            }
         }
         this.updateScrollBounds();
     },
@@ -5200,6 +5447,178 @@ const AudioPlayer = {
     // RECHERCHE GLOBALE UNIFIÉE (OPTION A)
     // =========================================================
 
+    // ── MOTEUR DE RECHERCHE GLOBALE MULTI-ONGLETS AVEC PASTILLES DE RÉSULTAT ──
+    globalSearchQuery: "",
+
+    setGlobalSearch(rawQuery, sourceInput = null) {
+        const q = (rawQuery || "").trim();
+        this.globalSearchQuery = q;
+
+        const pInp = document.getElementById("player-search-input");
+        const rInp = document.getElementById("radios-search-input");
+        const pClr = document.getElementById("player-search-clear-btn");
+        const rClr = document.getElementById("radios-search-clear-btn");
+
+        if (pInp && pInp !== sourceInput && pInp.value !== (rawQuery || "")) pInp.value = rawQuery || "";
+        if (rInp && rInp !== sourceInput && rInp.value !== (rawQuery || "")) rInp.value = rawQuery || "";
+        if (pClr) pClr.style.display = q ? "block" : "none";
+        if (rClr) rClr.style.display = q ? "flex" : "none";
+
+        this.searchFilter = q;
+        this.videosSearchFilter = q;
+        this.concertsSearchFilter = q;
+        this.allSearchQuery = q;
+        if (window.UserPlaylists) window.UserPlaylists.searchFilter = q;
+        if (window.RadioManager) window.RadioManager.state.searchQuery = q;
+
+        this.updateSearchTabBadges(q);
+        this.applySearchToCurrentView(q);
+    },
+
+    clearGlobalSearch() {
+        this.globalSearchQuery = "";
+        this.searchFilter = "";
+        this.videosSearchFilter = "";
+        this.concertsSearchFilter = "";
+        this.allSearchQuery = "";
+        if (window.UserPlaylists) window.UserPlaylists.searchFilter = "";
+        if (window.RadioManager) {
+            window.RadioManager.state.searchQuery = "";
+            window.RadioManager.handleSearch("");
+        }
+
+        const pInp = document.getElementById("player-search-input");
+        const rInp = document.getElementById("radios-search-input");
+        const pClr = document.getElementById("player-search-clear-btn");
+        const rClr = document.getElementById("radios-search-clear-btn");
+
+        if (pInp) pInp.value = "";
+        if (rInp) rInp.value = "";
+        if (pClr) pClr.style.display = "none";
+        if (rClr) rClr.style.display = "none";
+
+        this.updateSearchTabBadges("");
+        this.renderCurrentView();
+    },
+
+    updateSearchTabBadges(query) {
+        const q = (query || "").toLowerCase().trim();
+        const badges = {
+            all: document.getElementById("player-all-count-badge"),
+            albums: document.getElementById("player-albums-count-badge"),
+            artists: document.getElementById("player-artists-count-badge"),
+            genres: document.getElementById("player-genres-count-badge"),
+            videos: document.getElementById("player-videos-count-badge"),
+            concerts: document.getElementById("player-concerts-count-badge"),
+            playlists: document.getElementById("player-playlists-count-badge"),
+            radios: document.getElementById("player-radios-count-badge")
+        };
+
+        if (!q) {
+            Object.keys(badges).forEach(k => {
+                const b = badges[k];
+                if (!b) return;
+                b.style.display = "none";
+                b.className = "badge badge-sm badge-tab-count";
+            });
+            return;
+        }
+
+        // Compter les albums
+        const catAlbums = (this.allCatalog && Array.isArray(this.allCatalog.albums)) ? this.allCatalog.albums : (this.libraryAlbums || []);
+        let albumsCount = 0;
+        for (const a of catAlbums) {
+            if ((a.title || "").toLowerCase().includes(q) || (a.artist || "").toLowerCase().includes(q) || (a.genre || "").toLowerCase().includes(q)) {
+                albumsCount++;
+            }
+        }
+
+        // Compter les artistes uniques
+        const artSet = new Set();
+        for (const a of catAlbums) {
+            const art = (a.artist || "").trim();
+            if (art && art.toLowerCase().includes(q)) artSet.add(art.toLowerCase());
+        }
+        const artistsCount = artSet.size;
+
+        // Compter les genres uniques
+        const genSet = new Set();
+        for (const a of catAlbums) {
+            const gen = (a.genre || "").trim();
+            if (gen && gen.toLowerCase().includes(q)) genSet.add(gen.toLowerCase());
+        }
+        const genresCount = genSet.size;
+
+        // Compter clips et concerts
+        let videosCount = 0;
+        let concertsCount = 0;
+        const vids = this.videosCatalog || [];
+        for (const v of vids) {
+            const m = (v.title || "").toLowerCase().includes(q) || (v.artist || "").toLowerCase().includes(q) || (v.filename || "").toLowerCase().includes(q);
+            if (m) {
+                if (v.video_type === "concert" || v.is_concert) concertsCount++;
+                else videosCount++;
+            }
+        }
+
+        // Compter playlists
+        let playlistsCount = 0;
+        const pls = (window.UserPlaylists && Array.isArray(window.UserPlaylists.playlists)) ? window.UserPlaylists.playlists : [];
+        for (const p of pls) {
+            if ((p.name || "").toLowerCase().includes(q)) playlistsCount++;
+        }
+
+        // Compter radios
+        let radiosCount = 0;
+        if (window.RadioManager && typeof window.RadioManager.getSearchMatchCount === "function") {
+            radiosCount = window.RadioManager.getSearchMatchCount(q);
+        }
+
+        const allCount = albumsCount + artistsCount + genresCount + videosCount + concertsCount + playlistsCount + radiosCount;
+
+        const counts = {
+            all: allCount,
+            albums: albumsCount,
+            artists: artistsCount,
+            genres: genresCount,
+            videos: videosCount,
+            concerts: concertsCount,
+            playlists: playlistsCount,
+            radios: radiosCount
+        };
+
+        Object.keys(badges).forEach(k => {
+            const b = badges[k];
+            if (!b) return;
+            const cnt = counts[k] || 0;
+            b.textContent = cnt;
+            b.style.display = "inline-flex";
+            b.className = `badge badge-sm badge-tab-count ${cnt > 0 ? "count-positive" : "count-zero"}`;
+        });
+    },
+
+    applySearchToCurrentView(q) {
+        if (this.currentView === "albums") {
+            this.renderAlbumsGrid();
+        } else if (this.currentView === "artists") {
+            this.renderArtistsGrid();
+        } else if (this.currentView === "genres") {
+            this.renderGenresGrid();
+        } else if (this.currentView === "videos") {
+            this.renderVideosGrid();
+        } else if (this.currentView === "concerts") {
+            this.renderConcertsGrid();
+        } else if (this.currentView === "playlists") {
+            if (window.UserPlaylists) window.UserPlaylists.renderGrid();
+        } else if (this.currentView === "radios") {
+            if (window.RadioManager) window.RadioManager.handleSearch(q);
+        } else if (this.currentView === "all") {
+            this.renderAllView(true);
+        } else if (this.currentView === "search") {
+            this.performUnifiedSearch(q);
+        }
+    },
+
     onSearchInputChanged(rawQuery) {
         const q = (rawQuery || "").trim();
         if (!q) {
@@ -6904,6 +7323,30 @@ const AudioPlayer = {
 
     play() {
         if (!this.audio) return;
+        if (this.isRadioPlaying && this.currentRadio) {
+            if (this._isRestoringSavedSession || !this._hasPlayedInCurrentRun || !this.audio.src) {
+                this._isRestoringSavedSession = false;
+                this._hasPlayedInCurrentRun = true;
+                if (window.RadioManager && typeof window.RadioManager.playStation === "function") {
+                    window.RadioManager.playStation(this.currentRadio);
+                    return;
+                }
+            }
+            const offset = (window.RadioManager && typeof window.RadioManager.state.currentOffset === "number")
+                ? window.RadioManager.state.currentOffset
+                : 0;
+            const targetUrl = `/api/radio/stream?offset=${encodeURIComponent(offset)}&_t=${Date.now()}`;
+            this.audio.src = targetUrl;
+            this.audio.load();
+            this.audio.volume = this.isMuted ? 0 : (typeof this.volume === "number" ? this.volume : 1);
+            this.isPlaying = true;
+            this._hasPlayedInCurrentRun = true;
+            if (window.RadioManager) window.RadioManager.startStatusPolling();
+            this.audio.play().catch(e => console.warn(e));
+            this.updatePlayStateUI();
+            this.syncSystemMediaState();
+            return;
+        }
         if (!this.audio.src) {
             if (this.playlist.length > 0 && this.currentIndex >= 0) {
                 const resumeSec = this._pendingResumeSeekTime || 0;
@@ -6960,6 +7403,25 @@ const AudioPlayer = {
             this.playTrackAtIndex(this.currentIndex);
             return;
         }
+
+        // CAS RADIO WEB : Contrôle prioritaire Play/Pause du flux radio
+        if (this.isRadioPlaying && this.currentRadio) {
+            if (this._isRestoringSavedSession || !this._hasPlayedInCurrentRun || !this.audio.src) {
+                this._isRestoringSavedSession = false;
+                this._hasPlayedInCurrentRun = true;
+                if (window.RadioManager && typeof window.RadioManager.playStation === "function") {
+                    window.RadioManager.playStation(this.currentRadio);
+                    return;
+                }
+            }
+            if (!this.isPlaying || this.audio.paused) {
+                this.play();
+            } else {
+                this.pause();
+            }
+            return;
+        }
+
         if (!this.audio.src) {
             if (this.playlist.length > 0 && this.currentIndex >= 0) {
                 this.playTrackAtIndex(this.currentIndex);
@@ -6976,6 +7438,10 @@ const AudioPlayer = {
     },
 
     playNext() {
+        if (this.isRadioPlaying && window.RadioManager) {
+            window.RadioManager.jumpToLive();
+            return;
+        }
         // Niveau 1 : File prioritaire manuelle (Morceaux ajoutés via « Lire ensuite » ou « En file »)
         if (this.userQueue && this.userQueue.length > 0) {
             // Mémoriser l'album d'origine pour y revenir ensuite exactement où l'on s'est arrêté
@@ -7058,6 +7524,10 @@ const AudioPlayer = {
     },
 
     playPrev() {
+        if (this.isRadioPlaying && window.RadioManager) {
+            window.RadioManager.seekRelative(-15);
+            return;
+        }
         const vPlayer = document.getElementById("video-modal-player");
         if (vPlayer && (window.isVideoPlayingInBackground || document.getElementById("video-modal-backdrop")?.classList.contains("active"))) {
             if (vPlayer.currentTime > 3) {
@@ -7518,31 +7988,33 @@ const AudioPlayer = {
         // 2. Section "En cours de lecture"
         const curCard = document.getElementById("queue-current-card");
         if (curCard) {
-            let currentTrack = null;
-            let isQueueTrack = Boolean(this.currentTrackIsFromQueue && this.currentQueueTrack);
-            if (isQueueTrack) {
-                currentTrack = this.currentQueueTrack;
-            } else if (this.activePlaylist && this.activePlaylist[this.currentIndex]) {
-                currentTrack = this.activePlaylist[this.currentIndex];
-            } else if (this.playlist && this.playlist[this.currentIndex]) {
-                currentTrack = this.playlist[this.currentIndex];
-            }
+            if (this.isRadioPlaying && this.currentRadio) {
+                const st = this.currentRadio;
+                const np = window.RadioManager?.state?.nowPlaying;
+                const title = (np && (np.title || np.raw)) ? (np.title || np.raw) : (st.name || "Radio Web");
+                const artist = (np && np.artist) ? np.artist : (st.sub_label ? `📍 ${st.sub_label} • ${st.name}` : (st.country || "Radio en direct"));
+                let cover = st.favicon;
+                if (!cover || cover.includes("radio_placeholder") || cover.includes("wikimedia.org") || cover.includes("wikipedia.org")) {
+                    if (window.RadioManager && typeof window.RadioManager.getProceduralStationCover === "function") {
+                        cover = window.RadioManager.getProceduralStationCover(st.name, st.tags, st.country);
+                    } else {
+                        cover = "/static/assets/radio_placeholder.svg";
+                    }
+                }
+                const originLabel = "🔴 EN DIRECT • Flux Web" + (st.codec ? ` • ${st.codec.toUpperCase()} ${st.bitrate ? st.bitrate + 'k' : ''}` : "");
 
-            if (currentTrack) {
-                const cover = currentTrack.cover_url || (this.currentAlbum ? this.currentAlbum.cover_url : "/static/placeholder-cover.svg");
-                const albumTitle = currentTrack.album || (this.currentAlbum ? this.currentAlbum.title : "");
                 curCard.classList.remove("is-empty");
                 curCard.classList.add("clickable");
                 curCard.setAttribute("role", "button");
                 curCard.setAttribute("tabindex", "0");
-                curCard.setAttribute("title", "Aller au morceau en cours d'écoute (Raccourci: N)");
+                curCard.setAttribute("title", "Aller à la station en direct (Raccourci: N)");
                 curCard.innerHTML = `
-                    <img class="queue-item-thumb" src="${cover}" alt="Cover" onerror="window.handleCoverError(this);">
+                    <img class="queue-item-thumb" src="${cover}" alt="Cover" onerror="window.handleCoverError ? window.handleCoverError(this) : (this.src='/static/assets/radio_placeholder.svg');">
                     <div class="queue-item-info">
-                        <div class="queue-item-title">${escapeHtml(currentTrack.title || "Titre inconnu")}</div>
-                        <div class="queue-item-artist">${escapeHtml(currentTrack.artist || "Artiste inconnu")}</div>
-                        <div class="queue-item-origin">
-                            ${isQueueTrack ? "★ Titre intercalé en priorité" : `💿 Album : ${escapeHtml(albumTitle)}`}
+                        <div class="queue-item-title">${escapeHtml(title)}</div>
+                        <div class="queue-item-artist">${escapeHtml(artist)}</div>
+                        <div class="queue-item-origin" style="color: var(--accent, #89b4fa); font-weight: 600;">
+                            ${escapeHtml(originLabel)}
                         </div>
                     </div>
                     <span class="player-equalizer-bars" style="display: ${this.isPlaying ? "inline-flex" : "none"};">
@@ -7571,18 +8043,72 @@ const AudioPlayer = {
                     }
                 };
             } else {
-                curCard.classList.remove("clickable");
-                curCard.classList.add("is-empty");
-                curCard.removeAttribute("role");
-                curCard.removeAttribute("tabindex");
-                curCard.removeAttribute("title");
-                curCard.onclick = null;
-                curCard.onkeydown = null;
-                curCard.innerHTML = `
-                    <div class="text-muted" style="font-size: 0.85rem; padding: 6px 0;">
-                        Aucun morceau en cours de lecture.
-                    </div>
-                `;
+                let currentTrack = null;
+                let isQueueTrack = Boolean(this.currentTrackIsFromQueue && this.currentQueueTrack);
+                if (isQueueTrack) {
+                    currentTrack = this.currentQueueTrack;
+                } else if (this.activePlaylist && this.activePlaylist[this.currentIndex]) {
+                    currentTrack = this.activePlaylist[this.currentIndex];
+                } else if (this.playlist && this.playlist[this.currentIndex]) {
+                    currentTrack = this.playlist[this.currentIndex];
+                }
+
+                if (currentTrack) {
+                    const cover = currentTrack.cover_url || (this.currentAlbum ? this.currentAlbum.cover_url : "/static/placeholder-cover.svg");
+                    const albumTitle = currentTrack.album || (this.currentAlbum ? this.currentAlbum.title : "");
+                    curCard.classList.remove("is-empty");
+                    curCard.classList.add("clickable");
+                    curCard.setAttribute("role", "button");
+                    curCard.setAttribute("tabindex", "0");
+                    curCard.setAttribute("title", "Aller au morceau en cours d'écoute (Raccourci: N)");
+                    curCard.innerHTML = `
+                        <img class="queue-item-thumb" src="${cover}" alt="Cover" onerror="window.handleCoverError(this);">
+                        <div class="queue-item-info">
+                            <div class="queue-item-title">${escapeHtml(currentTrack.title || "Titre inconnu")}</div>
+                            <div class="queue-item-artist">${escapeHtml(currentTrack.artist || "Artiste inconnu")}</div>
+                            <div class="queue-item-origin">
+                                ${isQueueTrack ? "★ Titre intercalé en priorité" : `💿 Album : ${escapeHtml(albumTitle)}`}
+                            </div>
+                        </div>
+                        <span class="player-equalizer-bars" style="display: ${this.isPlaying ? "inline-flex" : "none"};">
+                            <span class="player-equalizer-bar"></span>
+                            <span class="player-equalizer-bar"></span>
+                            <span class="player-equalizer-bar"></span>
+                        </span>
+                    `;
+                    curCard.onclick = () => {
+                        if (typeof this.closeQueueDrawer === "function") {
+                            this.closeQueueDrawer();
+                        }
+                        if (typeof window.goToNowPlaying === "function") {
+                            window.goToNowPlaying();
+                        }
+                    };
+                    curCard.onkeydown = (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            if (typeof this.closeQueueDrawer === "function") {
+                                this.closeQueueDrawer();
+                            }
+                            if (typeof window.goToNowPlaying === "function") {
+                                window.goToNowPlaying();
+                            }
+                        }
+                    };
+                } else {
+                    curCard.classList.remove("clickable");
+                    curCard.classList.add("is-empty");
+                    curCard.removeAttribute("role");
+                    curCard.removeAttribute("tabindex");
+                    curCard.removeAttribute("title");
+                    curCard.onclick = null;
+                    curCard.onkeydown = null;
+                    curCard.innerHTML = `
+                        <div class="text-muted" style="font-size: 0.85rem; padding: 6px 0;">
+                            Aucun morceau en cours de lecture.
+                        </div>
+                    `;
+                }
             }
         }
 
@@ -7661,7 +8187,11 @@ const AudioPlayer = {
         let baseIndex = -1;
         let baseAlbum = null;
 
-        if (this.playbackContext && this.playbackContext.album) {
+        if (this.isRadioPlaying) {
+            basePlaylist = [];
+            baseIndex = -1;
+            baseAlbum = null;
+        } else if (this.playbackContext && this.playbackContext.album) {
             basePlaylist = this.playbackContext.playlist || [];
             baseIndex = this.playbackContext.currentIndex;
             baseAlbum = this.playbackContext.album;
@@ -7671,14 +8201,24 @@ const AudioPlayer = {
             baseAlbum = this.currentAlbum;
         }
 
-        const upcomingTracks = (baseIndex >= 0 && baseIndex < basePlaylist.length - 1)
+        const upcomingTracks = (!this.isRadioPlaying && baseIndex >= 0 && baseIndex < basePlaylist.length - 1)
             ? basePlaylist.slice(baseIndex + 1)
             : [];
 
-        if (upCount) upCount.textContent = String(upcomingTracks.length);
+        if (upCount) upCount.textContent = this.isRadioPlaying ? "—" : String(upcomingTracks.length);
 
         if (upList) {
-            if (upcomingTracks.length === 0) {
+            if (this.isRadioPlaying) {
+                upList.innerHTML = `
+                    <div class="text-muted" style="font-size: 0.82rem; padding: 12px 14px; font-style: italic; display: flex; align-items: flex-start; gap: 10px; line-height: 1.4; background: rgba(255, 255, 255, 0.02); border-radius: 8px;">
+                        <span style="font-size: 1.15rem; flex-shrink: 0;">📻</span>
+                        <div>
+                            <strong>Flux direct ininterrompu.</strong><br>
+                            Les radios web n'ont pas de liste d'attente automatique. Vous pouvez ajouter des morceaux prioritaires dans <em>"À suivre"</em> ci-dessus à tout moment.
+                        </div>
+                    </div>
+                `;
+            } else if (upcomingTracks.length === 0) {
                 upList.innerHTML = `
                     <div class="text-muted" style="font-size: 0.82rem; padding: 8px 10px; font-style: italic;">
                         ${baseAlbum ? "Dernière piste de l'album en cours (aucun titre restant)." : "Aucun album d'origine en cours."}
@@ -8420,7 +8960,6 @@ const AudioPlayer = {
         const isDefaultActive = (currentActiveId === "default" || currentActiveId === "");
         html += `
             <div class="audio-output-item ${isDefaultActive ? 'active' : ''}" data-device-id="default">
-                <div class="audio-output-item-indicator"></div>
                 <div class="audio-output-item-icon">
                     ${this.getDeviceSvgIcon(defaultCategory, 18)}
                 </div>
@@ -8453,7 +8992,6 @@ const AudioPlayer = {
 
             html += `
                 <div class="audio-output-item ${isActive ? 'active' : ''}" data-device-id="${escapeHtml(dev.deviceId)}">
-                    <div class="audio-output-item-indicator"></div>
                     <div class="audio-output-item-icon">
                         ${this.getDeviceSvgIcon(category, 18)}
                     </div>
@@ -8767,8 +9305,8 @@ const AudioPlayer = {
         const ambientPlayIcon = document.getElementById("ambient-icon-play");
         const ambientPauseIcon = document.getElementById("ambient-icon-pause");
 
-        // RÈGLE STRICTE : Accessible UNIQUEMENT si lecture réelle en cours (PAS pour les previews)
-        const canShowAmbient = Boolean(this.isPlaying && this.currentAlbum);
+        // RÈGLE STRICTE : Accessible si lecture réelle en cours (Album ou Radio Web, PAS pour les previews)
+        const canShowAmbient = Boolean(this.isPlaying && (this.currentAlbum || (this.isRadioPlaying && this.currentRadio)));
         if (btnHeaderAmbient) btnHeaderAmbient.style.display = canShowAmbient ? "inline-flex" : "none";
         if (btnMiniAmbient) btnMiniAmbient.style.display = canShowAmbient ? "inline-flex" : "none";
         if (btnFocusAmbient) btnFocusAmbient.style.display = canShowAmbient ? "inline-flex" : "none";
@@ -8776,7 +9314,7 @@ const AudioPlayer = {
         if (ambientPlayIcon) ambientPlayIcon.style.display = this.isPlaying ? "none" : "block";
         if (ambientPauseIcon) ambientPauseIcon.style.display = this.isPlaying ? "block" : "none";
 
-        if (!this.currentAlbum && window.AmbientVisualizer && window.AmbientVisualizer.isActive) {
+        if (!this.currentAlbum && !(this.isRadioPlaying && this.currentRadio) && window.AmbientVisualizer && window.AmbientVisualizer.isActive) {
             window.AmbientVisualizer.exit();
         }
 
@@ -8790,12 +9328,38 @@ const AudioPlayer = {
     },
 
     syncSystemMediaState() {
-        const cur = (this.activePlaylist && this.activePlaylist[this.currentIndex]) || (this.playlist && this.playlist[this.currentIndex]);
-        const title = cur ? (cur.title || "Titre inconnu") : "";
-        const artist = (cur && cur.artist) || (this.currentAlbum && this.currentAlbum.artist) || "";
-        const album = (this.currentAlbum && this.currentAlbum.title) || "";
-        let cover = (this.currentAlbum && this.currentAlbum.cover_url) || "";
-        if (cover && !cover.startsWith("http")) {
+        let title = "";
+        let artist = "";
+        let album = "";
+        let cover = "";
+        const isRadio = Boolean(this.isRadioPlaying && this.currentRadio);
+
+        if (isRadio) {
+            const rad = this.currentRadio;
+            const np = window.RadioManager?.state?.nowPlaying;
+            if (np && (np.title || np.raw)) {
+                title = np.title || np.raw;
+                artist = np.artist || (rad.sub_label ? `${rad.name} (${rad.sub_label})` : rad.name) || "Radio Web";
+            } else {
+                title = rad.name || "Radio Web";
+                artist = rad.sub_label
+                    ? (rad.sub_label_type === 'location' ? `📍 ${rad.sub_label} • ${rad.country || "Direct"}` : `🏷️ ${rad.sub_label}`)
+                    : (rad.country || rad.tags || "Direct Radio");
+            }
+            album = "Contrôle du direct • 📻 Radio Web";
+            cover = rad.favicon || "";
+            if ((!cover || cover.includes("radio_placeholder") || cover.includes("wikimedia.org") || cover.includes("wikipedia.org")) && window.RadioManager?.getProceduralStationCover) {
+                cover = window.RadioManager.getProceduralStationCover(rad.name, rad.tags, rad.country);
+            }
+        } else {
+            const cur = (this.activePlaylist && this.activePlaylist[this.currentIndex]) || (this.playlist && this.playlist[this.currentIndex]);
+            title = cur ? (cur.title || "Titre inconnu") : "";
+            artist = (cur && cur.artist) || (this.currentAlbum && this.currentAlbum.artist) || "";
+            album = (this.currentAlbum && this.currentAlbum.title) || "";
+            cover = (this.currentAlbum && this.currentAlbum.cover_url) || "";
+        }
+
+        if (cover && !cover.startsWith("http") && !cover.startsWith("data:")) {
             cover = window.location.origin + cover;
         }
 
@@ -8819,6 +9383,7 @@ const AudioPlayer = {
         if (window.electronAPI && window.electronAPI.updatePlaybackState) {
             window.electronAPI.updatePlaybackState({
                 isPlaying: this.isPlaying,
+                isRadio: isRadio,
                 title: title,
                 artist: artist,
                 album: album
@@ -8827,6 +9392,10 @@ const AudioPlayer = {
     },
 
     updateProgressUI() {
+        if (this.isRadioPlaying && window.RadioManager) {
+            window.RadioManager.updateTimeshiftTimeline();
+            return;
+        }
         const cur = (this._pendingResumeSeekTime > 0 && (!this.audio.currentTime || this.audio.currentTime < 0.5))
             ? this._pendingResumeSeekTime
             : (this.audio.currentTime || 0);
@@ -8842,6 +9411,24 @@ const AudioPlayer = {
         const ambientSeekBar = document.getElementById("ambient-seek-bar");
         const ambientTimeCur = document.getElementById("ambient-time-current");
 
+        if (!this.isRadioPlaying) {
+            if (miniSeekBar && miniSeekBar.min !== "0") {
+                miniSeekBar.min = "0";
+                miniSeekBar.max = "100";
+                miniSeekBar.step = "0.1";
+            }
+            if (playerSeekBar && playerSeekBar.min !== "0") {
+                playerSeekBar.min = "0";
+                playerSeekBar.max = "100";
+                playerSeekBar.step = "0.1";
+            }
+            if (ambientSeekBar && ambientSeekBar.min !== "0") {
+                ambientSeekBar.min = "0";
+                ambientSeekBar.max = "100";
+                ambientSeekBar.step = "0.1";
+            }
+        }
+
         if (miniSeekBar) miniSeekBar.value = pct;
         if (miniTimeCur) miniTimeCur.textContent = this.formatTime(cur);
         if (playerSeekBar) playerSeekBar.value = pct;
@@ -8851,6 +9438,10 @@ const AudioPlayer = {
     },
 
     seekRelative(seconds) {
+        if (this.isRadioPlaying && window.RadioManager) {
+            window.RadioManager.seekRelative(seconds);
+            return;
+        }
         if (!this.audio || !this.audio.duration || isNaN(this.audio.duration)) return;
         const cur = this.audio.currentTime || 0;
         const target = Math.max(0, Math.min(this.audio.duration, cur + seconds));
@@ -8862,6 +9453,10 @@ const AudioPlayer = {
     },
 
     updateDurationUI() {
+        if (this.isRadioPlaying && window.RadioManager) {
+            window.RadioManager.updateTimeshiftTimeline();
+            return;
+        }
         const dur = (this.audio.duration && !isNaN(this.audio.duration) && this.audio.duration > 0)
             ? this.audio.duration
             : (this._pendingResumeDuration || 0);
@@ -8882,6 +9477,12 @@ const AudioPlayer = {
 
     async loadAlbum(albumPath, optsOrAutoPlayIndex = 0, isCollection = false, switchView = true) {
         if (!albumPath) return;
+        if (this.isRadioPlaying) {
+            this.isRadioPlaying = false;
+            this.currentRadio = null;
+            fetch("/api/radio/stop", { method: "POST" }).catch(() => {});
+            if (window.RadioManager) window.RadioManager.stopStatusPolling();
+        }
 
         this.isUserPlaylistActive = false;
         let autoPlay = false;
@@ -9116,6 +9717,12 @@ const AudioPlayer = {
 
     playTrackAtIndex(index, seekTime = 0) {
         if (!this.playlist || index < 0 || index >= this.playlist.length) return;
+        if (this.isRadioPlaying) {
+            this.isRadioPlaying = false;
+            this.currentRadio = null;
+            fetch("/api/radio/stop", { method: "POST" }).catch(() => {});
+            if (window.RadioManager) window.RadioManager.stopStatusPolling();
+        }
         this._isRestoringSavedSession = false;
         this._showResumeNotificationOnLoad = false;
         this._pendingResumeSeekTime = 0;
@@ -9248,6 +9855,117 @@ const AudioPlayer = {
                 console.log(`[PlaybackStats] Écoute validée : "${data.entry.title}" (${data.entry.artist}) -> ${data.entry.play_count} écoute(s)`);
             }
         }).catch(() => {});
+    },
+
+    playRadioStream(station) {
+        if (!station) return;
+        this.isRadioPlaying = true;
+        this.currentRadio = station;
+        this.currentAlbum = null;
+        this.playlist = [];
+        this.currentIndex = -1;
+        this.isPlaying = true;
+        this._isRestoringSavedSession = false;
+        this._hasPlayedInCurrentRun = true;
+        this.playbackOrigin = { type: "radios", view: "radios" };
+        this.playbackContext = {
+            type: "radio",
+            station: station,
+            title: station.name || "Radio Web",
+            artist: station.sub_label || station.country || "Radio",
+            album: null,
+            playlist: [],
+            currentIndex: -1
+        };
+        this.currentQueueTrack = null;
+        this.currentTrackIsFromQueue = false;
+
+        if (window.closeVideoModal && (window.isVideoPlayingInBackground || document.getElementById("video-modal-backdrop")?.classList.contains("active"))) {
+            window.closeVideoModal(true);
+        }
+
+        let logo = station.favicon;
+        if (!logo || logo.includes("radio_placeholder") || logo.includes("upload.wikimedia.org")) {
+            if (window.RadioManager && typeof window.RadioManager.getProceduralStationCover === "function") {
+                logo = window.RadioManager.getProceduralStationCover(station.name, station.tags, station.country);
+            } else {
+                logo = "/static/assets/radio_placeholder.svg";
+            }
+        }
+        const stationName = station.name || "Radio Web";
+        const metaSubtitle = station.sub_label
+            ? (station.sub_label_type === 'location' ? `📍 ${station.sub_label} • ${station.country || "Direct"}` : `🏷️ ${station.sub_label} • ${station.tags || "Direct"}`)
+            : (station.tags || station.country || "Flux en direct");
+
+        const miniThumb = document.getElementById("mini-player-thumb");
+        const miniTitle = document.getElementById("mini-player-title");
+        const miniArtist = document.getElementById("mini-player-artist");
+        if (miniThumb) {
+            miniThumb.src = logo;
+            miniThumb.onerror = () => {
+                miniThumb.onerror = null;
+                if (window.RadioManager && typeof window.RadioManager.getProceduralStationCover === "function") {
+                    miniThumb.src = window.RadioManager.getProceduralStationCover(station.name, station.tags, station.country);
+                }
+            };
+        }
+        if (miniTitle) miniTitle.textContent = stationName;
+        if (miniArtist) miniArtist.textContent = metaSubtitle;
+
+        const pCover = document.getElementById("player-cover-img");
+        const pFmt = document.getElementById("player-format-badge");
+        const pTitle = document.getElementById("player-track-title");
+        const pArtist = document.getElementById("player-track-artist");
+        const pAlbum = document.getElementById("player-track-album");
+        if (pCover) {
+            pCover.src = logo;
+            pCover.onerror = () => {
+                pCover.onerror = null;
+                if (window.RadioManager && typeof window.RadioManager.getProceduralStationCover === "function") {
+                    pCover.src = window.RadioManager.getProceduralStationCover(station.name, station.tags, station.country);
+                }
+            };
+        }
+        if (pFmt) pFmt.textContent = station.codec ? (station.codec + (station.bitrate ? " " + station.bitrate + "k" : "")) : "RADIO";
+        if (pTitle) pTitle.textContent = stationName;
+        if (pArtist) pArtist.textContent = metaSubtitle;
+        if (pAlbum) pAlbum.textContent = "Contrôle du direct • Timeshift 30 min";
+
+        const startRadioAudio = () => {
+            const streamUrl = `/api/radio/stream?offset=0&_t=${Date.now()}`;
+            this.audio.src = streamUrl;
+            this.audio.load();
+            this.audio.volume = this.isMuted ? 0 : (typeof this.volume === "number" ? this.volume : 1);
+            const playPromise = this.audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => console.warn("[AudioPlayer] Lecture radio différée/bloquée:", e));
+            }
+        };
+
+        if (this.audio && !this.audio.paused && AudioFader.enabled) {
+            AudioFader.fadeOut(this.audio, 280).then(() => startRadioAudio());
+        } else {
+            startRadioAudio();
+        }
+
+        this.showPlayerBar();
+        this.updatePlayStateUI();
+        this.updateMiniDockVisibility();
+        this.syncSystemMediaState();
+        if (this.isQueueDrawerOpen) this.renderQueueDrawer();
+        if (window.RadioManager) window.RadioManager.updateTimeshiftTimeline();
+        if (window.AmbientVisualizer && window.AmbientVisualizer.isActive) {
+            window.AmbientVisualizer.syncState();
+        }
+        // Atterrissage immédiat sur la page dédiée Grand Écran Radio
+        if (typeof closeWorkshopDrawer === "function" && typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen) {
+            closeWorkshopDrawer();
+        }
+        if (typeof enterPlayerMode === "function" && typeof isPlayerModeActive !== "undefined" && !isPlayerModeActive) {
+            enterPlayerMode();
+        }
+        this.setView("now-playing");
+        this.renderPlayerTab();
     },
 
     updateDisplayedAlbumUI() {
@@ -9386,6 +10104,316 @@ const AudioPlayer = {
         const badge = document.getElementById("player-active-album-badge");
         const meta = document.getElementById("player-tracklist-meta");
         const container = document.getElementById("player-tracklist-container");
+
+        // Rendu Grand Écran dédié aux flux Radio Web en direct (Page Spéciale Haute Fidélité)
+        if (this.isRadioPlaying && this.currentRadio) {
+            if (emptyState) emptyState.style.display = "none";
+            if (mainLayout) mainLayout.style.display = "flex";
+            const st = this.currentRadio;
+            const logo = st.favicon || (window.RadioManager ? window.RadioManager.getProceduralStationCover(st.name, st.tags, st.country) : "/static/assets/radio_placeholder.svg");
+
+            const coverImg = document.getElementById("player-cover-img");
+            if (coverImg) {
+                coverImg.src = logo;
+                coverImg.onerror = () => {
+                    coverImg.onerror = null;
+                    if (window.RadioManager) coverImg.src = window.RadioManager.getProceduralStationCover(st.name, st.tags, st.country);
+                };
+            }
+
+            const titleEl = document.getElementById("player-track-title");
+            const artistEl = document.getElementById("player-track-artist");
+            const submetaEl = document.getElementById("player-track-album");
+            const formatBadge = document.getElementById("player-format-badge");
+
+            const currentLiveTitle = (window.RadioManager && window.RadioManager.state && window.RadioManager.state.nowPlaying && window.RadioManager.state.nowPlaying.raw)
+                ? window.RadioManager.state.nowPlaying.raw
+                : (this.lastIcyTitle || st.name || "Flux en direct");
+
+            if (titleEl) {
+                titleEl.textContent = st.name || "Radio Web";
+                titleEl.title = st.name || "Radio Web";
+            }
+            if (artistEl) {
+                const subText = st.sub_label
+                    ? (st.sub_label_type === 'location' ? `📍 ${st.sub_label} • ${st.country || "France"}` : `🏷️ ${st.sub_label} • ${st.country || "Direct"}`)
+                    : (st.tags || st.country || "Flux direct");
+                artistEl.textContent = subText;
+                artistEl.title = subText;
+            }
+            if (submetaEl) {
+                submetaEl.textContent = `Flux direct • ${st.codec || 'MP3'} ${st.bitrate || 128}k • ${st.country || 'International'}`;
+            }
+            if (formatBadge) {
+                formatBadge.textContent = "LIVE";
+            }
+
+            if (badge) {
+                badge.style.display = "inline-flex";
+                badge.className = "badge badge-sm badge-danger pulse-badge";
+                badge.textContent = "🔴 EN DIRECT";
+            }
+            if (meta) {
+                meta.textContent = "📻 Contrôle du Direct & Déclinaisons";
+            }
+
+            // Gestion des boutons du volet latéral gauche
+            const playAll = document.getElementById("player-now-playing-btn-play-all");
+            const nextAll = document.getElementById("player-now-playing-btn-next-all");
+            const queueAll = document.getElementById("player-now-playing-btn-queue-all");
+            const addPl = document.getElementById("player-btn-add-album-to-playlist");
+            const onlineDown = document.getElementById("player-online-download-container");
+            if (playAll) playAll.style.display = "none";
+            if (nextAll) nextAll.style.display = "none";
+            if (queueAll) queueAll.style.display = "none";
+            if (addPl) addPl.style.display = "none";
+            if (onlineDown) onlineDown.style.display = "none";
+
+            // Identification du bouquet de déclinaisons de cette station
+            let bouquetVariants = [];
+            let bouquetName = "";
+            if (window.RadioManager) {
+                const rm = window.RadioManager;
+                if (st.is_group && Array.isArray(st.variants)) {
+                    bouquetVariants = st.variants;
+                    bouquetName = st.name;
+                } else if (st.parent_brand && Array.isArray(rm.state.browseResults)) {
+                    const grp = rm.state.browseResults.find(g => g.is_group && (g.name === st.parent_brand || g.parent_brand === st.parent_brand));
+                    if (grp && Array.isArray(grp.variants)) {
+                        bouquetVariants = grp.variants;
+                        bouquetName = grp.name;
+                    }
+                }
+                if (!bouquetVariants.length && rm.state.currentMasterGroup && Array.isArray(rm.state.currentMasterGroup.variants)) {
+                    bouquetVariants = rm.state.currentMasterGroup.variants;
+                    bouquetName = rm.state.currentMasterGroup.name;
+                }
+            }
+
+            const currentOffset = window.RadioManager ? window.RadioManager.state.currentOffset : 0;
+            const isLive = currentOffset >= -2;
+            const curTimeStr = isLive ? "0:00" : `-${formatSeconds(Math.abs(currentOffset))}`;
+
+            // Rendu du volet droit
+            if (container) {
+                let html = `
+                    <div class="radio-grand-ecran-container">
+                        <!-- 1. CARTE HERO : À L'ANTENNE EN DIRECT -->
+                        <div class="radio-hero-live-card">
+                            <div class="radio-hero-header">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span class="badge-tab-count count-positive radio-live-pill-animated">
+                                        <span class="radio-live-red-dot"></span> EN DIRECT
+                                    </span>
+                                    <span class="radio-hero-station-tag">${escapeHtml(st.name || "Station")}</span>
+                                    ${st.sub_label ? `<span class="radio-hero-sub-pill">${st.sub_label_type === 'location' ? '📍' : '🏷️'} ${escapeHtml(st.sub_label)}</span>` : ''}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-grand-ecran-ambient" title="Ouvrir le Mode Soirée avec visualiseur plein écran">
+                                        ✨ Mode Soirée
+                                    </button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-grand-ecran-goto-catalog" title="Voir la station dans l'annuaire des radios">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+                                        <span>Annuaire</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="radio-hero-body">
+                                <div class="radio-hero-now-playing-label">TITRE DIFFUSÉ SUR CETTE STATION :</div>
+                                <div class="radio-hero-track-row">
+                                    <h2 id="player-now-playing-radio-live-title" class="radio-hero-track-title">${escapeHtml(currentLiveTitle)}</h2>
+                                    <div class="radio-hero-equalizer-bars">
+                                        <span class="player-equalizer-bar"></span>
+                                        <span class="player-equalizer-bar"></span>
+                                        <span class="player-equalizer-bar"></span>
+                                        <span class="player-equalizer-bar"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. CONSOLE DU CONTRÔLE DU DIRECT (TIMESHIFTING) -->
+                        <div class="radio-timeshift-console-card">
+                            <div class="radio-timeshift-console-header">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: 700; font-size: 0.88rem; color: #fff;">⏱️ Contrôle du Direct (Timeshifting)</span>
+                                    <span class="text-muted" style="font-size: 0.78rem;">• Tampon de 30 minutes</span>
+                                </div>
+                                <span id="player-now-playing-radio-live-status" class="radio-live-pill ${isLive ? 'is-live' : 'is-behind'}">
+                                    ${isLive ? '🔴 EN DIRECT' : '⚡ ' + curTimeStr}
+                                </span>
+                            </div>
+
+                            <div style="margin: 12px 0 14px 0;">
+                                <input type="range" id="player-now-playing-radio-seek-slider" class="player-seek-slider" min="-1800" max="0" step="1" value="${currentOffset}" style="width: 100%;">
+                                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">
+                                    <span>-30:00 (Début du tampon)</span>
+                                    <span id="player-now-playing-radio-current-pos">${curTimeStr}</span>
+                                    <span>En direct</span>
+                                </div>
+                            </div>
+
+                            <div class="radio-timeshift-buttons-row">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-grand-ecran-seek-15" title="Reculer de 15 secondes">⏮️ -15s</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-grand-ecran-seek-60" title="Reculer d'une minute">⏮️ -1 min</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-grand-ecran-seek-300" title="Reculer de 5 minutes">⏮️ -5 min</button>
+                                <button type="button" class="btn btn-danger btn-sm" id="btn-grand-ecran-jump-live" style="margin-left: auto;">🔴 Sauter au Direct</button>
+                            </div>
+                        </div>
+                `;
+
+                // 3. DÉCLINAISONS DU RÉSEAU (BOUQUET) FAÇON TRACKLIST
+                if (bouquetVariants.length > 1) {
+                    const curId = st.id || st.stationuuid || st.url;
+                    html += `
+                        <div class="radio-declinations-section">
+                            <div class="radio-declinations-header">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 1.1rem;">✨</span>
+                                    <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700;">Déclinaisons du réseau ${escapeHtml(bouquetName || st.parent_brand || st.name)}</h4>
+                                    <span class="badge-tab-count count-positive">${bouquetVariants.length} stations</span>
+                                </div>
+                                <span class="text-muted" style="font-size: 0.78rem;">Cliquez sur une déclinaison pour basculer l'écoute instantanément</span>
+                            </div>
+
+                            <div class="radio-declinations-list">
+                                ${bouquetVariants.map((v, vIdx) => {
+                                    const vId = v.id || v.stationuuid || v.url;
+                                    const isThisStation = (vId === curId);
+                                    const vSub = v.sub_label || v.name;
+                                    const subIcon = (v.sub_label_type === "location") ? "📍" : "🏷️";
+                                    const fmt = v.bitrate ? `${v.codec || "MP3"} ${v.bitrate}k` : (v.codec || "MP3");
+
+                                    return `
+                                        <div class="radio-declination-row ${isThisStation ? 'is-active-declination' : ''}" data-declination-idx="${vIdx}">
+                                            <div class="radio-declination-num">
+                                                ${isThisStation ? `
+                                                    <span class="player-equalizer-bars" style="display: inline-flex;">
+                                                        <span class="player-equalizer-bar"></span>
+                                                        <span class="player-equalizer-bar"></span>
+                                                        <span class="player-equalizer-bar"></span>
+                                                    </span>
+                                                ` : `${vIdx + 1}`}
+                                            </div>
+                                            <div class="radio-declination-info">
+                                                <span class="radio-declination-name">${escapeHtml(v.name)}</span>
+                                                <div class="radio-declination-meta">
+                                                    ${v.sub_label ? `<span class="radio-declination-badge">${subIcon} ${escapeHtml(v.sub_label)}</span>` : ''}
+                                                    <span class="radio-declination-badge">${escapeHtml(fmt)}</span>
+                                                    ${v.votes ? `<span class="radio-declination-votes">⭐ ${v.votes}</span>` : ''}
+                                                </div>
+                                            </div>
+                                            <button type="button" class="radio-declination-play-btn" title="Écouter ${escapeHtml(v.name)}">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                                    <path d="${isThisStation ? 'M6 19h4V5H6v14zm8-14v14h4V5h-4z' : 'M8 5v14l11-7z'}"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // 4. FICHE TECHNIQUE DU FLUX
+                const cleanHost = (st.url && st.url.includes("://")) ? st.url.split("://")[1].split("/")[0] : "icecast.soundstash.local";
+                html += `
+                    <div class="radio-tech-specs-card">
+                        <div style="font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 10px;">📊 Fiche Technique du Flux Audio</div>
+                        <div class="radio-tech-specs-grid">
+                            <div class="radio-tech-spec-item">
+                                <span class="radio-tech-spec-label">Format de diffusion</span>
+                                <span class="radio-tech-spec-val">${escapeHtml(st.codec || "MP3")} Audio</span>
+                            </div>
+                            <div class="radio-tech-spec-item">
+                                <span class="radio-tech-spec-label">Débit numérique</span>
+                                <span class="radio-tech-spec-val">${st.bitrate || 128} kbps (CBR/VBR)</span>
+                            </div>
+                            <div class="radio-tech-spec-item">
+                                <span class="radio-tech-spec-label">Serveur de streaming</span>
+                                <span class="radio-tech-spec-val" title="${escapeHtml(cleanHost)}">${escapeHtml(cleanHost)}</span>
+                            </div>
+                            <div class="radio-tech-spec-item">
+                                <span class="radio-tech-spec-label">Protection déconnexion</span>
+                                <span class="radio-tech-spec-val" style="color: #10b981;">🟢 Auto-reconnexion active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+                container.innerHTML = html;
+
+                // Attachement des écouteurs d'événements
+                const btnAnnuaire = container.querySelector("#btn-grand-ecran-goto-catalog");
+                if (btnAnnuaire) {
+                    btnAnnuaire.addEventListener("click", () => {
+                        if (window.RadioManager) window.RadioManager.focusStation(st);
+                    });
+                }
+                const btnAmbient = container.querySelector("#btn-grand-ecran-ambient");
+                if (btnAmbient) {
+                    btnAmbient.addEventListener("click", () => {
+                        if (window.AmbientVisualizer && typeof window.AmbientVisualizer.toggle === "function") {
+                            window.AmbientVisualizer.toggle();
+                        }
+                    });
+                }
+
+                const b15 = container.querySelector("#btn-grand-ecran-seek-15");
+                const b60 = container.querySelector("#btn-grand-ecran-seek-60");
+                const b300 = container.querySelector("#btn-grand-ecran-seek-300");
+                const bLive = container.querySelector("#btn-grand-ecran-jump-live");
+                if (b15) b15.addEventListener("click", () => { if (window.RadioManager) window.RadioManager.seekRelative(-15); });
+                if (b60) b60.addEventListener("click", () => { if (window.RadioManager) window.RadioManager.seekRelative(-60); });
+                if (b300) b300.addEventListener("click", () => { if (window.RadioManager) window.RadioManager.seekRelative(-300); });
+                if (bLive) bLive.addEventListener("click", () => { if (window.RadioManager) window.RadioManager.jumpToLive(); });
+
+                // Slider seekbar du grand écran
+                const seekSlider = container.querySelector("#player-now-playing-radio-seek-slider");
+                if (seekSlider) {
+                    seekSlider.addEventListener("input", (e) => {
+                        this.isSeeking = true;
+                        const val = parseFloat(e.target.value);
+                        const curPos = container.querySelector("#player-now-playing-radio-current-pos");
+                        if (curPos) curPos.textContent = (val >= -2) ? "0:00" : `-${formatSeconds(Math.abs(val))}`;
+                    });
+                    seekSlider.addEventListener("change", (e) => {
+                        this.isSeeking = false;
+                        const val = parseFloat(e.target.value);
+                        if (window.RadioManager) window.RadioManager.seekTo(val);
+                    });
+                }
+
+                // Clic sur les déclinaisons de bouquet
+                container.querySelectorAll(".radio-declination-row").forEach(row => {
+                    row.addEventListener("click", () => {
+                        const idx = parseInt(row.getAttribute("data-declination-idx"), 10);
+                        if (!isNaN(idx) && bouquetVariants[idx] && window.RadioManager) {
+                            const v = bouquetVariants[idx];
+                            const vId = v.id || v.stationuuid || v.url;
+                            if (vId === curId) {
+                                window.AudioPlayer.togglePlayPause();
+                            } else {
+                                window.RadioManager.playStation(v);
+                            }
+                        }
+                    });
+                });
+            }
+            return;
+        }
+
+        // Restaurer la visibilité des boutons albums
+        const playAll = document.getElementById("player-now-playing-btn-play-all");
+        const nextAll = document.getElementById("player-now-playing-btn-next-all");
+        const queueAll = document.getElementById("player-now-playing-btn-queue-all");
+        const addPl = document.getElementById("player-btn-add-album-to-playlist");
+        if (playAll) playAll.style.display = "";
+        if (nextAll) nextAll.style.display = "";
+        if (queueAll) queueAll.style.display = "";
+        if (addPl) addPl.style.display = "";
 
         if (emptyState) emptyState.style.display = "none";
         if (mainLayout) mainLayout.style.display = "flex";
@@ -9774,6 +10802,12 @@ const AudioPlayer = {
         this.audio.pause();
         this.audio.src = "";
         this.isPlaying = false;
+        if (this.isRadioPlaying) {
+            this.isRadioPlaying = false;
+            this.currentRadio = null;
+            fetch("/api/radio/stop", { method: "POST" }).catch(() => {});
+            if (window.RadioManager) window.RadioManager.stopStatusPolling();
+        }
         this.currentAlbum = null;
         this.currentTrack = null;
         this.playlist = [];
@@ -9947,6 +10981,12 @@ const AudioPlayer = {
      * ou fetch en parallèle via /api/collection/all-tracks.
      */
     async playEntireCollection(opts = { shuffle: true }) {
+        if (this.isRadioPlaying) {
+            this.isRadioPlaying = false;
+            this.currentRadio = null;
+            fetch("/api/radio/stop", { method: "POST" }).catch(() => {});
+            if (window.RadioManager) window.RadioManager.stopStatusPolling();
+        }
         const albums = this.libraryAlbums;
         if ((!albums || albums.length === 0) && (!this.allCatalog || !this.allCatalog.albums || this.allCatalog.albums.length === 0)) {
             showToast("La bibliothèque est vide. Synchronisez d'abord votre collection.", "warning");

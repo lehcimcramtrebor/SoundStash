@@ -60,13 +60,19 @@ const SleepTimer = {
 
     async triggerSleep() {
         this.clear();
-        if (window.AudioPlayer && window.AudioPlayer.audio && !window.AudioPlayer.audio.paused) {
-            if (window.AudioFader && window.AudioFader.enabled) {
-                await window.AudioFader.fadeOut(window.AudioPlayer.audio, 800);
+        if (window.AudioPlayer) {
+            if (window.AudioPlayer.isRadioPlaying) {
+                fetch("/api/radio/stop", { method: "POST" }).catch(() => {});
+                if (window.RadioManager) window.RadioManager.stopStatusPolling();
             }
-            window.AudioPlayer.audio.pause();
-            window.AudioPlayer.isPlaying = false;
-            window.AudioPlayer.updatePlayStateUI();
+            if (window.AudioPlayer.audio && !window.AudioPlayer.audio.paused) {
+                if (window.AudioFader && window.AudioFader.enabled) {
+                    await window.AudioFader.fadeOut(window.AudioPlayer.audio, 800);
+                }
+                window.AudioPlayer.audio.pause();
+                window.AudioPlayer.isPlaying = false;
+                window.AudioPlayer.updatePlayStateUI();
+            }
         }
         const videoPlayer = document.getElementById("video-modal-player");
         if (videoPlayer && !videoPlayer.paused) {

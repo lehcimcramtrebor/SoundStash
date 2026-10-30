@@ -2,7 +2,7 @@ import os
 import shutil
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, validator
 
 # Chemins de base du projet
@@ -94,7 +94,7 @@ def get_app_version() -> str:
                         return str(data["version"]).strip()
         except Exception:
             pass
-    return "6.0.0"
+    return "6.1.0"
 
 APP_VERSION = get_app_version()
 
@@ -187,6 +187,8 @@ class AppConfig(BaseModel):
     max_audio_quality_when_signed: bool = True
     # Langue de l'interface ("auto", "fr", "en")
     language: str = "auto"
+    # Codes pays configurables pour les Radios Web (ordre d'affichage des pilules)
+    radio_country_codes: List[str] = ["FR", "BE", "CH", "CA", "GB", "US"]
 
     @validator('export_dir', 'video_export_dir', 'video_library_dir', 'library_dir', pre=True)
     def ensure_parent_exists(cls, v):

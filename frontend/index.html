@@ -11,7 +11,7 @@
             document.documentElement.setAttribute("data-theme", savedTheme);
         })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=6.0.0">
+    <link rel="stylesheet" href="/static/style.css?v=6.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1569,24 +1569,35 @@
                         <div class="player-nav-tabs">
                             <button type="button" class="player-subtab-btn is-preparing tab-disabled" data-pview="all" id="player-subtab-all" title="Tout le catalogue (vue continue et recherche globale)">
                                 <span class="subtab-all-icon">🌐</span> <span class="subtab-all-label">Tout</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-all-count-badge" style="display: none;">0</span>
                             </button>
                             <button type="button" class="player-subtab-btn active" data-pview="albums" id="player-subtab-albums">
-                                💿 Albums
+                                <span>💿 Albums</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-albums-count-badge" style="display: none;">0</span>
                             </button>
                             <button type="button" class="player-subtab-btn" data-pview="artists" id="player-subtab-artists">
-                                🎤 Artistes
+                                <span>🎤 Artistes</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-artists-count-badge" style="display: none;">0</span>
                             </button>
                             <button type="button" class="player-subtab-btn" data-pview="genres" id="player-subtab-genres">
-                                🏷️ Genres
+                                <span>🏷️ Genres</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-genres-count-badge" style="display: none;">0</span>
                             </button>
                             <button type="button" class="player-subtab-btn" data-pview="videos" id="player-subtab-videos">
-                                🎬 Clips
+                                <span>🎬 Clips</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-videos-count-badge" style="display: none;">0</span>
                             </button>
                             <button type="button" class="player-subtab-btn" data-pview="concerts" id="player-subtab-concerts">
-                                🎸 Concerts
+                                <span>🎸 Concerts</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-concerts-count-badge" style="display: none;">0</span>
                             </button>
                             <button type="button" class="player-subtab-btn" data-pview="playlists" id="player-subtab-playlists">
-                                📑 Playlists <span class="badge badge-sm" id="player-playlists-count-badge">0</span>
+                                <span>📑 Playlists</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-playlists-count-badge" style="display: none;">0</span>
+                            </button>
+                            <button type="button" class="player-subtab-btn" data-pview="radios" id="player-subtab-radios">
+                                <span>📻 Radios</span>
+                                <span class="badge badge-sm badge-tab-count" id="player-radios-count-badge" style="display: none;">0</span>
                             </button>
                             <button type="button" class="player-subtab-btn now-playing-tab" data-pview="now-playing" id="player-subtab-now-playing" title="Aucune lecture en cours">
                                 <span class="player-subtab-now-playing-icon" id="player-subtab-now-playing-icon">🎧</span>
@@ -1879,6 +1890,157 @@
                                         </table>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- VUE 5-BIS : RADIOS WEB & CONTRÔLE DU DIRECT (TIMESHIFTING) -->
+                    <div id="player-view-radios" class="player-view-pane" style="display: none;">
+                        <div class="radios-view-container">
+                            <!-- Barre d'outils et de filtres des radios -->
+                            <div class="radios-toolbar">
+                                <div class="radios-header-left">
+                                    <div class="radios-title-group">
+                                        <h3 class="radios-title">📻 Radios Web &amp; Contrôle du Direct</h3>
+                                        <p class="radios-subtitle text-muted">Écoutez vos stations préférées, explorez l'annuaire mondial et revenez en arrière jusqu'à 30 minutes.</p>
+                                    </div>
+                                </div>
+                                <div class="radios-header-right">
+                                    <div class="radios-search-wrap">
+                                        <input type="text" id="radios-search-input" placeholder="Rechercher une radio par nom..." autocomplete="off">
+                                        <button type="button" id="radios-search-clear-btn" class="player-search-clear" style="display: none;">&times;</button>
+                                    </div>
+                                    <button type="button" id="btn-add-custom-radio" class="btn btn-primary btn-sm" title="Ajouter un flux radio personnalisé" style="display: inline-flex; align-items: center; gap: 6px;">
+                                        ➕ Ajouter une radio
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Sous-filtres par pilules & Sélecteur de genres -->
+                            <div class="radios-filter-bar">
+                                <div class="subfilter-pills" id="radios-filter-pills">
+                                    <button type="button" class="subfilter-pill active" data-radio-filter="favorites">⭐ Mes Favoris</button>
+                                    <button type="button" class="subfilter-pill" data-radio-filter="top">🌍 Top Mondial</button>
+                                    <span id="radios-dynamic-country-pills" style="display: contents;"></span>
+                                    <button type="button" id="btn-configure-radios-countries" class="subfilter-pill btn-pill-configure" title="Personnaliser les pays affichés en accès direct">
+                                        ⚙️ Gérer les pays
+                                    </button>
+                                </div>
+                                <div class="radios-genre-select-wrap">
+                                    <select id="radios-genre-select" class="radios-genre-select" title="Explorer par genre musical">
+                                        <option value="">🎵 Tous les genres (60+)...</option>
+                                        <optgroup label="🔥 Très Populaires">
+                                            <option value="tag:pop">Pop</option>
+                                            <option value="tag:rock">Rock</option>
+                                            <option value="tag:jazz">Jazz</option>
+                                            <option value="tag:electronic">Électronique / Dance</option>
+                                            <option value="tag:classical">Classique & Symphonique</option>
+                                            <option value="tag:hip hop">Hip-Hop & Rap</option>
+                                            <option value="tag:metal">Metal</option>
+                                            <option value="tag:blues">Blues</option>
+                                            <option value="tag:ambient">Ambient & Chillout</option>
+                                            <option value="tag:lo-fi">Lo-Fi Beats</option>
+                                        </optgroup>
+                                        <optgroup label="🎸 Rock, Metal & Punk">
+                                            <option value="tag:classic rock">Classic Rock</option>
+                                            <option value="tag:hard rock">Hard Rock</option>
+                                            <option value="tag:heavy metal">Heavy Metal</option>
+                                            <option value="tag:death metal">Death Metal</option>
+                                            <option value="tag:black metal">Black Metal</option>
+                                            <option value="tag:punk">Punk Rock</option>
+                                            <option value="tag:grunge">Grunge</option>
+                                            <option value="tag:indie rock">Indie Rock</option>
+                                            <option value="tag:alternative">Rock Alternatif</option>
+                                            <option value="tag:progressive rock">Rock Progressif</option>
+                                            <option value="tag:psychedelic">Psychédélique</option>
+                                            <option value="tag:rockabilly">Rockabilly</option>
+                                        </optgroup>
+                                        <optgroup label="🎧 Électro, Club & Bass">
+                                            <option value="tag:synthwave">Synthwave / Retrowave</option>
+                                            <option value="tag:house">House</option>
+                                            <option value="tag:deep house">Deep House</option>
+                                            <option value="tag:tech house">Tech House</option>
+                                            <option value="tag:techno">Techno</option>
+                                            <option value="tag:trance">Trance</option>
+                                            <option value="tag:psytrance">Psytrance</option>
+                                            <option value="tag:drum and bass">Drum & Bass</option>
+                                            <option value="tag:dubstep">Dubstep</option>
+                                            <option value="tag:downtempo">Downtempo</option>
+                                            <option value="tag:edm">EDM</option>
+                                            <option value="tag:disco">Disco</option>
+                                            <option value="tag:eurodance">Eurodance</option>
+                                        </optgroup>
+                                        <optgroup label="🎷 Jazz, Soul, Funk & R&B">
+                                            <option value="tag:smooth jazz">Smooth Jazz</option>
+                                            <option value="tag:bebop">Bebop & Swing</option>
+                                            <option value="tag:soul">Soul</option>
+                                            <option value="tag:funk">Funk</option>
+                                            <option value="tag:groove">Groove</option>
+                                            <option value="tag:rnb">R&B</option>
+                                            <option value="tag:motown">Motown</option>
+                                        </optgroup>
+                                        <optgroup label="🎤 Hip-Hop & Urbain">
+                                            <option value="tag:rap">Rap</option>
+                                            <option value="tag:trap">Trap</option>
+                                            <option value="tag:old school">Old School Hip-Hop</option>
+                                            <option value="tag:boom bap">Boom Bap</option>
+                                            <option value="tag:french rap">Rap Français</option>
+                                        </optgroup>
+                                        <optgroup label="🎻 Acoustique, BO & Orchestre">
+                                            <option value="tag:soundtrack">Bandes Originales (OST / Film)</option>
+                                            <option value="tag:piano">Piano Solo</option>
+                                            <option value="tag:acoustic">Acoustique / Unplugged</option>
+                                            <option value="tag:baroque">Baroque</option>
+                                            <option value="tag:opera">Opéra</option>
+                                        </optgroup>
+                                        <optgroup label="🌴 World, Reggae & Latino">
+                                            <option value="tag:reggae">Reggae</option>
+                                            <option value="tag:dub">Dub</option>
+                                            <option value="tag:ska">Ska</option>
+                                            <option value="tag:latin">Latino / Salsa</option>
+                                            <option value="tag:bossa nova">Bossa Nova</option>
+                                            <option value="tag:cumbia">Cumbia</option>
+                                            <option value="tag:celtic">Celtique / Irlandais</option>
+                                            <option value="tag:country">Country</option>
+                                            <option value="tag:folk">Folk</option>
+                                            <option value="tag:americana">Americana</option>
+                                            <option value="tag:afrobeat">Afrobeat</option>
+                                            <option value="tag:world">Musiques du Monde</option>
+                                            <option value="tag:chanson francaise">Chanson Française</option>
+                                        </optgroup>
+                                        <optgroup label="⏳ Décennies & Rétro">
+                                            <option value="tag:50s">Années 50 (50s)</option>
+                                            <option value="tag:60s">Années 60 (60s)</option>
+                                            <option value="tag:70s">Années 70 (70s)</option>
+                                            <option value="tag:80s">Années 80 (80s)</option>
+                                            <option value="tag:90s">Années 90 (90s)</option>
+                                            <option value="tag:2000s">Années 2000</option>
+                                            <option value="tag:oldies">Oldies & Golden Hits</option>
+                                        </optgroup>
+                                        <optgroup label="📰 Thématiques & Infos">
+                                            <option value="tag:news">Actualités & Infos (News)</option>
+                                            <option value="tag:talk">Débats & Talk</option>
+                                            <option value="tag:comedy">Humour & Comedy</option>
+                                            <option value="tag:relaxation">Méditation & Relaxation</option>
+                                            <option value="tag:videogame">Jeux Vidéo / Chiptune</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Spinner de chargement -->
+                            <div id="radios-loading-spinner" class="radios-loading-wrap" style="display: none;">
+                                <div class="spinner-small"></div>
+                                <span style="font-size: 0.88rem; color: var(--text-muted, #a6adc8);">Interrogation de l'annuaire mondial...</span>
+                            </div>
+
+                            <!-- Grille des cartes radios -->
+                            <div id="player-radios-grid" class="radios-grid"></div>
+
+                            <!-- État vide -->
+                            <div id="radios-empty-state" class="empty-state" style="display: none; padding: 50px 20px; text-align: center;">
+                                <div style="font-size: 3rem; margin-bottom: 12px; opacity: 0.5;">📻</div>
+                                <h4 id="radios-empty-msg" style="color: var(--text-muted, #a6adc8); font-weight: 500;">Aucune station trouvée.</h4>
                             </div>
                         </div>
                     </div>
@@ -2230,25 +2392,44 @@
                     </div>
 
                     <!-- SOUS-ONGLET 3 : SYSTÈME & PRÉFÉRENCES -->
-                    <div class="settings-subtab-pane" id="pane-subtab-system">
-                        <div class="settings-section-card">
-                            <h3 class="settings-card-title">
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.35.16-2h4.68c.09.65.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>
-                                Langue de l'Interface / Interface Language
-                            </h3>
-                            <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 12px;">
-                                Détection automatique transparente selon votre système, ou sélection manuelle immédiate (Français / English).
-                            </p>
-                            <div class="form-row" style="gap: 16px; align-items: center; flex-wrap: wrap;">
-                                <div class="form-group col" style="max-width: 360px;">
-                                    <label for="cfg-language">Langue d'affichage :</label>
-                                    <select id="cfg-language" class="select-input">
-                                        <option value="auto">🌍 Automatique (selon l'environnement système)</option>
-                                        <option value="fr">🇫🇷 Français</option>
-                                        <option value="en">🇬🇧 English</option>
-                                    </select>
-                                </div>
-                            </div>
+                    <div class="settings-subtab-pane" id="pane-subtab-system">
+
+                        <div class="settings-section-card">
+
+                            <h3 class="settings-card-title">
+
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.35.16-2h4.68c.09.65.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>
+
+                                Langue de l'Interface / Interface Language
+
+                            </h3>
+
+                            <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 12px;">
+
+                                Détection automatique transparente selon votre système, ou sélection manuelle immédiate (Français / English).
+
+                            </p>
+
+                            <div class="form-row" style="gap: 16px; align-items: center; flex-wrap: wrap;">
+
+                                <div class="form-group col" style="max-width: 360px;">
+
+                                    <label for="cfg-language">Langue d'affichage :</label>
+
+                                    <select id="cfg-language" class="select-input">
+
+                                        <option value="auto">🌍 Automatique (selon l'environnement système)</option>
+
+                                        <option value="fr">🇫🇷 Français</option>
+
+                                        <option value="en">🇬🇧 English</option>
+
+                                    </select>
+
+                                </div>
+
+                            </div>
+
                         </div>
                         <div class="settings-section-card">
                             <h3 class="settings-card-title">
@@ -2482,7 +2663,7 @@
                                         Mise à Jour de l'Application SoundStash
                                     </h3>
                                     <p class="text-muted" style="font-size: 0.82rem; margin: 0;">
-                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v6.0.0</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
+                                        Version installée : <strong id="app-installed-version" style="color: var(--accent, #89b4fa);">v6.1.0</strong> &bull; Dépôt : <span class="text-muted">lehcimcramtrebor/SoundStash</span>
                                     </p>
                                 </div>
                                 <button type="button" id="btn-check-app-update" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 7px 16px;">
@@ -2671,7 +2852,117 @@
         </div>
     </div>
 
+    <!-- Modale Ajout de Radio Web Personnalisée v6.1.0 -->
+    <div id="custom-radio-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog custom-radio-modal-dialog">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="logo-icon" style="width: 38px; height: 38px; border-radius: 8px;">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 6H4v12h16V6zm0-2c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h16zM6 10h5v4H6v-4zm7 0h5v4h-5v-4z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="modal-title" style="margin: 0; font-size: 1.12rem;">Ajouter une radio personnalisée</h3>
+                        <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.82rem;">Flux direct (MP3, AAC, OGG) ou fichier de playlist (.m3u, .pls)</p>
+                    </div>
+                </div>
+                <button type="button" id="custom-radio-modal-close" class="modal-close-icon-btn" title="Fermer (Échap)">&times;</button>
+            </div>
+            <form id="custom-radio-form" class="custom-radio-form">
+                <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+                    <div class="form-group">
+                        <label for="custom-radio-name"><strong>Nom de la station *</strong> :</label>
+                        <input type="text" id="custom-radio-name" class="form-control" placeholder="Ex: Ma Radio Rock" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="custom-radio-url"><strong>URL du flux ou de la playlist *</strong> :</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="url" id="custom-radio-url" class="form-control" placeholder="https://stream.example.com/live.mp3" required autocomplete="off" style="flex: 1;">
+                            <button type="button" id="btn-custom-radio-test" class="btn btn-secondary" style="white-space: nowrap;">Tester le flux</button>
+                        </div>
+                        <div id="custom-radio-test-status" class="alert-text" style="display: none;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="custom-radio-tags">Genre / Ambiance :</label>
+                        <input type="text" id="custom-radio-tags" class="form-control" placeholder="Ex: Rock, Indie, 90s" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="custom-radio-logo">URL du logo (optionnel) :</label>
+                        <input type="url" id="custom-radio-logo" class="form-control" placeholder="https://.../logo.png" autocomplete="off">
+                    </div>
+                </div>
+                <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" id="custom-radio-modal-cancel" class="btn btn-secondary">Annuler</button>
+                    <button type="submit" id="custom-radio-modal-submit" class="btn btn-primary">Enregistrer la radio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modale de Mise à Jour de l'Application SoundStash -->
+    
+    <!-- Modale Personnalisation des Pays des Radios Web -->
+    <div id="radios-countries-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog" style="max-width: 680px; width: 92%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="logo-icon" style="width: 38px; height: 38px; border-radius: 8px; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.3);">
+                        🌍
+                    </div>
+                    <div>
+                        <h3 class="modal-title" style="margin: 0; font-size: 1.12rem;">Personnaliser les pays des radios</h3>
+                        <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.82rem;">Cochez les pays à afficher en accès direct dans la barre de filtres.</p>
+                    </div>
+                </div>
+                <button type="button" id="btn-close-radios-countries-modal" class="modal-close-icon-btn" title="Fermer (Échap)">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center;">
+                    <input type="text" id="radios-countries-search" class="form-control" placeholder="Rechercher un pays (ex: Canada, Italie, Japon)..." style="flex: 1; padding: 7px 12px; font-size: 0.84rem;" autocomplete="off">
+                    <button type="button" id="btn-reset-radios-countries" class="btn btn-secondary btn-sm" title="Rétablir la sélection par défaut">Par défaut</button>
+                </div>
+                <div id="radios-countries-grid" class="radios-countries-grid" style="max-height: 350px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; padding-right: 4px;">
+                    <!-- Rempli dynamiquement par RadioManager -->
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
+                <span id="radios-countries-selected-count" class="text-muted" style="font-size: 0.82rem; font-weight: 500;">0 pays sélectionné(s)</span>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" id="btn-cancel-radios-countries" class="btn btn-secondary">Annuler</button>
+                    <button type="button" id="btn-save-radios-countries" class="btn btn-primary">Enregistrer la sélection</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Bouquet Radio (Exploration des déclinaisons) v6.2.0 -->
+    <div id="radios-bouquet-modal-backdrop" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog radios-bouquet-modal-dialog" style="max-width: 820px; width: 94%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <img id="radios-bouquet-modal-logo" src="" alt="Bouquet" style="width: 44px; height: 44px; border-radius: 10px; object-fit: contain; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);">
+                    <div>
+                        <h3 id="radios-bouquet-modal-title" class="modal-title" style="margin: 0; font-size: 1.18rem; font-weight: 700;">Bouquet Radio</h3>
+                        <p id="radios-bouquet-modal-subtitle" class="text-muted" style="margin: 2px 0 0 0; font-size: 0.84rem;">Déclinaisons thématiques & locales du réseau</p>
+                    </div>
+                </div>
+                <button type="button" id="btn-close-radios-bouquet-modal" class="modal-close-icon-btn" title="Fermer (Échap)">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 14px; align-items: center;">
+                    <div style="position: relative; flex: 1;">
+                        <input type="text" id="radios-bouquet-search" class="form-control" placeholder="Filtrer dans ce bouquet (ex: Jazz, Rock, 80s, Lyon)..." style="width: 100%; padding: 8px 14px; font-size: 0.86rem;" autocomplete="off">
+                        <span id="radios-bouquet-search-clear" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; display: none; color: #888; font-size: 1.1rem;">&times;</span>
+                    </div>
+                    <span id="radios-bouquet-count-pill" class="badge-tab-count count-positive" style="display: inline-block; padding: 4px 10px; font-size: 0.8rem;">0 stations</span>
+                </div>
+                <div id="radios-bouquet-grid" class="radios-bouquet-grid" style="max-height: 480px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; padding: 4px;">
+                    <!-- Rendu dynamique des déclinaisons -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <div id="app-update-modal-backdrop" class="modal-backdrop" style="display: none;">
         <div class="modal-dialog" style="max-width: 620px;">
             <div class="modal-header">
@@ -4136,13 +4427,20 @@
                         <p class="welcome-wizard-subtitle">Votre studio d'organisation musicale &amp; vidéo haute fidélité</p>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <select id="wizard-language-select" class="select-input" style="padding: 4px 10px; font-size: 0.8rem; width: auto; min-width: 130px;" title="Langue de l'Interface / Interface Language">
-                        <option value="auto">🌍 Auto</option>
-                        <option value="fr">🇫🇷 Français</option>
-                        <option value="en">🇬🇧 English</option>
-                    </select>
-                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+
+                    <select id="wizard-language-select" class="select-input" style="padding: 4px 10px; font-size: 0.8rem; width: auto; min-width: 130px;" title="Langue de l'Interface / Interface Language">
+
+                        <option value="auto">🌍 Auto</option>
+
+                        <option value="fr">🇫🇷 Français</option>
+
+                        <option value="en">🇬🇧 English</option>
+
+                    </select>
+
+                </div>
+
                 <button type="button" class="modal-close-icon-btn" id="close-welcome-wizard-btn" title="Fermer (Échap)">&times;</button>
             </div>
             <div class="welcome-wizard-body">
@@ -4662,47 +4960,49 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Socle JavaScript Modulaire Core -->
-    <script src="/static/js/core/i18n.js?v=6.0.0"></script>
-    <script src="/static/js/core/icons.js?v=6.0.0"></script>
-    <script src="/static/js/core/utils.js?v=6.0.0"></script>
-    <script src="/static/js/core/modals.js?v=6.0.0"></script>
-    <script src="/static/js/core/websocket.js?v=6.0.0"></script>
-    <script src="/static/js/core/app_updater.js?v=6.0.0"></script>
+    <script src="/static/js/core/i18n.js?v=6.1.0"></script>
+
+    <script src="/static/js/core/icons.js?v=6.1.0"></script>
+    <script src="/static/js/core/utils.js?v=6.1.0"></script>
+    <script src="/static/js/core/modals.js?v=6.1.0"></script>
+    <script src="/static/js/core/websocket.js?v=6.1.0"></script>
+    <script src="/static/js/core/app_updater.js?v=6.1.0"></script>
 
     <!-- Modules Autonomes : Mode Ambiance & Synthwave -->
-    <script src="/static/js/ambient/synthwave_canvas.js?v=6.0.0"></script>
-    <script src="/static/js/ambient/ambient_manager.js?v=6.0.0"></script>
+    <script src="/static/js/ambient/synthwave_canvas.js?v=6.1.0"></script>
+    <script src="/static/js/ambient/ambient_manager.js?v=6.1.0"></script>
 
     <!-- Modules Autonomes : Playlists Utilisateur -->
-    <script src="/static/js/playlists/user_playlists.js?v=6.0.0"></script>
+    <script src="/static/js/playlists/user_playlists.js?v=6.1.0"></script>
 
     <!-- Modules Autonomes : Configuration, Veille & Sécurité -->
-    <script src="/static/js/extras/settings.js?v=6.0.0"></script>
-    <script src="/static/js/extras/sleep_timer.js?v=6.0.0"></script>
-    <script src="/static/js/extras/party_lock.js?v=6.0.0"></script>
-    <script src="/static/js/extras/user_guide.js?v=6.0.0"></script>
+    <script src="/static/js/extras/settings.js?v=6.1.0"></script>
+    <script src="/static/js/extras/sleep_timer.js?v=6.1.0"></script>
+    <script src="/static/js/extras/party_lock.js?v=6.1.0"></script>
+    <script src="/static/js/extras/user_guide.js?v=6.1.0"></script>
 
     <!-- Modules Métier : Atelier de Recherche, Téléchargement & Exportation -->
-    <script src="/static/js/workshop/workbench.js?v=6.0.0"></script>
-    <script src="/static/js/workshop/search.js?v=6.0.0"></script>
-    <script src="/static/js/workshop/download.js?v=6.0.0"></script>
-    <script src="/static/js/workshop/exporter.js?v=6.0.0"></script>
+    <script src="/static/js/workshop/workbench.js?v=6.1.0"></script>
+    <script src="/static/js/workshop/search.js?v=6.1.0"></script>
+    <script src="/static/js/workshop/download.js?v=6.1.0"></script>
+    <script src="/static/js/workshop/exporter.js?v=6.1.0"></script>
 
     <!-- Modules Métier : Éditeur de Tags & Reconstitution -->
-    <script src="/static/js/editor/reconstitute.js?v=6.0.0"></script>
-    <script src="/static/js/editor/tag_editor.js?v=6.0.0"></script>
+    <script src="/static/js/editor/reconstitute.js?v=6.1.0"></script>
+    <script src="/static/js/editor/tag_editor.js?v=6.1.0"></script>
 
     <!-- Modules Métier : Discothèque & Corbeille -->
-    <script src="/static/js/library/library_manager.js?v=6.0.0"></script>
+    <script src="/static/js/library/library_manager.js?v=6.1.0"></script>
 
     <!-- Modules Métier : Lecteur Audio, Égaliseur & Raccourcis -->
-    <script src="/static/js/player/audio_player.js?v=6.0.0"></script>
-    <script src="/static/js/player/shortcuts.js?v=6.0.0"></script>
+    <script src="/static/js/player/radio_manager.js?v=6.1.0"></script>
+    <script src="/static/js/player/audio_player.js?v=6.1.0"></script>
+    <script src="/static/js/player/shortcuts.js?v=6.1.0"></script>
 
     <!-- Modules Métier : Lecteur Vidéo Clip & Moteur Audio Vidéo -->
-    <script src="/static/js/video/video_player.js?v=6.0.0"></script>
+    <script src="/static/js/video/video_player.js?v=6.1.0"></script>
 
     <!-- Orchestrateur Principal -->
-    <script src="/static/app.js?v=6.0.0"></script>
+    <script src="/static/app.js?v=6.1.0"></script>
 </body>
 </html>

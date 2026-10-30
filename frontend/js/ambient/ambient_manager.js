@@ -241,10 +241,18 @@ const AmbientVisualizer = {
             }
         });
         if (prevBtn) prevBtn.addEventListener("click", () => {
-            if (window.AudioPlayer) window.AudioPlayer.playPrev();
+            if (window.AudioPlayer && window.AudioPlayer.isRadioPlaying && window.RadioManager) {
+                window.RadioManager.seekOffset(-15);
+            } else if (window.AudioPlayer) {
+                window.AudioPlayer.playPrev();
+            }
         });
         if (nextBtn) nextBtn.addEventListener("click", () => {
-            if (window.AudioPlayer) window.AudioPlayer.playNext();
+            if (window.AudioPlayer && window.AudioPlayer.isRadioPlaying && window.RadioManager) {
+                window.RadioManager.jumpToLive();
+            } else if (window.AudioPlayer) {
+                window.AudioPlayer.playNext();
+            }
         });
         if (shuffleBtn) shuffleBtn.addEventListener("click", () => {
             if (window.AudioPlayer) window.AudioPlayer.toggleShuffle();
@@ -273,6 +281,51 @@ const AmbientVisualizer = {
                     videoPlayer.volume = val;
                 }
                 if (window.AudioPlayer) window.AudioPlayer.setVolume(val);
+            });
+        }
+
+        if (seekBar) {
+            seekBar.addEventListener("mousedown", () => { if (window.AudioPlayer) window.AudioPlayer.isSeeking = true; });
+            seekBar.addEventListener("touchstart", () => { if (window.AudioPlayer) window.AudioPlayer.isSeeking = true; });
+            seekBar.addEventListener("input", (e) => {
+                const val = parseFloat(e.target.value);
+                const tc = document.getElementById("ambient-time-current");
+                if (window.AudioPlayer && window.AudioPlayer.isRadioPlaying) {
+                    if (tc) {
+                        const s = Math.floor(Math.abs(val));
+                        const mins = Math.floor(s / 60);
+                        const secs = s % 60;
+                        tc.textContent = (val >= -2) ? "0:00" : `-${mins}:${secs < 10 ? "0" : ""}${secs}`;
+                    }
+                    return;
+                }
+                const videoPlayer = document.getElementById("video-modal-player");
+                if (currentModalVideoItem && videoPlayer && videoPlayer.duration) {
+                    const cur = (val / 100) * videoPlayer.duration;
+                    if (tc && window.AudioPlayer) tc.textContent = window.AudioPlayer.formatTime(cur);
+                    return;
+                }
+                if (window.AudioPlayer && window.AudioPlayer.audio && window.AudioPlayer.audio.duration) {
+                    const cur = (val / 100) * window.AudioPlayer.audio.duration;
+                    if (tc) tc.textContent = window.AudioPlayer.formatTime(cur);
+                }
+            });
+            seekBar.addEventListener("change", (e) => {
+                if (window.AudioPlayer) window.AudioPlayer.isSeeking = false;
+                const val = parseFloat(e.target.value);
+                if (window.AudioPlayer && window.AudioPlayer.isRadioPlaying) {
+                    if (window.RadioManager) window.RadioManager.seekOffset(val);
+                    return;
+                }
+                const videoPlayer = document.getElementById("video-modal-player");
+                if (currentModalVideoItem && videoPlayer && videoPlayer.duration) {
+                    videoPlayer.currentTime = (val / 100) * videoPlayer.duration;
+                    return;
+                }
+                if (window.AudioPlayer && window.AudioPlayer.audio && window.AudioPlayer.audio.duration) {
+                    window.AudioPlayer.audio.currentTime = (val / 100) * window.AudioPlayer.audio.duration;
+                    window.AudioPlayer.savePlaybackSession(true);
+                }
             });
         }
 
@@ -341,6 +394,17 @@ const AmbientVisualizer = {
                 if (window.AudioPlayer) window.AudioPlayer.isSeeking = true;
             });
             seekBar.addEventListener("input", () => {
+                if (window.AudioPlayer && window.AudioPlayer.isRadioPlaying && window.RadioManager) {
+                    const offset = parseInt(seekBar.value, 10) || 0;
+                    const tc = document.getElementById("ambient-time-current");
+                    if (tc) {
+                        const absSec = Math.abs(offset);
+                        const m = Math.floor(absSec / 60);
+                        const s = Math.floor(absSec % 60);
+                        tc.textContent = (offset >= -2) ? "0:00" : `-${m}:${s.toString().padStart(2, '0')}`;
+                    }
+                    return;
+                }
                 const videoPlayer = document.getElementById("video-modal-player");
                 if (currentModalVideoItem && videoPlayer && videoPlayer.duration) {
                     const cur = (seekBar.value / 100) * videoPlayer.duration;
@@ -354,6 +418,11 @@ const AmbientVisualizer = {
             });
             seekBar.addEventListener("change", () => {
                 if (window.AudioPlayer) window.AudioPlayer.isSeeking = false;
+                if (window.AudioPlayer && window.AudioPlayer.isRadioPlaying && window.RadioManager) {
+                    const offset = parseInt(seekBar.value, 10) || 0;
+                    window.RadioManager.seekOffset(offset);
+                    return;
+                }
                 const videoPlayer = document.getElementById("video-modal-player");
                 if (currentModalVideoItem && videoPlayer && videoPlayer.duration) {
                     videoPlayer.currentTime = (seekBar.value / 100) * videoPlayer.duration;
@@ -373,7 +442,8 @@ const AmbientVisualizer = {
         const isVideoActive = Boolean(currentModalVideoItem && videoPlayer && (!videoPlayer.paused || videoPlayer.src));
 
         // Accessible si lecture audio réelle en cours OU clip vidéo actif
-        if (!isVideoActive && (!player || !player.isPlaying || !player.currentAlbum)) {
+        const isAudioActive = Boolean(player && player.isPlaying && (player.currentAlbum || player.isRadioPlaying));
+        if (!isVideoActive && !isAudioActive) {
             showToast("Le mode ambiance nécessite une lecture musicale active ou une vidéo.", "info");
             return;
         }
@@ -434,6 +504,12 @@ const AmbientVisualizer = {
         if (typeof window.updateScreenWakeLock === "function") {
             window.updateScreenWakeLock();
         }
+        if (window.RadioManager && typeof window.RadioManager.updateNowPlayingUI === "function") {
+            window.RadioManager.updateNowPlayingUI();
+        }
+        if (window.RadioManager && typeof window.RadioManager.updateNowPlayingUI === "function") {
+            window.RadioManager.updateNowPlayingUI();
+        }
     },
 
     exit() {
@@ -469,7 +545,7 @@ const AmbientVisualizer = {
         // Restauration fluide de la vue de lecture / navigation au retour sur l'interface principale
         if (window.AudioPlayer) {
             const ap = window.AudioPlayer;
-            const isAudioPlaying = Boolean(ap.isPlaying && ap.currentAlbum);
+            const isAudioPlaying = Boolean(ap.isPlaying && (ap.currentAlbum || ap.isRadioPlaying));
             if (this._wasViewingPlayback || isAudioPlaying) {
                 if (typeof window.goToNowPlaying === "function") {
                     window.goToNowPlaying();
@@ -539,6 +615,73 @@ const AmbientVisualizer = {
 
         if (!window.AudioPlayer) return;
         const player = window.AudioPlayer;
+
+        // Synchroniser radio en direct si active
+        if (player.isRadioPlaying && player.currentRadio) {
+            const station = player.currentRadio;
+            const rm = window.RadioManager;
+            const np = (rm && rm.state && rm.state.nowPlaying && rm.state.nowPlaying.raw) ? rm.state.nowPlaying.raw : "";
+            const titleEl = document.getElementById("ambient-track-title");
+            const subEl = document.getElementById("ambient-track-sub");
+            const coverEl = document.getElementById("ambient-cover-thumb");
+
+            const stationName = station.name || "Radio Web";
+            const subLabelBadge = station.sub_label ? (station.sub_label_type === 'location' ? `📍 ${station.sub_label}` : `🏷️ ${station.sub_label}`) : "";
+            let subText = "";
+            if (np) {
+                subText = subLabelBadge ? `${stationName} (${subLabelBadge}) • ${np}` : `${stationName} • ${np}`;
+            } else {
+                subText = subLabelBadge ? `${stationName} • ${subLabelBadge} • 📻 Direct` : `${stationName} • 📻 Flux en direct`;
+            }
+
+            if (titleEl) titleEl.textContent = np ? np : stationName;
+            if (subEl) subEl.textContent = subText;
+            if (coverEl) {
+                let logo = station.favicon;
+                if (!logo || logo.includes("radio_placeholder") || logo.includes("upload.wikimedia.org")) {
+                    if (rm && typeof rm.getProceduralStationCover === "function") {
+                        logo = rm.getProceduralStationCover(station.name, station.tags, station.country);
+                    }
+                }
+                coverEl.src = logo;
+            }
+
+            const ambShuffleBtn = document.getElementById("ambient-shuffle-btn");
+            const ambRepeatBtn = document.getElementById("ambient-repeat-btn");
+            if (ambShuffleBtn) ambShuffleBtn.style.display = "none";
+            if (ambRepeatBtn) ambRepeatBtn.style.display = "none";
+
+            const prevBtn = document.getElementById("ambient-prev-btn");
+            const nextBtn = document.getElementById("ambient-next-btn");
+            if (prevBtn) {
+                prevBtn.title = "Reculer de 15 secondes dans le direct";
+                prevBtn.style.display = "inline-flex";
+            }
+            if (nextBtn) {
+                nextBtn.title = "Revenir au direct";
+                nextBtn.style.display = "inline-flex";
+            }
+
+            player.updatePlayStateUI();
+            player.updateVolumeUI();
+            player.updateEqualizerUI();
+            if (rm && typeof rm.updateTimeshiftTimeline === "function") {
+                rm.updateTimeshiftTimeline();
+            }
+            if (typeof window.updateVideoToggleButtons === "function") {
+                window.updateVideoToggleButtons();
+            }
+            return;
+        } else {
+            const ambShuffleBtn = document.getElementById("ambient-shuffle-btn");
+            const ambRepeatBtn = document.getElementById("ambient-repeat-btn");
+            if (ambShuffleBtn) ambShuffleBtn.style.display = "inline-flex";
+            if (ambRepeatBtn) ambRepeatBtn.style.display = "inline-flex";
+            const prevBtn = document.getElementById("ambient-prev-btn");
+            const nextBtn = document.getElementById("ambient-next-btn");
+            if (prevBtn) prevBtn.title = "Piste précédente";
+            if (nextBtn) nextBtn.title = "Piste suivante";
+        }
 
         // Synchroniser piste actuelle
         const cur = (player.activePlaylist && player.activePlaylist[player.currentIndex]) ||

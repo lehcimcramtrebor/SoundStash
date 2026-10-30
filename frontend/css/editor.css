@@ -583,6 +583,8 @@
     border: 1px solid transparent;
     color: var(--text-muted);
     font-size: 0.80rem;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
     font-weight: 500;
     padding: 0 10px;
     height: 28px;

@@ -418,8 +418,8 @@ const UserPlaylists = {
 
     updateBadgeUI() {
         const subtabBadge = document.getElementById("player-playlists-count-badge");
-        if (subtabBadge) {
-            subtabBadge.textContent = this.computeTotalCount();
+        if (subtabBadge && (!window.AudioPlayer || !window.AudioPlayer.globalSearchQuery)) {
+            subtabBadge.style.display = "none";
         }
     },
 
@@ -429,9 +429,10 @@ const UserPlaylists = {
             if (res.ok) {
                 const data = await res.json();
                 this.playlists = data.playlists || [];
-                const count = (this.playlists && Array.isArray(this.playlists)) ? this.playlists.length : 0;
                 const subtabBadge = document.getElementById("player-playlists-count-badge");
-                if (subtabBadge) subtabBadge.textContent = count;
+                if (subtabBadge && (!window.AudioPlayer || !window.AudioPlayer.globalSearchQuery)) {
+                    subtabBadge.style.display = "none";
+                }
             }
         } catch (e) {
             console.debug("Mise à jour silencieuse badge playlists:", e);
@@ -591,25 +592,31 @@ const UserPlaylists = {
         // Mettre à jour le badge du sous-onglet Playlists
         this.updateBadgeUI();
 
-        if (this.playlists.length === 0) {
+        let displayList = this.playlists;
+        if (this.searchFilter && this.searchFilter.trim()) {
+            const q = this.searchFilter.toLowerCase().trim();
+            displayList = this.playlists.filter(p => (p.name || "").toLowerCase().includes(q));
+        }
+
+        if (displayList.length === 0) {
             grid.innerHTML = `
                 <div class="empty-state" style="grid-column: 1 / -1; padding: 50px 20px; text-align: center;">
                     <div style="font-size: 3rem; opacity: 0.5; margin-bottom: 12px;">📑</div>
-                    <h3 style="margin-bottom: 8px;">Aucune playlist pour l'instant</h3>
+                    <h3 style="margin-bottom: 8px;">${this.searchFilter ? `Aucune playlist trouvée pour « ${escapeHtml(this.searchFilter)} »` : "Aucune playlist pour l'instant"}</h3>
                     <p class="text-muted" style="max-width: 480px; margin: 0 auto 20px auto; font-size: 0.9rem;">
-                        Créez votre première playlist mixte (morceaux audio et clips vidéo) ou envoyez un album complet en 1 clic !
+                        ${this.searchFilter ? "Vérifiez l'orthographe du nom de votre playlist." : "Créez votre première playlist mixte (morceaux audio et clips vidéo) ou envoyez un album complet en 1 clic !"}
                     </p>
-                    <button type="button" class="btn btn-primary" onclick="UserPlaylists.promptCreatePlaylist()">
+                    ${this.searchFilter ? '' : `<button type="button" class="btn btn-primary" onclick="UserPlaylists.promptCreatePlaylist()">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 4px;"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                         <span>Créer une playlist</span>
-                    </button>
+                    </button>`}
                 </div>
             `;
             return;
         }
 
         let html = "";
-        this.playlists.forEach((p) => {
+        displayList.forEach((p) => {
             const cover = p.cover_collage || p.cover_url || "/static/placeholder-cover.svg";
             const durStr = p.total_duration_str ? ` • ${p.total_duration_str}` : "";
             const audioBadge = p.audio_count > 0 ? `<span class="badge-item-audio">🎵 ${p.audio_count}</span>` : "";

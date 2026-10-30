@@ -1,4 +1,4 @@
-# 🎵 SoundStash v6.0.0
+# 🎵 SoundStash v6.1.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -11,6 +11,19 @@
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v6.1.0
+
+### 📻 Intégration Complète des Radios Web & Contrôle du Direct (Timeshifting)
+- **Annuaire Mondial Libre (Radio Browser)** : Accédez directement depuis l'application à plus de 45 000 stations de radio à travers le monde. Filtrez instantanément par pays (🇫🇷 France, 🇬🇧 UK, 🇺🇸 USA, 🇩🇪 Allemagne, 🇨🇭 Suisse, 🇯🇵 Japon...), par genre (🎸 Rock, 🎷 Jazz, 🎧 Électro, ☕ Lo-Fi / Chill, 🎻 Classique, 📰 Infos...) ou effectuez une recherche par mot-clé.
+- **Contrôle du Direct (Timeshifting jusqu'à 30 minutes)** : Ne ratez plus jamais un solo ou une info importante ! SoundStash maintient un tampon glissant et éphémère de 30 minutes en mémoire vive. Reculez ou avancez instantanément par sauts rapides (`-15s` / `+15s`), naviguez librement dans le temps via la barre de progression, et revenez au direct d'un simple clic sur le badge **`⚡ Revenir au direct`**.
+- **Pause Active sans perte de flux** : Mettez la radio en pause pour un appel ou un café : SoundStash continue d'enregistrer le flux en arrière-plan et vous reprendrez exactement là où vous vous êtes arrêté en cliquant sur Play.
+- **Affichage des Métadonnées en Direct (*Now Playing*)** : Décodage en temps réel des en-têtes ICY (Shoutcast / Icecast) affichant l'artiste et le titre du morceau en cours de diffusion dans le lecteur et le mini-dock flottant.
+- **Gestion des Favoris & Stations Personnalisées** : Marquez vos stations préférées d'une étoile (⭐) pour les retrouver instantanément en tête de liste, ou ajoutez manuellement vos propres flux (MP3, AAC, OGG ou fichiers de playlist `.m3u` / `.pls`) avec outil de test de connexion intégré.
+- **Extraction Magique vers l'Atelier (`💾 Sauvegarder ce morceau`)** : Vous adorez le titre qui vient de passer à la radio ? Un clic sur le bouton de sauvegarde extrait le morceau depuis le tampon vers le dossier temporaire de l'Atelier, prêt à être tagué et exporté dans votre collection personnelle.
+- **Égaliseur 10 Bandes & DSP Actifs** : Toutes les radios bénéficient nativement de la chaîne audio haute-fidélité de SoundStash (égaliseur 10 bandes, presets DSP Rock/Jazz/Vocal, contrôle du volume au clavier/molette et touches multimédias Windows).
 
 ---
 
