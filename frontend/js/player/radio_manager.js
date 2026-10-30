@@ -464,7 +464,14 @@ const RadioManager = {
             if (q) params.name = q;
             this.fetchBrowseStations(params);
         } else {
-            const params = { limit: 40 };
+            // Vue "top" (Top Mondial)
+            if (Array.isArray(this.state.browseResults) && this.state.browseResults.length > 0) {
+                this.renderGrid();
+            } else if (this.state.countryCache["FR"] && this.state.countryCache["FR"].length > 0) {
+                this.state.browseResults = this.state.countryCache["FR"];
+                this.renderGrid();
+            }
+            const params = { limit: 40, group: 1 };
             if (q) params.name = q;
             this.fetchBrowseStations(params);
         }
@@ -529,31 +536,42 @@ const RadioManager = {
     },
 
     async fetchBrowseStations(params = {}, countryCode = null) {
+        this.state._searchSeq = (this.state._searchSeq || 0) + 1;
+        const reqSeq = this.state._searchSeq;
         this.state.isLoading = true;
         this.renderLoadingState(true);
 
         try {
             const q = new URLSearchParams(params).toString();
             const resp = await fetch(`/api/radio/browser/search?${q}`);
+            if (this.state._searchSeq !== reqSeq) {
+                // Requête obsolète, une recherche plus récente a déjà été émise
+                return;
+            }
             if (resp.ok) {
                 const data = await resp.json();
-                this.state.browseResults = data.stations || [];
-                if (countryCode && this.state.browseResults.length > 0) {
-                    this.state.countryCache[countryCode] = this.state.browseResults;
+                const fetched = data.stations || [];
+                if (countryCode && fetched.length > 0) {
+                    this.state.countryCache[countryCode] = fetched;
                 }
-            } else {
-                this.state.browseResults = [];
+                // Si la requête renvoie des données, ou si aucune recherche n'est en cours, ou si browseResults est vide :
+                // Mettre à jour browseResults.
+                // En revanche, si la requête renvoie [] alors qu'on a déjà des résultats filtrés affichés, NE PAS écraser avec du vide !
+                if (fetched.length > 0 || !this.state.searchQuery || !this.state.browseResults || this.state.browseResults.length === 0) {
+                    this.state.browseResults = fetched;
+                }
             }
         } catch (err) {
             console.warn("[RadioManager] Erreur requête Radio Browser:", err);
-            this.state.browseResults = [];
         } finally {
-            this.state.isLoading = false;
-            this.renderLoadingState(false);
-            this.renderGrid();
-            this.updateFilterPillBadges(this.state.searchQuery);
-            if (window.AudioPlayer && typeof window.AudioPlayer.updateSearchTabBadges === "function") {
-                window.AudioPlayer.updateSearchTabBadges(this.state.searchQuery);
+            if (this.state._searchSeq === reqSeq) {
+                this.state.isLoading = false;
+                this.renderLoadingState(false);
+                this.renderGrid();
+                this.updateFilterPillBadges(this.state.searchQuery);
+                if (window.AudioPlayer && typeof window.AudioPlayer.updateSearchTabBadges === "function") {
+                    window.AudioPlayer.updateSearchTabBadges(this.state.searchQuery);
+                }
             }
         }
     },
@@ -788,7 +806,9 @@ const RadioManager = {
                     <div class="radio-card-variant-wrap" onclick="event.stopPropagation();">
                         <select class="radio-card-variant-select" data-group-id="${escapeHtml(stId)}" onchange="window.RadioManager && window.RadioManager.handleVariantChange(this, '${escapeHtml(stId)}');">
                             ${s.variants.map((v, vIdx) => {
-                                const vSub = v.sub_label || v.name;
+                                const vSub = v.sub_label
+                                    ? (v.sub_label_type === 'location' ? '📍 ' + v.sub_label : v.sub_label)
+                                    : (v.sub_label_type === 'parent' ? '🇫🇷 Direct National' : v.name);
                                 const vFmt = v.bitrate ? `${v.bitrate}k` : (v.codec || "");
                                 return `<option value="${vIdx}">${escapeHtml(vSub)}${vFmt ? ' • ' + escapeHtml(vFmt) : ''}</option>`;
                             }).join('')}
@@ -1086,8 +1106,9 @@ const RadioManager = {
         grid.innerHTML = variants.map((v) => {
             const vId = v.id || v.stationuuid || v.url;
             const isThisPlaying = (isPlaying && currentStId === vId);
-            const vSub = v.sub_label || v.name;
-            const subIcon = (v.sub_label_type === "location") ? "📍" : "🏷️";
+            const vSub = v.sub_label
+                ? (v.sub_label_type === "location" ? `📍 ${v.sub_label}` : `🏷️ ${v.sub_label}`)
+                : (v.sub_label_type === "parent" ? "🇫🇷 Direct National" : v.name);
             const fmt = v.bitrate ? `${v.codec || "MP3"} ${v.bitrate}k` : (v.codec || "MP3");
             const originalIdx = (group.variants || []).findIndex(x => (x.id || x.stationuuid || x.url) === vId);
             const targetIdx = originalIdx >= 0 ? originalIdx : 0;
@@ -1097,7 +1118,7 @@ const RadioManager = {
                     <div class="bouquet-card-info">
                         <span class="bouquet-card-name" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</span>
                         <div class="bouquet-card-meta">
-                            ${v.sub_label ? `<span class="bouquet-card-tag">${subIcon} ${escapeHtml(v.sub_label)}</span>` : ''}
+                            <span class="bouquet-card-tag">${escapeHtml(vSub)}</span>
                             <span class="bouquet-card-tag">${escapeHtml(fmt)}</span>
                         </div>
                     </div>

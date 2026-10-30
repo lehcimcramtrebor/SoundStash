@@ -1134,6 +1134,43 @@ class RadioManager:
 
         return processed
 
+    def get_all_cached_and_local_stations(self) -> List[Dict[str, Any]]:
+        """Collecte l'ensemble des stations issues des catalogues pays locaux, des favoris et des sélections intégrées."""
+        stations: List[Dict[str, Any]] = []
+        seen_ids = set()
+
+        def add_station(s: Dict[str, Any]):
+            sid = s.get("id") or s.get("stationuuid") or s.get("url")
+            if sid and sid not in seen_ids:
+                seen_ids.add(sid)
+                stations.append(s)
+
+        # 1. Favoris et radios personnalisées
+        try:
+            local_data = self.load_radios()
+            for s in local_data.get("favorites", []) + local_data.get("custom", []):
+                add_station(s)
+        except Exception:
+            pass
+
+        # 2. Stations prédéfinies
+        for s in DEFAULT_CURATED_STATIONS:
+            add_station(s)
+
+        # 3. Tous les fichiers de cache pays disponibles sur disque
+        try:
+            if STATIONS_CACHE_DIR.exists():
+                for cache_file in STATIONS_CACHE_DIR.glob("*_stations.json"):
+                    with open(cache_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            for s in data:
+                                add_station(s)
+        except Exception as e:
+            logger.warning(f"[RadioManager] Erreur lecture caches locaux: {e}")
+
+        return stations
+
     def search_stations(
         self,
         name: str = "",
@@ -1194,6 +1231,25 @@ class RadioManager:
 
         raw_list = self.query_radio_browser("/json/stations/search", params, timeout=timeout, max_mirrors=max_mirrors)
         stations = self._process_and_dedup_stations(raw_list)
+
+        # Repli automatique sur les caches locaux si Radio-Browser distant est inaccessible ou vide
+        if not stations:
+            local_all = self.get_all_cached_and_local_stations()
+            if name:
+                q = name.strip().lower()
+                q_norm = normalize_radio_query(name)
+                stations = [
+                    s for s in local_all
+                    if (q in (s.get("name") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("name") or "")))
+                    or (q in (s.get("parent_brand") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("parent_brand") or "")))
+                    or (q in (s.get("sub_label") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("sub_label") or "")))
+                    or (q in (s.get("tags") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("tags") or "")))
+                ]
+            elif tag:
+                t = tag.strip().lower()
+                stations = [s for s in local_all if t in (s.get("tags") or "").lower()]
+            else:
+                stations = local_all
 
         if group:
             stations = group_stations_by_brand(stations)
@@ -1263,6 +1319,10 @@ class RadioManager:
         except Exception as e:
             logger.warning(f"[RadioManager] Erreur comptage top mondial: {e}")
             counts["top"] = 0
+
+        if counts["top"] == 0:
+            sum_countries = sum(v for k, v in counts.items() if k.startswith("country:"))
+            counts["top"] = max(counts.get("favorites", 0), sum_countries)
 
         return counts
 
