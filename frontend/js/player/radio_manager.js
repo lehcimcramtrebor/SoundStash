@@ -69,7 +69,49 @@ const RadioManager = {
         currentMasterGroup: null,
         isLoading: false,
         pollTimer: null,
-        _searchDebounceTimer: null
+        _searchDebounceTimer: null,
+        countryCache: {}
+    },
+
+    normalizeSearchText(text) {
+        if (!text) return "";
+        return text
+            .toString()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, "");
+    },
+
+    matchesStation(s, query) {
+        if (!s) return false;
+        if (!query) return true;
+        const qRaw = query.toLowerCase().trim();
+        const qNorm = this.normalizeSearchText(qRaw);
+        if (!qRaw) return true;
+
+        const checkStr = (str) => {
+            if (!str) return false;
+            const low = str.toLowerCase();
+            if (low.includes(qRaw)) return true;
+            if (qNorm && this.normalizeSearchText(str).includes(qNorm)) return true;
+            return false;
+        };
+
+        if (checkStr(s.name)) return true;
+        if (checkStr(s.parent_brand)) return true;
+        if (checkStr(s.sub_label)) return true;
+        if (checkStr(s.tags)) return true;
+        if (checkStr(s.country)) return true;
+
+        if (s.is_group && Array.isArray(s.variants)) {
+            return s.variants.some(v =>
+                checkStr(v.name) ||
+                checkStr(v.sub_label) ||
+                checkStr(v.tags)
+            );
+        }
+        return false;
     },
 
     async init() {
@@ -116,24 +158,15 @@ const RadioManager = {
             return;
         }
 
-        // 1. Calcul immédiat des favoris en local pour réponse instantanée (0ms)
-        const qLower = q.toLowerCase();
-        const favCount = (this.state.favorites || []).filter(s => {
-            const name = (s.name || "").toLowerCase();
-            const tags = (s.tags || "").toLowerCase();
-            const country = (s.country || "").toLowerCase();
-            const brand = (s.parent_brand || "").toLowerCase();
-            const sub = (s.sub_label || "").toLowerCase();
-            return name.includes(qLower) || tags.includes(qLower) || country.includes(qLower) || brand.includes(qLower) || sub.includes(qLower);
-        }).length;
-
+        // 1. Calcul immédiat des favoris et de la vue active en local pour réponse instantanée (0ms)
+        const favCount = (this.state.favorites || []).filter(s => this.matchesStation(s, q)).length;
         const localCounts = {
             favorites: favCount
         };
 
-        // Si la vue active a déjà ses résultats filtrés en mémoire
+        // Si la vue active a déjà ses résultats en mémoire, compter les correspondances réelles
         if (this.state.activeFilter && Array.isArray(this.state.browseResults)) {
-            localCounts[this.state.activeFilter] = this.state.browseResults.length;
+            localCounts[this.state.activeFilter] = this.state.browseResults.filter(s => this.matchesStation(s, q)).length;
         }
 
         this.applyPillBadges(localCounts);
@@ -370,10 +403,14 @@ const RadioManager = {
             this.fetchBrowseStations(params);
         } else if (filter.startsWith("country:")) {
             const code = filter.split(":")[1];
-            // Pour les pays, on demande l'index complet (limit: 0) servi en cache local
-            const params = { countrycode: code, limit: 0, group: 1 };
-            if (query) params.name = query;
-            this.fetchBrowseStations(params);
+            if (this.state.countryCache[code] && this.state.countryCache[code].length > 0) {
+                this.state.browseResults = this.state.countryCache[code];
+                this.renderGrid();
+                this.updateFilterPillBadges(query);
+            } else {
+                const params = { countrycode: code, limit: 0, group: 1 };
+                this.fetchBrowseStations(params, code);
+            }
         } else if (filter.startsWith("tag:")) {
             const tag = filter.replace(/^tag:/, "").trim();
             const params = { tag: tag, limit: 40, group: 1 };
@@ -404,17 +441,22 @@ const RadioManager = {
                 window.AudioPlayer.updateSearchTabBadges(q);
             }
         } else if (filter.startsWith("country:")) {
-            // Si le catalogue complet du pays est déjà chargé en mémoire, filtrer localement à 60 FPS
-            if (Array.isArray(this.state.browseResults) && this.state.browseResults.length > 50) {
+            const code = filter.split(":")[1];
+            if (this.state.countryCache[code] && this.state.countryCache[code].length > 0) {
+                this.state.browseResults = this.state.countryCache[code];
+                this.renderGrid();
+                if (window.AudioPlayer && typeof window.AudioPlayer.updateSearchTabBadges === "function") {
+                    window.AudioPlayer.updateSearchTabBadges(q);
+                }
+            } else if (Array.isArray(this.state.browseResults) && this.state.browseResults.length > 50) {
+                this.state.countryCache[code] = this.state.browseResults;
                 this.renderGrid();
                 if (window.AudioPlayer && typeof window.AudioPlayer.updateSearchTabBadges === "function") {
                     window.AudioPlayer.updateSearchTabBadges(q);
                 }
             } else {
-                const code = filter.split(":")[1];
                 const params = { countrycode: code, limit: 0, group: 1 };
-                if (q) params.name = q;
-                this.fetchBrowseStations(params);
+                this.fetchBrowseStations(params, code);
             }
         } else if (filter.startsWith("tag:")) {
             const tag = filter.replace(/^tag:/, "").trim();
@@ -430,10 +472,7 @@ const RadioManager = {
 
     getSearchMatchCount(query) {
         if (!query) return 0;
-        const q = (query || "").toLowerCase().trim();
-        if (this.state.searchQuery && this.state.searchQuery.toLowerCase().trim() === q && Array.isArray(this.state.browseResults)) {
-            return this.state.browseResults.length;
-        }
+        const q = (query || "").trim();
         const seen = new Set();
         let count = 0;
         const allKnown = [
@@ -445,10 +484,7 @@ const RadioManager = {
             const id = s.id || s.stationuuid || s.url;
             if (seen.has(id)) continue;
             seen.add(id);
-            const name = (s.name || "").toLowerCase();
-            const tags = (s.tags || "").toLowerCase();
-            const country = (s.country || "").toLowerCase();
-            if (name.includes(q) || tags.includes(q) || country.includes(q)) {
+            if (this.matchesStation(s, q)) {
                 count++;
             }
         }
@@ -492,7 +528,7 @@ const RadioManager = {
         }
     },
 
-    async fetchBrowseStations(params = {}) {
+    async fetchBrowseStations(params = {}, countryCode = null) {
         this.state.isLoading = true;
         this.renderLoadingState(true);
 
@@ -502,6 +538,9 @@ const RadioManager = {
             if (resp.ok) {
                 const data = await resp.json();
                 this.state.browseResults = data.stations || [];
+                if (countryCode && this.state.browseResults.length > 0) {
+                    this.state.countryCache[countryCode] = this.state.browseResults;
+                }
             } else {
                 this.state.browseResults = [];
             }
@@ -679,20 +718,8 @@ const RadioManager = {
         }
 
         if (this.state.searchQuery) {
-            const q = this.state.searchQuery.toLowerCase().trim();
-            list = list.filter(s => {
-                const name = (s.name || "").toLowerCase();
-                const tags = (s.tags || "").toLowerCase();
-                const country = (s.country || "").toLowerCase();
-                const brand = (s.parent_brand || "").toLowerCase();
-                const sub = (s.sub_label || "").toLowerCase();
-                const matchVariant = s.is_group && Array.isArray(s.variants) && s.variants.some(v =>
-                    (v.name || "").toLowerCase().includes(q) ||
-                    (v.sub_label || "").toLowerCase().includes(q) ||
-                    (v.tags || "").toLowerCase().includes(q)
-                );
-                return name.includes(q) || tags.includes(q) || country.includes(q) || brand.includes(q) || sub.includes(q) || matchVariant;
-            });
+            const q = this.state.searchQuery.trim();
+            list = list.filter(s => this.matchesStation(s, q));
         }
 
         if (list.length === 0) {
@@ -747,9 +774,9 @@ const RadioManager = {
                 const subLabelType = s.sub_label_type || "location";
                 const subIcon = subLabelType === "location" ? "📍" : "🏷️";
                 topBadgeHtml = `
-                    <div class="radio-card-sublabel-pill is-${escapeHtml(subLabelType)}" title="${escapeHtml(s.name)} : ${escapeHtml(subLabel)}">
+                    <div class="radio-card-sublabel-pill is-${escapeHtml(subLabelType)}" title="${escapeHtml(s.name)} : ${escapeHtml(s.sub_label)}">
                         <span class="sublabel-pin">${subIcon}</span>
-                        <span class="sublabel-text">${escapeHtml(subLabel)}</span>
+                        <span class="sublabel-text">${escapeHtml(s.sub_label)}</span>
                     </div>
                 `;
             }
@@ -1043,14 +1070,10 @@ const RadioManager = {
         const countPill = document.getElementById("radios-bouquet-count-pill");
         if (!grid) return;
 
-        const q = (this.state.activeGroupSearch || "").toLowerCase().trim();
+        const q = (this.state.activeGroupSearch || "").trim();
         let variants = group.variants || [];
         if (q) {
-            variants = variants.filter(v =>
-                (v.name && v.name.toLowerCase().includes(q)) ||
-                (v.sub_label && v.sub_label.toLowerCase().includes(q)) ||
-                (v.tags && v.tags.toLowerCase().includes(q))
-            );
+            variants = variants.filter(v => this.matchesStation(v, q));
         }
 
         if (countPill) {

@@ -19,6 +19,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import threading
+import unicodedata
 import collections
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
@@ -288,7 +289,8 @@ PARENT_BRANDS_REGISTRY = [
     ("Radio Classique", "radioclassique.fr", "https://www.google.com/s2/favicons?domain=radioclassique.fr&sz=128"),
     ("Radio Swiss", "radioswissjazz.ch", "https://www.google.com/s2/favicons?domain=radioswissjazz.ch&sz=128"),
     ("Radio Suisse", "radioswissjazz.ch", "https://www.google.com/s2/favicons?domain=radioswissjazz.ch&sz=128"),
-    ("RTL2", "rtl2.fr", "https://www.google.com/s2/favicons?domain=rtl2.fr&sz=128"),
+    ("RTL 2", "rtl2.fr", "https://www.google.com/s2/favicons?domain=rtl2.fr&sz=128", "RTL2"),
+    ("RTL2", "rtl2.fr", "https://www.google.com/s2/favicons?domain=rtl2.fr&sz=128", "RTL2"),
     ("RTL", "rtl.fr", "https://www.google.com/s2/favicons?domain=rtl.fr&sz=128"),
     ("NRJ", "nrj.fr", "https://www.google.com/s2/favicons?domain=nrj.fr&sz=128"),
     ("Nostalgie", "nostalgie.fr", "https://www.google.com/s2/favicons?domain=nostalgie.fr&sz=128"),
@@ -362,6 +364,15 @@ def extract_clean_domain(url_or_domain: str) -> str:
         return ""
 
 
+def normalize_radio_query(text: str) -> str:
+    """Normalise une chaîne pour la recherche radio (supprime accents, séparateurs, espaces)."""
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize('NFKD', str(text))
+    no_accent = "".join([c for c in nfkd if not unicodedata.combining(c)])
+    return re.sub(r'[^a-z0-9]', '', no_accent.lower())
+
+
 def detect_parent_brand_and_sublabel(name: str) -> Optional[Tuple[str, str, str, str]]:
     """
     Identifie si une radio est une déclinaison locale ou thématique d'un grand réseau.
@@ -371,7 +382,11 @@ def detect_parent_brand_and_sublabel(name: str) -> Optional[Tuple[str, str, str,
         return None
     raw_name = name.strip()
     norm_name = raw_name.lower()
-    for brand, domain, logo in PARENT_BRANDS_REGISTRY:
+    for entry in PARENT_BRANDS_REGISTRY:
+        brand = entry[0]
+        domain = entry[1]
+        logo = entry[2]
+        canonical_brand = entry[3] if len(entry) > 3 else brand
         b_low = brand.lower()
         if norm_name.startswith(b_low):
             remainder = raw_name[len(brand):].strip(" -:–/|()")
@@ -385,9 +400,9 @@ def detect_parent_brand_and_sublabel(name: str) -> Optional[Tuple[str, str, str,
                 rem_low = remainder.lower()
                 is_loc = any(c in rem_low for c in FRENCH_REGIONS_CITIES)
                 sub_type = "location" if is_loc else "theme"
-                return (brand, remainder, sub_type, logo)
+                return (canonical_brand, remainder, sub_type, logo)
             else:
-                return (brand, "", "parent", logo)
+                return (canonical_brand, "", "parent", logo)
     return None
 
 
@@ -935,18 +950,19 @@ class RadioManager:
         self.save_radios(data)
         return True
 
-    def query_radio_browser(self, endpoint: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def query_radio_browser(self, endpoint: str, params: Dict[str, Any], timeout: float = 6.0, max_mirrors: Optional[int] = None) -> List[Dict[str, Any]]:
         """Interroge l'annuaire mondial Radio Browser avec tolérance de panne sur serveurs miroirs."""
         encoded_params = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
         headers = {"User-Agent": "SoundStash/6.1.0"}
 
-        for mirror in RADIO_BROWSER_MIRRORS:
+        mirrors = RADIO_BROWSER_MIRRORS[:max_mirrors] if max_mirrors else RADIO_BROWSER_MIRRORS
+        for mirror in mirrors:
             full_url = f"{mirror}{endpoint}"
             if encoded_params:
                 full_url += f"?{encoded_params}"
             try:
                 req = urllib.request.Request(full_url, headers=headers)
-                with urllib.request.urlopen(req, timeout=6.0) as resp:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
                     raw = resp.read().decode("utf-8")
                     data = json.loads(raw)
                     if isinstance(data, list):
@@ -1125,7 +1141,9 @@ class RadioManager:
         tag: str = "",
         limit: int = 40,
         offset: int = 0,
-        group: bool = True
+        group: bool = True,
+        timeout: float = 6.0,
+        max_mirrors: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Recherche et consultation de l'annuaire mondial avec support du cache local pays,
@@ -1137,12 +1155,13 @@ class RadioManager:
             # Filtrage par mot-clé (nom, marque parente ou sous-label)
             if name:
                 q = name.strip().lower()
+                q_norm = normalize_radio_query(name)
                 stations = [
                     s for s in stations
-                    if q in (s.get("name") or "").lower()
-                    or q in (s.get("parent_brand") or "").lower()
-                    or q in (s.get("sub_label") or "").lower()
-                    or q in (s.get("tags") or "").lower()
+                    if (q in (s.get("name") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("name") or "")))
+                    or (q in (s.get("parent_brand") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("parent_brand") or "")))
+                    or (q in (s.get("sub_label") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("sub_label") or "")))
+                    or (q in (s.get("tags") or "").lower() or (q_norm and q_norm in normalize_radio_query(s.get("tags") or "")))
                 ]
             # Filtrage par tag
             if tag:
@@ -1173,7 +1192,7 @@ class RadioManager:
         if tag:
             params["tag"] = tag.strip().lower()
 
-        raw_list = self.query_radio_browser("/json/stations/search", params)
+        raw_list = self.query_radio_browser("/json/stations/search", params, timeout=timeout, max_mirrors=max_mirrors)
         stations = self._process_and_dedup_stations(raw_list)
 
         if group:
@@ -1192,7 +1211,8 @@ class RadioManager:
         - Top Mondial ('top')
         """
         q = (name or "").strip().lower()
-        if not q:
+        q_norm = normalize_radio_query(name)
+        if not q and not q_norm:
             return {}
 
         counts: Dict[str, int] = {}
@@ -1208,18 +1228,26 @@ class RadioManager:
                 s_country = (s.get("country") or "").lower()
                 s_brand = (s.get("parent_brand") or "").lower()
                 s_sub = (s.get("sub_label") or "").lower()
-                if q in s_name or q in s_tags or q in s_country or q in s_brand or q in s_sub:
+                if (q in s_name or (q_norm and q_norm in normalize_radio_query(s_name)) or
+                    q in s_tags or (q_norm and q_norm in normalize_radio_query(s_tags)) or
+                    q in s_country or
+                    q in s_brand or (q_norm and q_norm in normalize_radio_query(s_brand)) or
+                    q in s_sub or (q_norm and q_norm in normalize_radio_query(s_sub))):
                     fav_count += 1
             counts["favorites"] = fav_count
         except Exception as e:
             logger.warning(f"[RadioManager] Erreur comptage favoris: {e}")
             counts["favorites"] = 0
 
-        # 2. Codes pays configurés (lecture instantanée du cache local JSON)
+        # 2. Codes pays configurés (lecture instantanée du cache local JSON uniquement)
         codes = country_codes or ["FR", "BE", "DE"]
         for code in codes:
             clean_code = code.strip().upper()
             if not clean_code:
+                continue
+            cache_file = STATIONS_CACHE_DIR / f"{clean_code.lower()}_stations.json"
+            if not cache_file.exists():
+                counts[f"country:{clean_code}"] = 0
                 continue
             try:
                 stations = self.search_stations(countrycode=clean_code, name=q, group=True, limit=0)
@@ -1228,9 +1256,9 @@ class RadioManager:
                 logger.warning(f"[RadioManager] Erreur comptage pays {clean_code}: {e}")
                 counts[f"country:{clean_code}"] = 0
 
-        # 3. Top Mondial (Recherche groupée)
+        # 3. Top Mondial (Recherche ultra-rapide avec timeout strict de 1.2s)
         try:
-            top_stations = self.search_stations(name=q, group=True, limit=40)
+            top_stations = self.search_stations(name=q, group=True, limit=40, timeout=1.2, max_mirrors=1)
             counts["top"] = len(top_stations)
         except Exception as e:
             logger.warning(f"[RadioManager] Erreur comptage top mondial: {e}")

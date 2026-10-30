@@ -5472,7 +5472,7 @@ const AudioPlayer = {
         if (window.RadioManager) window.RadioManager.state.searchQuery = q;
 
         this.updateSearchTabBadges(q);
-        this.applySearchToCurrentView(q);
+        this.applySearchToCurrentView(q, sourceInput);
     },
 
     clearGlobalSearch() {
@@ -5601,7 +5601,7 @@ const AudioPlayer = {
         });
     },
 
-    applySearchToCurrentView(q) {
+    applySearchToCurrentView(q, sourceInput = null) {
         if (this.currentView === "albums") {
             this.renderAlbumsGrid();
         } else if (this.currentView === "artists") {
@@ -5615,7 +5615,10 @@ const AudioPlayer = {
         } else if (this.currentView === "playlists") {
             if (window.UserPlaylists) window.UserPlaylists.renderGrid();
         } else if (this.currentView === "radios") {
-            if (window.RadioManager) window.RadioManager.handleSearch(q);
+            const rInp = document.getElementById("radios-search-input");
+            if (window.RadioManager && (!sourceInput || sourceInput !== rInp)) {
+                window.RadioManager.handleSearch(q);
+            }
         } else if (this.currentView === "all") {
             this.renderAllView(true);
         } else if (this.currentView === "search") {
