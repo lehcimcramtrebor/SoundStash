@@ -1183,6 +1183,61 @@ class RadioManager:
             return stations[offset:offset + limit]
         return stations
 
+    def get_filter_pills_counts(self, name: str, country_codes: Optional[List[str]] = None) -> Dict[str, int]:
+        """
+        Calcule ultra-rapidement (< 15ms pour le cache local, ~300ms pour l'annuaire mondial)
+        le nombre de correspondances de recherche pour chaque pilule de filtre :
+        - Favoris ('favorites')
+        - Pays configurés ('country:FR', 'country:BE', etc.)
+        - Top Mondial ('top')
+        """
+        q = (name or "").strip().lower()
+        if not q:
+            return {}
+
+        counts: Dict[str, int] = {}
+
+        # 1. Favoris locaux
+        try:
+            local_data = self.load_radios()
+            favorites = local_data.get("favorites", [])
+            fav_count = 0
+            for s in favorites:
+                s_name = (s.get("name") or "").lower()
+                s_tags = (s.get("tags") or "").lower()
+                s_country = (s.get("country") or "").lower()
+                s_brand = (s.get("parent_brand") or "").lower()
+                s_sub = (s.get("sub_label") or "").lower()
+                if q in s_name or q in s_tags or q in s_country or q in s_brand or q in s_sub:
+                    fav_count += 1
+            counts["favorites"] = fav_count
+        except Exception as e:
+            logger.warning(f"[RadioManager] Erreur comptage favoris: {e}")
+            counts["favorites"] = 0
+
+        # 2. Codes pays configurés (lecture instantanée du cache local JSON)
+        codes = country_codes or ["FR", "BE", "DE"]
+        for code in codes:
+            clean_code = code.strip().upper()
+            if not clean_code:
+                continue
+            try:
+                stations = self.search_stations(countrycode=clean_code, name=q, group=True, limit=0)
+                counts[f"country:{clean_code}"] = len(stations)
+            except Exception as e:
+                logger.warning(f"[RadioManager] Erreur comptage pays {clean_code}: {e}")
+                counts[f"country:{clean_code}"] = 0
+
+        # 3. Top Mondial (Recherche groupée)
+        try:
+            top_stations = self.search_stations(name=q, group=True, limit=40)
+            counts["top"] = len(top_stations)
+        except Exception as e:
+            logger.warning(f"[RadioManager] Erreur comptage top mondial: {e}")
+            counts["top"] = 0
+
+        return counts
+
 
 
 

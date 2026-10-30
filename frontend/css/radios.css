@@ -1177,3 +1177,65 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Pastilles de compteur de recherche sur les pilules de filtrage des radios */
+.subfilter-pill .badge-tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 17px;
+    height: 16px;
+    padding: 0 4px;
+    margin-left: 6px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    box-sizing: border-box;
+    transition: all 0.15s ease;
+}
+
+.subfilter-pill .badge-tab-count.count-zero {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-muted, #a6adc8);
+    opacity: 0.65;
+}
+
+.subfilter-pill .badge-tab-count.count-positive {
+    background: rgba(239, 68, 68, 0.22);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.25);
+}
+
+.subfilter-pill.active .badge-tab-count.count-positive {
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.subfilter-pill.active .badge-tab-count.count-zero {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .subfilter-pill .badge-tab-count.count-zero {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.10);
+    color: #64748b;
+}
+
+[data-theme="light"] .subfilter-pill .badge-tab-count.count-positive {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+}
+
+[data-theme="light"] .subfilter-pill.active .badge-tab-count.count-positive {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: #ffffff;
+    color: #ffffff;
+}

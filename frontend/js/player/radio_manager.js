@@ -100,9 +100,77 @@ const RadioManager = {
 
     updateRadiosBadge() {
         const badge = document.getElementById("player-radios-count-badge");
-        if (badge && (!window.AudioPlayer || !window.AudioPlayer.globalSearchQuery)) {
+        if (badge) {
             badge.style.display = "none";
         }
+    },
+
+    async updateFilterPillBadges(query) {
+        const q = (query || "").trim();
+        const pillsContainer = document.getElementById("radios-filter-pills");
+        if (!pillsContainer) return;
+
+        if (!q) {
+            // Aucun filtre de recherche actif : retirer toutes les pastilles de décompte
+            pillsContainer.querySelectorAll(".badge-tab-count").forEach(b => b.remove());
+            return;
+        }
+
+        // 1. Calcul immédiat des favoris en local pour réponse instantanée (0ms)
+        const qLower = q.toLowerCase();
+        const favCount = (this.state.favorites || []).filter(s => {
+            const name = (s.name || "").toLowerCase();
+            const tags = (s.tags || "").toLowerCase();
+            const country = (s.country || "").toLowerCase();
+            const brand = (s.parent_brand || "").toLowerCase();
+            const sub = (s.sub_label || "").toLowerCase();
+            return name.includes(qLower) || tags.includes(qLower) || country.includes(qLower) || brand.includes(qLower) || sub.includes(qLower);
+        }).length;
+
+        const localCounts = {
+            favorites: favCount
+        };
+
+        // Si la vue active a déjà ses résultats filtrés en mémoire
+        if (this.state.activeFilter && Array.isArray(this.state.browseResults)) {
+            localCounts[this.state.activeFilter] = this.state.browseResults.length;
+        }
+
+        this.applyPillBadges(localCounts);
+
+        // 2. Interrogation ultra-rapide du backend pour les onglets pays et top mondial
+        const codes = this.getUserCountryCodes();
+        try {
+            const resp = await fetch(`/api/radio/pills-counts?name=${encodeURIComponent(q)}&codes=${encodeURIComponent(codes.join(','))}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.counts && (this.state.searchQuery || "").trim() === q) {
+                    this.applyPillBadges(data.counts);
+                }
+            }
+        } catch (err) {
+            console.warn("[RadioManager] Erreur récupération décomptes des pilules:", err);
+        }
+    },
+
+    applyPillBadges(counts) {
+        const pillsContainer = document.getElementById("radios-filter-pills");
+        if (!pillsContainer || !counts) return;
+
+        const pills = pillsContainer.querySelectorAll(".subfilter-pill[data-radio-filter]");
+        pills.forEach(pill => {
+            const filterKey = pill.getAttribute("data-radio-filter");
+            if (!filterKey || typeof counts[filterKey] !== "number") return;
+
+            const cnt = counts[filterKey];
+            let badge = pill.querySelector(".badge-tab-count");
+            if (!badge) {
+                badge = document.createElement("span");
+                pill.appendChild(badge);
+            }
+            badge.textContent = cnt;
+            badge.className = `badge-tab-count ${cnt > 0 ? 'count-positive' : 'count-zero'}`;
+        });
     },
 
     setupEventListeners() {
@@ -326,6 +394,9 @@ const RadioManager = {
         }
         if (clearBtn) clearBtn.style.display = q ? "flex" : "none";
 
+        // Mettre à jour les pastilles de décompte sur les pilules de sous-filtres (Favoris, Top, Pays...)
+        this.updateFilterPillBadges(q);
+
         const filter = this.state.activeFilter || "top";
         if (filter === "favorites") {
             this.renderGrid();
@@ -441,6 +512,7 @@ const RadioManager = {
             this.state.isLoading = false;
             this.renderLoadingState(false);
             this.renderGrid();
+            this.updateFilterPillBadges(this.state.searchQuery);
             if (window.AudioPlayer && typeof window.AudioPlayer.updateSearchTabBadges === "function") {
                 window.AudioPlayer.updateSearchTabBadges(this.state.searchQuery);
             }
@@ -830,6 +902,47 @@ const RadioManager = {
             } else {
                 this.state.currentMasterGroup = null;
             }
+        }
+
+        // --- INTERCEPTION : Si la station demandée est déjà celle en cours d'écoute ---
+        const curStation = this.state.currentStation || (window.AudioPlayer ? window.AudioPlayer.currentRadio : null);
+        const curId = curStation ? (curStation.id || curStation.stationuuid || curStation.url) : null;
+        const targetId = actualStation.id || actualStation.stationuuid || actualStation.url;
+        const isCurrentRadioPlaying = Boolean(
+            window.AudioPlayer &&
+            window.AudioPlayer.isRadioPlaying &&
+            curId &&
+            targetId &&
+            (curId === targetId || (curStation.url && curStation.url === actualStation.url))
+        );
+
+        if (isCurrentRadioPlaying) {
+            // L'utilisateur clique sur la radio qu'il est déjà en train d'écouter :
+            // Pas de coupure audio, pas de rechargement du flux, simple redirection vers le Grand Écran
+            if (window.AudioPlayer && window.AudioPlayer.audio && window.AudioPlayer.audio.paused && window.AudioPlayer.audio.src) {
+                window.AudioPlayer.audio.play().catch(() => {});
+                window.AudioPlayer.isPlaying = true;
+                this.state.isPlaying = true;
+                window.AudioPlayer.updatePlayStateUI();
+                this.renderGrid();
+            }
+            if (this.state.activeGroup) {
+                this.closeBouquetModal();
+            }
+            if (typeof closeWorkshopDrawer === "function" && typeof isWorkshopDrawerOpen !== "undefined" && isWorkshopDrawerOpen) {
+                closeWorkshopDrawer();
+            }
+            if (typeof enterPlayerMode === "function" && typeof isPlayerModeActive !== "undefined" && !isPlayerModeActive) {
+                enterPlayerMode();
+            }
+            if (window.AudioPlayer) {
+                window.AudioPlayer.setView("now-playing");
+                window.AudioPlayer.renderPlayerTab();
+            }
+            if (typeof showToast === "function") {
+                showToast(`📻 Déjà à l'écoute : ${actualStation.name || "Station en direct"}`, "info", 1800);
+            }
+            return;
         }
 
         this.state.currentStation = actualStation;
@@ -1248,6 +1361,9 @@ const RadioManager = {
             html += `<button type="button" class="subfilter-pill ${isAct ? 'active' : ''}" data-radio-filter="country:${escapeHtml(country.code)}">${escapeHtml(country.flag)} ${escapeHtml(country.name)}</button>`;
         });
         container.innerHTML = html;
+        if (this.state.searchQuery) {
+            this.updateFilterPillBadges(this.state.searchQuery);
+        }
     },
 
     setupCountriesModal() {

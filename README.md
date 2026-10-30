@@ -1,4 +1,4 @@
-# 🎵 SoundStash v6.1.0
+# 🎵 SoundStash v6.1.1
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://microsoft.com)
@@ -11,6 +11,16 @@
 **SoundStash** par [Helmicretro](https://github.com/Helmicretro) (développé avec l'assistance d'**Antigravity**) est une station musicale desktop complète pour Windows : lecteur audio sanctuaire haute fidélité, hub vidéo 16:9, et atelier d'acquisition, d'édition et d'organisation de métadonnées.
 
 Entièrement autonome, elle fonctionne en local sans cloud tiers et conserve toutes ses données utilisateur de manière pérenne et sécurisée dans `%APPDATA%\SoundStash` (ou en mode portable isolé).
+
+---
+
+## 🚀 Nouveautés v6.1.1
+
+### 📻 Perfectionnement de l'Écosystème Radios Web & Fluidité d'Écoute
+- **Pastilles de Décompte Ciblées sur les Sous-Filtres Radio** : Lors d'une recherche textuelle, les pastilles de correspondances s'affichent désormais avec précision directement sur les pilules de sous-filtres en bas de barre d'outils (**⭐ Mes Favoris**, **🌍 Top Mondial**, **🇫🇷 France**, **🇧🇪 Belgique**, **🇩🇪 Allemagne**...) et reflètent en direct le nombre exact de bouquets et stations trouvés par catégorie. L'onglet supérieur général reste ainsi totalement épuré.
+- **Zéro Coupure lors du Clic sur une Radio Déjà en Écoute** : Si vous cliquez sur la carte ou le bouton d'écoute d'une radio que vous êtes déjà en train d'écouter (dans la grille principale, dans une déclinaison de bouquet ou après une recherche), la diffusion audio n'est plus interrompue ni rechargée depuis le réseau : SoundStash vous redirige immédiatement et en toute fluidité vers la page dédiée de lecture (**Grand Écran**).
+- **Reprise de Session Radio au Démarrage (Smart Playback Resume)** : Correction de l'enchaînement de reprise où appuyer sur lecture après un redémarrage pouvait déclencher la collection locale au lieu du flux radio mémorisé.
+- **Affichage Dynamique des Déclinaisons de Réseau** : Suppression de l'ascenseur interne (« scroll dans le scroll ») sur la liste des stations d'un même bouquet dans le Grand Écran, la liste adoptant sa hauteur naturelle de manière unifiée avec la page.
 
 ---
 

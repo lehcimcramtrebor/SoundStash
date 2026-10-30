@@ -5510,9 +5510,12 @@ const AudioPlayer = {
             genres: document.getElementById("player-genres-count-badge"),
             videos: document.getElementById("player-videos-count-badge"),
             concerts: document.getElementById("player-concerts-count-badge"),
-            playlists: document.getElementById("player-playlists-count-badge"),
-            radios: document.getElementById("player-radios-count-badge")
+            playlists: document.getElementById("player-playlists-count-badge")
         };
+
+        // L'onglet Radios du haut ne porte pas de pastille de recherche (réservée aux pilules de pays/favoris)
+        const radiosBadge = document.getElementById("player-radios-count-badge");
+        if (radiosBadge) radiosBadge.style.display = "none";
 
         if (!q) {
             Object.keys(badges).forEach(k => {
@@ -5521,6 +5524,9 @@ const AudioPlayer = {
                 b.style.display = "none";
                 b.className = "badge badge-sm badge-tab-count";
             });
+            if (window.RadioManager && typeof window.RadioManager.updateFilterPillBadges === "function") {
+                window.RadioManager.updateFilterPillBadges("");
+            }
             return;
         }
 
@@ -5568,13 +5574,12 @@ const AudioPlayer = {
             if ((p.name || "").toLowerCase().includes(q)) playlistsCount++;
         }
 
-        // Compter radios
-        let radiosCount = 0;
-        if (window.RadioManager && typeof window.RadioManager.getSearchMatchCount === "function") {
-            radiosCount = window.RadioManager.getSearchMatchCount(q);
+        // Synchroniser également les pilules de sous-filtres des radios (Favoris, Top, Pays...)
+        if (window.RadioManager && typeof window.RadioManager.updateFilterPillBadges === "function") {
+            window.RadioManager.updateFilterPillBadges(q);
         }
 
-        const allCount = albumsCount + artistsCount + genresCount + videosCount + concertsCount + playlistsCount + radiosCount;
+        const allCount = albumsCount + artistsCount + genresCount + videosCount + concertsCount + playlistsCount;
 
         const counts = {
             all: allCount,
@@ -5583,8 +5588,7 @@ const AudioPlayer = {
             genres: genresCount,
             videos: videosCount,
             concerts: concertsCount,
-            playlists: playlistsCount,
-            radios: radiosCount
+            playlists: playlistsCount
         };
 
         Object.keys(badges).forEach(k => {

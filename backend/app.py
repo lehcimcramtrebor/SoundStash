@@ -4726,6 +4726,12 @@ def search_radio_browser_endpoint(
     )
     return {"stations": stations, "count": len(stations)}
 
+@app.get("/api/radio/pills-counts")
+def get_radio_pills_counts_endpoint(name: str = "", codes: str = ""):
+    """Retourne les décomptes de correspondances de recherche pour chaque pilule de filtre (Favoris, Top, Pays)."""
+    country_codes = [c.strip().upper() for c in codes.split(",") if c.strip()] if codes else []
+    return {"counts": radio_manager.get_filter_pills_counts(name=name, country_codes=country_codes)}
+
 @app.post("/api/radio/test")
 def test_radio_stream_endpoint(url: str):
     """Teste la joignabilité d'un flux audio distant."""
